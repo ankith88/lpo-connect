@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  ChevronRight, 
+  ChevronRight,
   ChevronLeft, 
-  Search, 
-  Book, 
   Truck, 
   Repeat, 
   Calendar,
@@ -78,16 +76,36 @@ const NewJobForm: React.FC = () => {
     date: formatDateForInput(getDefaultBookingDate()),
   });
 
-  const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
+
   useEffect(() => {
-    if (searchQuery.length > 2 && lpo) {
+    const draft = localStorage.getItem('rebook_draft');
+    if (draft && window.location.search.includes('rebook=true')) {
+      try {
+        const jobData = JSON.parse(draft);
+        setFormData(prev => ({
+          ...prev,
+          customer: jobData.customer,
+          service: jobData.service,
+          billing: jobData.billing,
+          // Note: Date is NOT prefilled from draft to ensure 12PM cutoff logic is respected
+        }));
+        // Clean up
+        localStorage.removeItem('rebook_draft');
+      } catch (e) {
+        console.error("Failed to parse rebook draft", e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (formData.customer.company.length > 2 && lpo) {
       const searchCustomers = async () => {
         const q = query(
           collection(db, `lpo/${lpo.id}/customers`),
-          where('company_name', '>=', searchQuery),
-          where('company_name', '<=', searchQuery + '\uf8ff')
+          where('search_name', '>=', formData.customer.company.toLowerCase()),
+          where('search_name', '<=', formData.customer.company.toLowerCase() + '\uf8ff')
         );
         const snapshot = await getDocs(q);
         setSearchResults(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -96,7 +114,7 @@ const NewJobForm: React.FC = () => {
     } else {
       setSearchResults([]);
     }
-  }, [searchQuery, lpo]);
+  }, [formData.customer.company, lpo]);
 
   const selectCustomer = (c: any) => {
     setFormData({
@@ -112,7 +130,6 @@ const NewJobForm: React.FC = () => {
         instructions: c.instructions || '',
       }
     });
-    setSearchQuery('');
     setSearchResults([]);
   };
 
@@ -228,6 +245,7 @@ const NewJobForm: React.FC = () => {
       if (formData.saveToAddressBook) {
         await addDoc(collection(db, `lpo/${lpo.id}/customers`), {
           company_name: formData.customer.company,
+          search_name: formData.customer.company.toLowerCase(),
           contact_person: formData.customer.contact,
           phone: formData.customer.phone,
           address: {
@@ -255,32 +273,8 @@ const NewJobForm: React.FC = () => {
     }
   };
 
-  if (success) {
-    return (
-      <div className="success-premium">
-        <div className="mesh-bg"><div className="blob blob-1"></div></div>
-        <div className="success-glass card">
-          <div className="success-icon-wrapper">
-            <CheckCircle2 size={64} />
-          </div>
-          <h2>Booking Confirmed!</h2>
-          <p>The adhoc job for <strong>{formData.customer.company}</strong> has been successfully scheduled.</p>
-          <div className="success-actions">
-            <button onClick={() => window.location.href = '/dashboard'} className="btn-primary">
-              View Work Dashboard
-            </button>
-            <button onClick={() => window.location.reload()} className="btn-text">
-              Book Another Job
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="job-form-premium">
-      {/* Mesh Background */}
+    <div className="new-job-premium">
       <div className="mesh-bg">
         <div className="blob blob-1"></div>
         <div className="blob blob-2"></div>
@@ -288,311 +282,321 @@ const NewJobForm: React.FC = () => {
       </div>
 
       <div className="form-container">
-        <header className="form-header">
-          <div className="header-icon-pill">
-            <Rocket size={20} />
-          </div>
-          <h1>Book a Job</h1>
-          <p>Create a one-off service job for your customers in seconds.</p>
-        </header>
-
-        {/* Step Indicator */}
-        <div className="step-tracker">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className={`step-item ${step === s ? 'active' : step > s ? 'completed' : ''}`}>
-              <div className="step-circle">{step > s ? <CheckCircle2 size={16} /> : s}</div>
-              <span className="step-label">{s === 1 ? 'Site' : s === 2 ? 'Service' : 'Review'}</span>
-              {s < 3 && <div className="step-connector"></div>}
-            </div>
-          ))}
-        </div>
-
-        <div className={`step-container ${animating ? 'fade-out' : 'fade-in'}`}>
-          {step === 1 && (
-            <div className="glass-card step-card">
-              <div className="card-top-info">
-                <Building2 size={20} />
-                <h3>Site Information</h3>
+        {success ? (
+          <div className="success-view-premium fade-in">
+            <div className="success-card glass">
+              <div className="success-icon-animation">
+                <CheckCircle2 size={80} strokeWidth={2.5} className="pulse-icon" />
               </div>
-
-              <div className="search-section">
-                <div className="search-pill">
-                  <Search size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Search from Address Book..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  <button className="book-btn"><Book size={16} /> <span>BOOK</span></button>
-                </div>
-                {searchResults.length > 0 && (
-                  <div className="search-dropdown glass">
-                    {searchResults.map(c => (
-                      <div key={c.id} className="search-item" onClick={() => selectCustomer(c)}>
-                        <div><strong>{c.company_name}</strong></div>
-                        <div className="sub">{c.address.suburb}, {c.address.postcode}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="success-text">
+                <h2>Booking Confirmed!</h2>
+                <p>The adhoc job for <strong>{formData.customer.company}</strong> has been successfully broadcasted and scheduled.</p>
               </div>
-
-              <div className="input-grid">
-                <div className="input-pill full">
-                  <User size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Company Name"
-                    value={formData.customer.company}
-                    onChange={(e) => setFormData({...formData, customer: {...formData.customer, company: e.target.value}})}
-                  />
-                </div>
-                <div className="input-pill">
-                  <User size={18} />
-                  <input 
-                    type="text" 
-                    placeholder="Contact Person"
-                    value={formData.customer.contact}
-                    onChange={(e) => setFormData({...formData, customer: {...formData.customer, contact: e.target.value}})}
-                  />
-                </div>
-                <div className="input-pill">
-                  <Phone size={18} />
-                  <input 
-                    type="tel" 
-                    placeholder="Phone Number"
-                    value={formData.customer.phone}
-                    onChange={(e) => setFormData({...formData, customer: {...formData.customer, phone: e.target.value}})}
-                  />
-                </div>
-
-                <div className="input-pill full">
-                  <MapPin size={18} />
-                  {isLoaded ? (
-                    <Autocomplete
-                      onLoad={onAutocompleteLoad}
-                      onPlaceChanged={onPlaceChanged}
-                      options={{
-                        types: ['address'],
-                        componentRestrictions: { country: 'AU' }
-                      }}
-                      className="autocomplete-wrapper"
-                    >
-                      <input 
-                        type="text" 
-                        placeholder="Start typing address..."
-                        value={formData.customer.address}
-                        onChange={(e) => setFormData(prev => ({
-                          ...prev,
-                          customer: { ...prev.customer, address: e.target.value }
-                        }))}
-                      />
-                    </Autocomplete>
-                  ) : (
-                    <input type="text" placeholder="Loading address search..." disabled />
-                  )}
-                </div>
-
-                <div className="input-pill read-only">
-                  <input 
-                    type="text" 
-                    placeholder="Suburb"
-                    className="no-icon"
-                    value={formData.customer.suburb}
-                    readOnly
-                  />
-                  <Lock size={14} className="lock-icon" />
-                </div>
-                <div className="input-pill half read-only">
-                  <input 
-                    type="text" 
-                    placeholder="State"
-                    className="no-icon"
-                    value={formData.customer.state}
-                    readOnly
-                  />
-                  <Lock size={14} className="lock-icon" />
-                </div>
-                <div className="input-pill half read-only">
-                  <input 
-                    type="text" 
-                    placeholder="Postcode"
-                    className="no-icon"
-                    value={formData.customer.postcode}
-                    readOnly
-                  />
-                  <Lock size={14} className="lock-icon" />
-                </div>
-                <div className="input-pill full area">
-                  <textarea 
-                    placeholder="Special Instructions (Optional)"
-                    rows={2}
-                    value={formData.customer.instructions}
-                    onChange={(e) => setFormData({...formData, customer: {...formData.customer, instructions: e.target.value}})}
-                  />
-                </div>
-              </div>
-
-              <div className="toggle-section">
-                <label className="toggle-pill">
-                  <input 
-                    type="checkbox" 
-                    checked={formData.saveToAddressBook}
-                    onChange={(e) => setFormData({...formData, saveToAddressBook: e.target.checked})}
-                  />
-                  <span>Save to Address Book</span>
-                </label>
-              </div>
-
-              {validationError && (
-                <div className="error-pill glass">
-                  <Info size={16} />
-                  {validationError}
-                </div>
-              )}
-
-              <button className="btn-primary w-full shadow-teal" onClick={handleNext}>
-                VERIFY ADDRESS <ChevronRight size={18} />
-              </button>
-            </div>
-          )}
-
-          {step === 2 && (
-            <div className="glass-card step-card">
-              <div className="card-top-info">
-                <ClipboardList size={20} />
-                <h3>Service Selection</h3>
-              </div>
-
-              <div className="selection-group">
-                <label className="group-label">Billing Option</label>
-                <div className="billing-grid two-cols">
-                   {[
-                     { id: 'customer', label: 'Customer Pays' },
-                     { id: 'lpo', label: 'LPO Pays' }
-                   ].map(opt => (
-                     <button 
-                       key={opt.id}
-                       className={`billing-btn glass ${formData.billing === opt.id ? 'active' : ''}`}
-                       onClick={() => setFormData({...formData, billing: opt.id as BillingOption})}
-                     >
-                       <CreditCard size={18} />
-                       {opt.label}
-                     </button>
-                   ))}
-                </div>
-              </div>
-
-              <div className="selection-group">
-                <label className="group-label">Pickup & Delivery Type</label>
-                <div className="service-grid">
-                  {[
-                    { id: 'site-to-lpo', label: 'Site ➔ LPO', icon: Truck, price: '$10.00' },
-                    { id: 'lpo-to-site', label: 'LPO ➔ Site', icon: Truck, price: '$10.00', flip: true },
-                    { id: 'round-trip', label: 'Round Trip', icon: Repeat, price: '$20.00' }
-                  ].map(srv => (
-                    <button 
-                      key={srv.id}
-                      className={`service-btn glass ${formData.service === srv.id ? 'active' : ''}`}
-                      onClick={() => setFormData({...formData, service: srv.id as ServiceType})}
-                    >
-                      <srv.icon size={28} style={srv.flip ? { transform: 'scaleX(-1)' } : {}} />
-                      <span className="srv-label">{srv.label}</span>
-                      <strong className="srv-price">{srv.price}</strong>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="selection-group">
-                <label className="group-label">Booking Date</label>
-                <div className="date-pill-group">
-                  <Calendar size={18} />
-                  <input 
-                    type="date" 
-                    value={formData.date}
-                    min={formatDateForInput(getDefaultBookingDate())}
-                    onChange={(e) => setFormData({...formData, date: e.target.value})}
-                  />
-                </div>
-                {new Date().getHours() < 12 ? (
-                  <div className="alert-pill glass success">
-                    <Info size={14} /> Same-day pickup available before 12:00 PM
-                  </div>
-                ) : (
-                  <div className="alert-pill glass warning">
-                    <Info size={14} /> Today is closed (Past 12:00 PM cutoff). Booking for next business day.
-                  </div>
-                )}
-              </div>
-
-              {validationError && (
-                <div className="error-pill glass">
-                  <Info size={16} />
-                  {validationError}
-                </div>
-              )}
-
-              <div className="form-actions">
-                <button className="btn-secondary" onClick={handleBack}><ChevronLeft size={20} /> BACK</button>
-                <button className="btn-primary flex-1 shadow-teal" onClick={handleNext}>NEXT <ChevronRight size={20} /></button>
-              </div>
-            </div>
-          )}
-
-          {step === 3 && (
-            <div className="glass-card step-card confirmation">
-              <div className="card-top-info">
-                <ClipboardList size={20} />
-                <h3>Final Confirmation</h3>
-              </div>
-
-              <div className="voucher-card glass">
-                <div className="voucher-header">
-                   <div className="v-logo">mailplus</div>
-                   <div className="v-badge">ADHOC JOB</div>
-                </div>
-                <div className="voucher-body">
-                  <div className="v-row">
-                    <span className="v-label">CUSTOMER</span>
-                    <span className="v-val">{formData.customer.company}</span>
-                  </div>
-                  <div className="v-row">
-                    <span className="v-label">SERVICE</span>
-                    <span className="v-val">{formData.service.replace(/-/g, ' ').toUpperCase()}</span>
-                  </div>
-                  <div className="v-row">
-                    <span className="v-label">SCHEDULED</span>
-                    <span className="v-val">{formData.date}</span>
-                  </div>
-                  <div className="v-row total">
-                    <span className="v-label">TOTAL PRICE</span>
-                    <span className="v-val">{formData.service === 'round-trip' ? '$20.00' : '$10.00'}</span>
-                  </div>
-                </div>
-                <div className="voucher-footer">
-                   Valid for lodgement at {lpo?.name || 'Rouse Hill LPO'}
-                </div>
-              </div>
-
-              <div className="form-actions">
-                <button className="btn-text" onClick={handleBack}>Modify Selection</button>
-                <button 
-                  className="btn-primary flex-1 shadow-teal" 
-                  onClick={handleSubmit}
-                  disabled={loading}
-                >
-                  {loading ? 'PROCESSING...' : 'CONFIRM & BOOK JOB'}
+              <div className="success-actions-premium">
+                <button onClick={() => window.location.href = '/dashboard'} className="btn-primary flex-1 shadow-teal">
+                   VIEW JOB MANAGER
+                </button>
+                <button onClick={() => window.location.reload()} className="btn-secondary full-width">
+                   BOOK ANOTHER JOB
                 </button>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <header className="form-header">
+              <div className="header-icon-pill">
+                <Rocket size={20} />
+              </div>
+              <h1>Book a Job</h1>
+              <p>Create a one-off service job for your customers in seconds.</p>
+            </header>
+
+            <div className="step-tracker">
+              {[1, 2, 3].map((s) => (
+                <div key={s} className={`step-item ${step === s ? 'active' : step > s ? 'completed' : ''}`}>
+                  <div className="step-circle">{step > s ? <CheckCircle2 size={16} /> : s}</div>
+                  <span className="step-label">{s === 1 ? 'Site' : s === 2 ? 'Service' : 'Review'}</span>
+                  {s < 3 && <div className="step-connector"></div>}
+                </div>
+              ))}
+            </div>
+
+            <div className={`step-container ${animating ? 'fade-out' : 'fade-in'}`}>
+              {step === 1 && (
+                <div className="glass-card step-card">
+                  <div className="card-top-info">
+                    <Building2 size={20} />
+                    <h3>Site Information</h3>
+                  </div>
+
+                  <div className="input-grid">
+                    <div className="input-pill full has-suggestions">
+                      <Building2 size={18} />
+                      <input 
+                        type="text" 
+                        placeholder="Company Name" 
+                        value={formData.customer.company}
+                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, company: e.target.value}})}
+                      />
+                      {searchResults.length > 0 && (
+                        <div className="search-dropdown glass">
+                          {searchResults.map(c => (
+                            <div key={c.id} className="search-item" onClick={() => selectCustomer(c)}>
+                              <div><strong>{c.company_name}</strong></div>
+                              <div className="sub">{c.address.suburb}, {c.address.postcode}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="input-pill">
+                      <User size={18} />
+                      <input 
+                        type="text" 
+                        placeholder="Contact Person"
+                        value={formData.customer.contact}
+                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, contact: e.target.value}})}
+                      />
+                    </div>
+                    <div className="input-pill">
+                      <Phone size={18} />
+                      <input 
+                        type="tel" 
+                        placeholder="Phone Number"
+                        value={formData.customer.phone}
+                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, phone: e.target.value}})}
+                      />
+                    </div>
+
+                    <div className="input-pill full">
+                      <MapPin size={18} />
+                      {isLoaded ? (
+                        <Autocomplete
+                          onLoad={onAutocompleteLoad}
+                          onPlaceChanged={onPlaceChanged}
+                          options={{
+                            types: ['address'],
+                            componentRestrictions: { country: 'AU' }
+                          }}
+                          className="autocomplete-wrapper"
+                        >
+                          <input 
+                            type="text" 
+                            placeholder="Start typing address..."
+                            value={formData.customer.address}
+                            onChange={(e) => setFormData(prev => ({
+                              ...prev,
+                              customer: { ...prev.customer, address: e.target.value }
+                            }))}
+                          />
+                        </Autocomplete>
+                      ) : (
+                        <input type="text" placeholder="Loading address search..." disabled />
+                      )}
+                    </div>
+
+                    <div className="input-pill read-only">
+                      <input 
+                        type="text" 
+                        placeholder="Suburb"
+                        className="no-icon"
+                        value={formData.customer.suburb}
+                        readOnly
+                      />
+                      <Lock size={14} className="lock-icon" />
+                    </div>
+                    <div className="input-pill half read-only">
+                      <input 
+                        type="text" 
+                        placeholder="State"
+                        className="no-icon"
+                        value={formData.customer.state}
+                        readOnly
+                      />
+                      <Lock size={14} className="lock-icon" />
+                    </div>
+                    <div className="input-pill half read-only">
+                      <input 
+                        type="text" 
+                        placeholder="Postcode"
+                        className="no-icon"
+                        value={formData.customer.postcode}
+                        readOnly
+                      />
+                      <Lock size={14} className="lock-icon" />
+                    </div>
+                    <div className="input-pill full area">
+                      <textarea 
+                        placeholder="Special Instructions (Optional)"
+                        rows={2}
+                        value={formData.customer.instructions}
+                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, instructions: e.target.value}})}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="toggle-section">
+                    <label className="toggle-pill">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.saveToAddressBook}
+                        onChange={(e) => setFormData({...formData, saveToAddressBook: e.target.checked})}
+                      />
+                      <span>Save to Address Book</span>
+                    </label>
+                  </div>
+
+                  {validationError && (
+                    <div className="error-pill glass">
+                      <Info size={16} />
+                      {validationError}
+                    </div>
+                  )}
+
+                  <button className="btn-primary w-full shadow-teal" onClick={handleNext}>
+                    VERIFY ADDRESS <ChevronRight size={18} />
+                  </button>
+                </div>
+              )}
+
+              {step === 2 && (
+                <div className="glass-card step-card">
+                  <div className="card-top-info">
+                    <ClipboardList size={20} />
+                    <h3>Service Selection</h3>
+                  </div>
+
+                  <div className="selection-group">
+                    <label className="group-label">Billing Option</label>
+                    <div className="billing-grid two-cols">
+                       {[
+                         { id: 'customer', label: 'Customer Pays' },
+                         { id: 'lpo', label: 'LPO Pays' }
+                       ].map(opt => (
+                         <button 
+                           key={opt.id}
+                           className={`billing-btn glass ${formData.billing === opt.id ? 'active' : ''}`}
+                           onClick={() => setFormData({...formData, billing: opt.id as BillingOption})}
+                         >
+                           <CreditCard size={18} />
+                           {opt.label}
+                         </button>
+                       ))}
+                    </div>
+                  </div>
+
+                  <div className="selection-group">
+                    <label className="group-label">Pickup & Delivery Type</label>
+                    <div className="service-grid">
+                      {[
+                        { id: 'site-to-lpo', label: 'Site ➔ LPO', icon: Truck, price: '$10.00' },
+                        { id: 'lpo-to-site', label: 'LPO ➔ Site', icon: Truck, price: '$10.00', flip: true },
+                        { id: 'round-trip', label: 'Round Trip', icon: Repeat, price: '$20.00' }
+                      ].map(srv => (
+                        <button 
+                          key={srv.id}
+                          className={`service-btn glass ${formData.service === srv.id ? 'active' : ''}`}
+                          onClick={() => setFormData({...formData, service: srv.id as ServiceType})}
+                        >
+                          <srv.icon size={28} style={srv.flip ? { transform: 'scaleX(-1)' } : {}} />
+                          <span className="srv-label">{srv.label}</span>
+                          <strong className="srv-price">{srv.price}</strong>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="selection-group">
+                    <label className="group-label">Booking Date</label>
+                    <div className="date-pill-group">
+                      <Calendar size={18} />
+                      <input 
+                        type="date" 
+                        value={formData.date}
+                        min={formatDateForInput(getDefaultBookingDate())}
+                        onChange={(e) => setFormData({...formData, date: e.target.value})}
+                      />
+                    </div>
+                    {new Date().getHours() < 12 ? (
+                      <div className="alert-pill glass success">
+                        <Info size={14} /> Same-day pickup available before 12:00 PM
+                      </div>
+                    ) : (
+                      <div className="alert-pill glass warning">
+                        <Info size={14} /> Today is closed (Past 12:00 PM cutoff). Booking for next business day.
+                      </div>
+                    )}
+                  </div>
+
+                  {validationError && (
+                    <div className="error-pill glass">
+                      <Info size={16} />
+                      {validationError}
+                    </div>
+                  )}
+
+                  <div className="form-actions">
+                    <button className="btn-secondary" onClick={handleBack}><ChevronLeft size={20} /> BACK</button>
+                    <button className="btn-primary flex-1 shadow-teal" onClick={handleNext}>NEXT <ChevronRight size={20} /></button>
+                  </div>
+                </div>
+              )}
+
+              {step === 3 && (
+                <div className="glass-card step-card confirmation">
+                  <div className="card-top-info">
+                    <ClipboardList size={20} />
+                    <h3>Final Confirmation</h3>
+                  </div>
+
+                  <div className="voucher-card glass">
+                    <div className="voucher-header">
+                       <div className="v-logo">mailplus</div>
+                       <div className="v-badge">ADHOC JOB</div>
+                    </div>
+                    <div className="voucher-body">
+                      <div className="v-row">
+                        <span className="v-label">CUSTOMER</span>
+                        <span className="v-val">{formData.customer.company}</span>
+                      </div>
+                      <div className="v-row">
+                        <span className="v-label">SERVICE</span>
+                        <span className="v-val">{formData.service.replace(/-/g, ' ').toUpperCase()}</span>
+                      </div>
+                      <div className="v-row">
+                        <span className="v-label">SCHEDULED</span>
+                        <span className="v-val">{formData.date}</span>
+                      </div>
+                      <div className="v-row total">
+                        <span className="v-label">TOTAL PRICE</span>
+                        <span className="v-val">{formData.service === 'round-trip' ? '$20.00' : '$10.00'}</span>
+                      </div>
+                    </div>
+                    <div className="voucher-footer">
+                       Valid for lodgement at {lpo?.name || 'Rouse Hill LPO'}
+                    </div>
+                  </div>
+
+                  <div className="form-actions">
+                    <button className="btn-text" onClick={handleBack}>Modify Selection</button>
+                    <button 
+                      className="btn-primary flex-1 shadow-teal" 
+                      onClick={handleSubmit}
+                      disabled={loading}
+                    >
+                      {loading ? 'PROCESSING...' : 'CONFIRM & BOOK JOB'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       <style>{`
-        .job-form-premium {
+        .new-job-premium {
           position: relative;
           min-height: 100vh;
           overflow-x: hidden;
@@ -600,31 +604,10 @@ const NewJobForm: React.FC = () => {
           padding-bottom: 60px;
         }
 
-        /* Autocomplete styles */
-        .autocomplete-wrapper {
-          width: 100%;
-        }
-
-        .input-pill.read-only {
-          background: rgba(0, 65, 65, 0.05);
-          border-color: #e0e7e4;
-        }
-
-        .input-pill.read-only input {
-          color: #8fa6a0;
-          cursor: not-allowed;
-        }
-
-        .lock-icon {
-          color: #a0b7b0;
-          opacity: 0.6;
-        }
-
-        /* Existing premium styles preserved */
         .mesh-bg {
           position: fixed;
           top: 0; left: 0; right: 0; bottom: 0;
-          z-index: 0; filter: blur(80px); opacity: 0.6;
+          z-index: 0; filter: blur(100px); opacity: 0.6;
         }
         .blob {
           position: absolute; width: 600px; height: 600px; border-radius: 50%;
@@ -660,10 +643,12 @@ const NewJobForm: React.FC = () => {
         .card-top-info h3 { font-weight: 800; font-size: 1.25rem; margin: 0; }
 
         .search-pill { display: flex; align-items: center; gap: 12px; background: white; border-radius: 20px; padding: 8px 8px 8px 20px; border: 1px solid #e0e7e4; margin-bottom: 32px; position: relative; }
+        .has-suggestions { position: relative; }
         .search-pill input { flex: 1; border: none; background: transparent; font-size: 0.95rem; }
         .book-btn { background: var(--mailplus-teal); color: white; padding: 8px 20px; border-radius: 14px; font-weight: 800; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; border: none; cursor: pointer; }
-        .search-dropdown { position: absolute; top: 100%; left: 0; right: 0; margin-top: 8px; max-height: 240px; overflow-y: auto; border-radius: 16px; padding: 8px; z-index: 100; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
-        .search-item { padding: 12px 16px; border-radius: 10px; cursor: pointer; transition: background 0.2s; }
+        .search-dropdown { position: absolute; top: calc(100% + 5px); left: 0; right: 0; max-height: 240px; overflow-y: auto; background: white; border-radius: 16px; padding: 8px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,65,65,0.15); border: 1px solid rgba(0,65,65,0.05); }
+        .search-item { padding: 12px 16px; border-radius: 10px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid rgba(0,0,0,0.02); }
+        .search-item:last-child { border-bottom: none; }
         .search-item:hover { background: rgba(0, 65, 65, 0.05); }
         .search-item .sub { font-size: 0.75rem; color: #8fa6a0; margin-top: 4px; }
 
@@ -716,16 +701,22 @@ const NewJobForm: React.FC = () => {
         .shadow-teal { box-shadow: 0 10px 30px rgba(0, 65, 65, 0.15); }
         .form-actions { display: flex; gap: 16px; margin-top: 40px; }
         .btn-secondary { padding: 18px 32px; border-radius: 20px; background: white; color: var(--mailplus-teal); font-weight: 800; border: 1px solid #e0e7e4; }
+        .btn-text { background: transparent; color: var(--mailplus-teal); padding: 12px; font-weight: 700; font-size: 0.9rem; }
+        
+        .success-view-premium { display: flex; justify-content: center; align-items: center; min-height: 60vh; width: 100%; }
+        .success-card { text-align: center; padding: 60px 40px; max-width: 500px; width: 100%; border-radius: 40px; }
+        .success-icon-animation { color: #2ecc71; margin-bottom: 32px; }
+        .pulse-icon { animation: successPulse 2s infinite; }
+        @keyframes successPulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
+        .success-text h2 { font-size: 2.2rem; font-weight: 900; margin-bottom: 16px; color: var(--mailplus-teal); }
+        .success-text p { font-size: 1.1rem; color: #5b7971; line-height: 1.6; }
+        .success-actions-premium { margin-top: 48px; display: flex; flex-direction: column; gap: 16px; }
+        .full-width { width: 100%; }
 
         .fade-in { animation: fadeIn 0.4s forwards; }
         .fade-out { animation: fadeOut 0.3s forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
-
-        .success-premium { height: 80vh; display: flex; align-items: center; justify-content: center; }
-        .success-glass { text-align: center; padding: 60px; max-width: 500px; width: 100%; border-radius: 40px; }
-        .success-icon-wrapper { color: #2ecc71; margin-bottom: 24px; }
-        .success-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 40px; }
 
         @media screen and (max-width: 700px) {
           .input-grid, .billing-grid, .service-grid { grid-template-columns: 1fr; }
