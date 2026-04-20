@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "672243562252",
+    "project_id": "mp-lpo-connect",
+    "storage_bucket": "mp-lpo-connect.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:672243562252:android:8e902e1f38e7b0c9817b29",
+        "android_client_info": {
+          "package_name": "com.lpoconnect.lpo_connect_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB1lEwa0LwBhvn2mUo9egkoFMcmxjTjmyo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyBx6zwPyeAORLOBnPQ00eSQUQMJq4Q1z94</string>
+	<key>GCM_SENDER_ID</key>
+	<string>672243562252</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.lpoconnect.lpoConnectApp</string>
+	<key>PROJECT_ID</key>
+	<string>mp-lpo-connect</string>
+	<key>STORAGE_BUCKET</key>
+	<string>mp-lpo-connect.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:672243562252:ios:79270ff3db523a0b817b29</string>
+</dict>
+</plist>
