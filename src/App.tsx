@@ -9,6 +9,9 @@ import NewJobForm from './pages/Jobs/NewJobForm';
 
 import ServiceArea from './pages/ServiceArea/ServiceArea';
 import ShareLink from './pages/ShareLink/ShareLink';
+import RequestPage from './pages/Jobs/RequestPage';
+import CustomerHub from './pages/Customers/CustomerHub';
+import Schedules from './pages/Jobs/Schedules';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useLpo();
@@ -66,6 +69,26 @@ const App: React.FC = () => {
             <PrivateRoute>
               <AppLayout>
                 <ShareLink />
+              </AppLayout>
+            </PrivateRoute>
+          } />
+
+          <Route path="/customers" element={
+            <PrivateRoute>
+              <AppLayout>
+                <CustomerHub />
+              </AppLayout>
+            </PrivateRoute>
+          } />
+
+          <Route path="/request/:id" element={
+            <RequestPage />
+          } />
+
+          <Route path="/schedules" element={
+            <PrivateRoute>
+              <AppLayout>
+                <Schedules />
               </AppLayout>
             </PrivateRoute>
           } />

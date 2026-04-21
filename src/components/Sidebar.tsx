@@ -6,8 +6,7 @@ import {
   MapPin, 
   Share2,
   Users, 
-  UserPlus, 
-  Clock, 
+  RotateCcw, 
   FileText, 
   TrendingUp, 
   HelpCircle, 
@@ -19,12 +18,11 @@ import { auth } from '../firebase/config';
 const Sidebar: React.FC = () => {
   const navItems = [
     { name: 'Job Manager', icon: ClipboardList, path: '/dashboard' },
-    { name: 'New Adhoc Job', icon: PlusCircle, path: '/new-job' },
+    { name: 'New Job', icon: PlusCircle, path: '/new-job' },
+    { name: 'Recurring Schedules', icon: RotateCcw, path: '/schedules' },
     { name: 'Service Area', icon: MapPin, path: '/service-area' },
     { name: 'Share Booking Link', icon: Share2, path: '/share' },
     { name: 'Customer Hub', icon: Users, path: '/customers' },
-    { name: 'Add Customer', icon: UserPlus, path: '/add-customer' },
-    { name: 'Pending Approvals', icon: Clock, path: '/pending' },
     { name: 'Weekly Invoices', icon: FileText, path: '/invoices' },
     { name: 'Growth Leads', icon: TrendingUp, path: '/leads' },
   ];
@@ -54,7 +52,7 @@ const Sidebar: React.FC = () => {
             </div>
             <div className="brand-text">
               <span className="brand-main">MailPlus</span>
-              <span className="brand-sub">LPO CONNECT</span>
+              <span className="brand-sub">LPO HUB</span>
             </div>
           </div>
           

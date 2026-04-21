@@ -9,8 +9,8 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'LPO Connect',
-        short_name: 'LPOConnect',
+        name: 'LPO Hub',
+        short_name: 'LPOHub',
         description: 'LPO Courier Logistics Management',
         theme_color: '#004141',
         icons: [

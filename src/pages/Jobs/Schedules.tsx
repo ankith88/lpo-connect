@@ -1,0 +1,518 @@
+import React, { useEffect, useState } from 'react';
+import { 
+  Plus,
+  RefreshCw,
+  Clock,
+  MapPin,
+  X,
+  RotateCcw,
+  Calendar,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
+  Layers
+} from 'lucide-react';
+import { collection, query, where, getDocs, doc, orderBy, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { db } from '../../firebase/config';
+import { useLpo } from '../../context/LpoContext';
+import { getNextOccurrences } from '../../utils/scheduling';
+
+const Schedules: React.FC = () => {
+  const { lpo } = useLpo();
+  const [schedules, setSchedules] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedSchedule, setSelectedSchedule] = useState<any | null>(null);
+  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (lpo) {
+      const fetchSchedules = async () => {
+        setLoading(true);
+        try {
+          const q = query(
+            collection(db, 'jobs'), 
+            where('lpo_id', '==', lpo.id),
+            where('jobType', '==', 'scheduled'),
+            orderBy('createdAt', 'desc')
+          );
+          const snapshot = await getDocs(q);
+          setSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } catch (error) {
+          console.error("Error fetching schedules:", error);
+          // Fallback if index isn't ready
+          const q = query(
+            collection(db, 'jobs'), 
+            where('lpo_id', '==', lpo.id),
+            where('jobType', '==', 'scheduled')
+          );
+          const snapshot = await getDocs(q);
+          setSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchSchedules();
+    }
+  }, [lpo]);
+
+  const toggleExpand = (jobId: string) => {
+    const newExpanded = new Set(expandedJobIds);
+    if (newExpanded.has(jobId)) {
+      newExpanded.delete(jobId);
+    } else {
+      newExpanded.add(jobId);
+    }
+    setExpandedJobIds(newExpanded);
+  };
+
+  const handleSkipDate = async (jobId: string, date: string) => {
+    try {
+      await updateDoc(doc(db, 'jobs', jobId), {
+        skippedDates: arrayUnion(date)
+      });
+      const updated = schedules.map(s => s.id === jobId ? { ...s, skippedDates: [...(s.skippedDates || []), date] } : s);
+      setSchedules(updated);
+      if (selectedSchedule?.id === jobId) {
+        setSelectedSchedule({ ...selectedSchedule, skippedDates: [...(selectedSchedule.skippedDates || []), date] });
+      }
+    } catch (e) {
+      console.error("Error skipping date:", e);
+    }
+  };
+
+  const handleUnskipDate = async (jobId: string, date: string) => {
+    try {
+      await updateDoc(doc(db, 'jobs', jobId), {
+        skippedDates: arrayRemove(date)
+      });
+      const updated = schedules.map(s => s.id === jobId ? { ...s, skippedDates: (s.skippedDates || []).filter((d: string) => d !== date) } : s);
+      setSchedules(updated);
+      if (selectedSchedule?.id === jobId) {
+        setSelectedSchedule({ ...selectedSchedule, skippedDates: (selectedSchedule.skippedDates || []).filter((d: string) => d !== date) });
+      }
+    } catch (e) {
+      console.error("Error unskipping date:", e);
+    }
+  };
+
+  const handleStopSeries = async (jobId: string) => {
+    if (!window.confirm("Are you sure you want to stop this recurring schedule? This will prevent all future visits.")) return;
+    try {
+      await updateDoc(doc(db, 'jobs', jobId), {
+        recurrenceStatus: 'stopped'
+      });
+      setSchedules(schedules.map(s => s.id === jobId ? { ...s, recurrenceStatus: 'stopped' } : s));
+      setSelectedSchedule(null);
+    } catch (e) {
+      console.error("Error stopping series:", e);
+    }
+  };
+
+  const handleUpdateFrequency = async (jobId: string, day: string) => {
+    const schedule = schedules.find(s => s.id === jobId);
+    if (!schedule) return;
+    const currentFreq = schedule.frequency || [];
+    const newFreq = currentFreq.includes(day)
+      ? currentFreq.filter((d: string) => d !== day)
+      : [...currentFreq, day];
+
+    try {
+      await updateDoc(doc(db, 'jobs', jobId), {
+        frequency: newFreq
+      });
+      const updated = schedules.map(s => s.id === jobId ? { ...s, frequency: newFreq } : s);
+      setSchedules(updated);
+      if (selectedSchedule?.id === jobId) {
+        setSelectedSchedule({ ...selectedSchedule, frequency: newFreq });
+      }
+    } catch (e) {
+      console.error("Error updating frequency:", e);
+    }
+  };
+
+  const filteredSchedules = schedules.filter(s => {
+    const matchesSearch = s.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         s.customer.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const isActive = s.recurrenceStatus !== 'stopped';
+    return matchesSearch && isActive;
+  });
+
+
+  return (
+    <div className="schedules-premium">
+      {/* Mesh Background */}
+      <div className="mesh-bg">
+        <div className="blob blob-1"></div>
+        <div className="blob blob-2"></div>
+      </div>
+
+      <div className="content-container">
+        <header className="page-header">
+           <div className="header-left">
+              <div className="title-area">
+                <RotateCcw className="header-icon" />
+                <div>
+                  <h1>Recurring Schedules</h1>
+                  <p>Manage your ongoing logistics contracts and visit frequencies.</p>
+                </div>
+              </div>
+           </div>
+           <div className="header-right">
+              <button onClick={() => window.location.href = '/new-job'} className="btn-premium-action">
+                <Plus size={20} />
+                <span>BOOK NEW JOB</span>
+              </button>
+           </div>
+        </header>
+
+        <div className="schedules-view-layout">
+           <div className="glass-card filter-bar">
+              <div className="search-pill">
+                <Plus size={18} style={{ transform: 'rotate(45deg)', color: '#8fa6a0' }} />
+                <input 
+                  type="text" 
+                  placeholder="Search customer name or address..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
+           </div>
+
+           {loading ? (
+             <div className="loading-state">
+               <RefreshCw className="spinner" />
+               <p>Fetching Schedules...</p>
+             </div>
+           ) : filteredSchedules.length === 0 ? (
+             <div className="glass-card empty-state">
+               <div className="empty-icon"><Layers size={48} /></div>
+               <h3>No Recurring Schedules Found</h3>
+               <p>Active logistics contracts will appear here for management.</p>
+             </div>
+           ) : (
+             <div className="schedules-grid">
+               {filteredSchedules.map(schedule => (
+                 <div key={schedule.id} className="schedule-card-wrapper">
+                    <div className="timeline-content-card glass-card">
+                       <div className="card-header" onClick={() => toggleExpand(schedule.id)} style={{ cursor: 'pointer' }}>
+                          <div className="customer-block">
+                             <h3 className="company-name">{schedule.customer.company}</h3>
+                             <div className="location-info">
+                                <MapPin size={12} />
+                                <span>{schedule.customer.suburb}, {schedule.customer.state}</span>
+                             </div>
+                          </div>
+                          <div className="header-meta-group">
+                            <div className="status-tag status-scheduled">
+                               {schedule.frequency?.join(', ')}
+                            </div>
+                            <div className="expand-icon">
+                              {expandedJobIds.has(schedule.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                            </div>
+                          </div>
+                       </div>
+
+                       {expandedJobIds.has(schedule.id) && (
+                         <div className="job-stops-container fade-in">
+                            <div className="stops-visual-line"></div>
+                            {(schedule.stops || []).map((stop: any, sIdx: number) => (
+                              <div key={sIdx} className="stop-entry">
+                                <div className={`stop-node ${stop.type}`}></div>
+                                <div className="stop-details">
+                                  <div className="stop-type-header">
+                                    <span className="type-pill">{stop.label || stop.type.toUpperCase()}</span>
+                                    <span className="stop-seq">STOP {stop.sequence}</span>
+                                  </div>
+                                  <div className="stop-loc-name">{stop.locationName}</div>
+                                  <div className="stop-addr">{stop.address}, {stop.suburb}</div>
+                                </div>
+                                <div className="stop-status">{stop.status}</div>
+                              </div>
+                            ))}
+                         </div>
+                       )}
+
+                      <div className="card-meta">
+                         <div className="meta-pill">
+                            <Clock size={12} />
+                            <span>{schedule.service.replace(/-/g, ' ')}</span>
+                         </div>
+                         <div className="meta-pill">
+                            <RotateCcw size={12} />
+                            <span>{schedule.billing}</span>
+                         </div>
+                         <div className="job-ref">REF: {schedule.id.slice(0, 6)}</div>
+                      </div>
+
+                       <div className="card-actions">
+                           <button className="btn-primary-glass manage-schedule" onClick={() => setSelectedSchedule(schedule)}>
+                              <RefreshCw size={16} />
+                              <span>MANAGE SCHEDULE</span>
+                           </button>
+                       </div>
+                    </div>
+                 </div>
+               ))}
+             </div>
+           )}
+        </div>
+      </div>
+
+      {selectedSchedule && (
+        <div className="modal-overlay fade-in active">
+          <div className="modal-content glass-card">
+            <div className="modal-header">
+              <div className="header-title">
+                <RotateCcw size={20} />
+                <h2>Schedule Management</h2>
+              </div>
+              <button className="close-btn" onClick={() => setSelectedSchedule(null)}><X size={20} /></button>
+            </div>
+            
+            <div className="modal-body">
+              <div className="schedule-info-summary">
+                <div className="m-company">{selectedSchedule.customer.company}</div>
+                <div className="m-address">
+                  <MapPin size={12} />
+                  <span>{selectedSchedule.customer.address}, {selectedSchedule.customer.suburb}</span>
+                </div>
+              </div>
+
+              <div className="mgmt-section">
+                <label className="m-label">Service Frequency</label>
+                <div className="m-frequency-grid">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => (
+                    <button
+                      key={day}
+                      className={`m-freq-pill ${selectedSchedule.frequency?.includes(day) ? 'active' : ''}`}
+                      onClick={() => handleUpdateFrequency(selectedSchedule.id, day)}
+                    >
+                      {day}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mgmt-section">
+                <label className="m-label">Upcoming Instances</label>
+                <div className="occurrences-list">
+                  {getNextOccurrences(selectedSchedule.date, selectedSchedule.frequency || [], 6).map(date => {
+                    const isSkipped = (selectedSchedule.skippedDates || []).includes(date);
+                    return (
+                      <div key={date} className={`occ-row ${isSkipped ? 'skipped' : ''}`}>
+                        <div className="occ-date">
+                          <Calendar size={14} />
+                          <span>{new Date(date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                        </div>
+                        <button 
+                          className={`skip-toggle ${isSkipped ? 'active' : ''}`}
+                          onClick={() => isSkipped ? handleUnskipDate(selectedSchedule.id, date) : handleSkipDate(selectedSchedule.id, date)}
+                        >
+                          {isSkipped ? 'UNSKIP' : 'SKIP VISIT'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="modal-danger-zone">
+                <button className="btn-danger-outline" onClick={() => handleStopSeries(selectedSchedule.id)}>
+                   <Trash2 size={16} /> STOP ALL FUTURE VISITS
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        .schedules-premium {
+          position: relative;
+          min-height: 100vh;
+          background: #f0f7f4;
+          overflow-x: hidden;
+        }
+
+        .mesh-bg {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          z-index: 0; filter: blur(100px); opacity: 0.5;
+        }
+        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--mailplus-light-green); animation: blobMove 15s infinite alternate; }
+        .blob-1 { top: -100px; right: -100px; }
+        .blob-2 { bottom: -100px; left: -100px; background: #c3e2d3; animation-delay: -5s; }
+
+        @keyframes blobMove {
+          0% { transform: translate(0, 0) scale(1); }
+          100% { transform: translate(100px, 50px) scale(1.1); }
+        }
+
+        .content-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 40px 24px 100px; }
+
+        .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
+        .title-area { display: flex; gap: 20px; align-items: center; }
+        .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
+        .page-header h1 { font-size: 2.2rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; letter-spacing: -1px; }
+        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 500; }
+
+        .btn-premium-action {
+          background: var(--mailplus-teal);
+          color: white;
+          border: none;
+          padding: 14px 28px;
+          border-radius: 18px;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          cursor: pointer;
+          box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2);
+          transition: all 0.3s;
+        }
+
+        .filter-bar {
+          display: flex;
+          justify-content: space-between;
+          padding: 12px;
+          margin-bottom: 32px;
+          border-radius: 20px;
+        }
+        .search-pill {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          background: rgba(255, 255, 255, 0.8);
+          padding: 0 20px;
+          border-radius: 14px;
+          max-width: 400px;
+        }
+        .search-pill input { border: none; background: transparent; padding: 14px 0; width: 100%; font-weight: 500; font-size: 0.95rem; outline: none; }
+        
+        .btn-secondary-glass {
+          background: rgba(255, 255, 255, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.5);
+          color: var(--mailplus-teal);
+          width: 44px;
+          height: 44px;
+          border-radius: 14px;
+          display: flex; align-items: center; justify-content: center;
+          cursor: pointer;
+        }
+
+        .schedules-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+
+        .timeline-content-card {
+          padding: 24px; border-radius: 24px; background: rgba(255,255,255,0.6);
+          border: 1px solid rgba(255,255,255,0.4);
+          transition: all 0.3s;
+        }
+        .timeline-content-card:hover {
+          background: rgba(255,255,255,0.9);
+          box-shadow: 0 15px 40px rgba(0,65,65,0.08);
+        }
+
+        .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .company-name { font-size: 1.25rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; }
+        .location-info { display: flex; align-items: center; gap: 6px; color: #8fa6a0; font-size: 0.85rem; font-weight: 600; margin-top: 6px; }
+
+        .header-meta-group { display: flex; align-items: center; gap: 16px; }
+        .status-tag {
+          padding: 6px 14px; border-radius: 10px; font-size: 0.7rem; font-weight: 800;
+          text-transform: uppercase; background: #e2f9ec; color: #2ecc71;
+        }
+        .expand-icon { color: #8fa6a0; }
+
+        .job-stops-container {
+          margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.03);
+          position: relative; padding-left: 24px; margin-bottom: 24px;
+        }
+        .stops-visual-line {
+          position: absolute; left: 7px; top: 30px; bottom: 30px; width: 2px;
+          background: rgba(0, 65, 65, 0.08); border-radius: 2px;
+        }
+        .stop-entry { display: flex; gap: 16px; margin-bottom: 20px; }
+        .stop-node { width: 16px; height: 16px; border-radius: 50%; background: white; border: 3px solid #f0f7f4; margin-top: 4px; }
+        .stop-node.pickup { border-color: var(--mailplus-teal); }
+        .stop-node.delivery { border-color: #f39c12; }
+        .stop-type-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .type-pill { font-size: 0.6rem; font-weight: 800; color: #8fa6a0; }
+        .stop-seq { font-size: 0.6rem; color: #c0d1cc; }
+        .stop-loc-name { font-weight: 800; color: var(--mailplus-teal); font-size: 0.9rem; }
+        .stop-addr { font-size: 0.75rem; color: #5b7971; }
+
+        .card-meta { display: flex; gap: 16px; align-items: center; padding: 20px 0; border-top: 1px solid rgba(0,0,0,0.03); margin-top: 20px; }
+        .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: #8fa6a0; }
+        .job-ref { margin-left: auto; font-family: monospace; font-size: 0.75rem; color: #c0d1cc; }
+
+        .btn-primary-glass {
+          width: 100%;
+          background: rgba(0, 65, 65, 0.05);
+          border: 1px solid rgba(0, 65, 65, 0.1);
+          color: var(--mailplus-teal);
+          padding: 14px;
+          border-radius: 14px;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-primary-glass:hover { background: var(--mailplus-teal); color: white; }
+
+        .loading-state, .empty-state {
+          padding: 80px 40px; text-align: center; color: #8fa6a0;
+        }
+        .spinner { animation: rotate 2s linear infinite; margin-bottom: 16px; }
+        @keyframes rotate { 100% { transform: rotate(360deg); } }
+        .empty-icon { margin-bottom: 20px; color: #c0d1cc; }
+
+        /* Modal Styles Placeholder (Using the same as Dashboard) */
+        .modal-overlay {
+          position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 65, 65, 0.4); backdrop-filter: blur(8px);
+          display: none; align-items: center; justify-content: center; z-index: 2000;
+          padding: 24px;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content { width: 100%; max-width: 550px; padding: 32px; position: relative; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .header-title { display: flex; align-items: center; gap: 12px; color: var(--mailplus-teal); }
+        .header-title h2 { font-size: 1.25rem; font-weight: 800; margin: 0; }
+        .close-btn { background: transparent; border: none; color: #8fa6a0; cursor: pointer; }
+
+        .schedule-info-summary { background: #f0f7f4; padding: 20px; border-radius: 20px; margin-bottom: 32px; }
+        .m-company { font-weight: 800; color: var(--mailplus-teal); font-size: 1.1rem; margin-bottom: 4px; }
+        .m-address { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #5b7971; font-weight: 600; }
+
+        .mgmt-section { margin-bottom: 32px; }
+        .m-label { display: block; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; margin-bottom: 8px; letter-spacing: 0.5px; }
+
+        .m-frequency-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .m-freq-pill { padding: 12px; border-radius: 12px; border: 1px solid #e2ebe2; background: white; font-weight: 700; color: #8fa6a0; cursor: pointer; transition: all 0.2s; }
+        .m-freq-pill.active { background: var(--mailplus-teal); color: white; border-color: var(--mailplus-teal); }
+
+        .occurrences-list { display: flex; flex-direction: column; gap: 10px; }
+        .occ-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border: 1px solid #e2ebe2; border-radius: 14px; }
+        .occ-row.skipped { background: #fef5f5; border-color: #ffdada; opacity: 0.7; }
+        .occ-date { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700; color: var(--mailplus-teal); }
+        .skip-toggle { padding: 6px 14px; border-radius: 50px; font-size: 0.65rem; font-weight: 800; border: 1px solid #e2ebe2; background: white; color: #8fa6a0; cursor: pointer; }
+        .skip-toggle.active { background: #ff4757; color: white; border-color: #ff4757; }
+
+        .modal-danger-zone { border-top: 1px solid #f0f4f4; padding-top: 24px; margin-top: 10px; }
+        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid #ffdada; color: #ff4757; background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
+        .btn-danger-outline:hover { background: #fff5f5; }
+
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+    </div>
+  );
+};
+
+export default Schedules;

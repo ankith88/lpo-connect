@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Junk
+node_modules 2/
+scratch/
+*.bak
+

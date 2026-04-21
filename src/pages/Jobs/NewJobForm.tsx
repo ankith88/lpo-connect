@@ -14,12 +14,16 @@ import {
   ClipboardList,
   CreditCard,
   Rocket,
-  Lock
+  Lock,
+  Clock,
+  Mail,
+  Database,
+  Sparkles
 } from 'lucide-react';
 import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { getDefaultBookingDate, formatDateForInput } from '../../utils/scheduling';
 import { useLpo } from '../../context/LpoContext';
-import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
 import { db, googleMapsApiKey } from '../../firebase/config';
 
 type ServiceType = 'site-to-lpo' | 'lpo-to-site' | 'round-trip';
@@ -28,18 +32,24 @@ type BillingOption = 'customer' | 'split' | 'lpo';
 interface JobData {
   customer: {
     company: string;
-    contact: string;
+    firstName: string;
+    lastName: string;
+    email: string;
     phone: string;
     address: string;
     suburb: string;
     state: string;
     postcode: string;
     instructions: string;
+    netsuiteId?: string;
+    coordinates?: { lat: number, lng: number };
   };
-  saveToAddressBook: boolean;
   service: ServiceType;
   billing: BillingOption;
   date: string;
+  jobType: 'one-off' | 'scheduled';
+  frequency: string[];
+  preferredTime?: string;
 }
 
 const LIBRARIES: ("places")[] = ["places"];
@@ -51,6 +61,12 @@ const NewJobForm: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [animating, setAnimating] = useState(false);
+  const [netsuiteMessage, setNetsuiteMessage] = useState<string | null>(null);
+  const [customerStatus, setCustomerStatus] = useState<string | null>(null);
+  const [isAwaitingTC, setIsAwaitingTC] = useState(false);
+  const [isQueued, setIsQueued] = useState(false);
+  const [isExistingCustomer, setIsExistingCustomer] = useState(false);
+  const [isBillingFixed, setIsBillingFixed] = useState(false);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   
   const { isLoaded } = useJsApiLoader({
@@ -62,7 +78,9 @@ const NewJobForm: React.FC = () => {
   const [formData, setFormData] = useState<JobData>({
     customer: {
       company: '',
-      contact: '',
+      firstName: '',
+      lastName: '',
+      email: '',
       phone: '',
       address: '',
       suburb: '',
@@ -70,17 +88,21 @@ const NewJobForm: React.FC = () => {
       postcode: '',
       instructions: '',
     },
-    saveToAddressBook: false,
     service: 'site-to-lpo',
     billing: 'customer',
     date: formatDateForInput(getDefaultBookingDate()),
+    jobType: 'one-off',
+    frequency: [],
+    preferredTime: '',
   });
 
   const [searchResults, setSearchResults] = useState<any[]>([]);
-
+  const [allCustomers, setAllCustomers] = useState<any[]>([]);
 
   useEffect(() => {
     const draft = localStorage.getItem('rebook_draft');
+    const editDraft = localStorage.getItem('edit_request_draft');
+    
     if (draft && window.location.search.includes('rebook=true')) {
       try {
         const jobData = JSON.parse(draft);
@@ -89,47 +111,94 @@ const NewJobForm: React.FC = () => {
           customer: jobData.customer,
           service: jobData.service,
           billing: jobData.billing,
-          // Note: Date is NOT prefilled from draft to ensure 12PM cutoff logic is respected
         }));
-        // Clean up
         localStorage.removeItem('rebook_draft');
       } catch (e) {
         console.error("Failed to parse rebook draft", e);
+      }
+    } else if (editDraft && window.location.search.includes('edit=true')) {
+      try {
+        const jobData = JSON.parse(editDraft);
+        const customer = jobData.customer || {};
+        if (customer.contact && !customer.firstName) {
+          const parts = customer.contact.split(' ');
+          customer.firstName = parts[0] || '';
+          customer.lastName = parts.slice(1).join(' ') || '';
+        }
+        setFormData({
+          customer: {
+            ...customer,
+            netsuiteId: jobData.customer?.netsuiteId || undefined
+          },
+          service: jobData.service,
+          billing: jobData.billing,
+          date: jobData.date,
+          jobType: jobData.jobType,
+          frequency: jobData.frequency || [],
+          preferredTime: jobData.preferredTime || ''
+        });
+        setIsExistingCustomer(true);
+      } catch (e) {
+        console.error("Failed to parse edit draft", e);
       }
     }
   }, []);
 
   useEffect(() => {
-    if (formData.customer.company.length > 2 && lpo) {
-      const searchCustomers = async () => {
-        const q = query(
-          collection(db, `lpo/${lpo.id}/customers`),
-          where('search_name', '>=', formData.customer.company.toLowerCase()),
-          where('search_name', '<=', formData.customer.company.toLowerCase() + '\uf8ff')
-        );
-        const snapshot = await getDocs(q);
-        setSearchResults(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    if (lpo) {
+      const fetchAll = async () => {
+        try {
+          const q = query(collection(db, `lpo/${lpo.id}/customers`));
+          const snapshot = await getDocs(q);
+          setAllCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        } catch (error) {
+          console.error("Error fetching customers for cache:", error);
+        }
       };
-      searchCustomers();
+      fetchAll();
+    }
+  }, [lpo]);
+
+  useEffect(() => {
+    const term = formData.customer.company.toLowerCase();
+    if (term.length > 2) {
+      const results = allCustomers.filter(c => {
+        const name = (c.companyName || c.company_name || '').toLowerCase();
+        const city = (c.city || c.address?.suburb || '').toLowerCase();
+        const zip = (c.zip || c.address?.postcode || '').toLowerCase();
+        return name.includes(term) || city.includes(term) || zip.includes(term);
+      });
+      setSearchResults(results);
     } else {
       setSearchResults([]);
     }
-  }, [formData.customer.company, lpo]);
+  }, [formData.customer.company, allCustomers]);
 
   const selectCustomer = (c: any) => {
+    const displayName = c.companyName || c.company_name || '';
+    const parts = displayName.split(' ');
+    
     setFormData({
       ...formData,
       customer: {
-        company: c.company_name,
-        contact: c.contact_person,
-        phone: c.phone,
-        address: c.address.street,
-        suburb: c.address.suburb,
-        state: c.address.state,
-        postcode: c.address.postcode,
+        company: displayName,
+        firstName: c.first_name || parts[0] || '',
+        lastName: c.last_name || (parts.length > 1 ? parts.slice(1).join(' ') : ''),
+        email: c.customerEmail || c.email || '',
+        phone: c.customerPhone || c.phone || '',
+        address: c.address1 || c.address?.street || '',
+        suburb: c.city || c.address?.suburb || '',
+        state: c.state || c.address?.state || '',
+        postcode: c.zip || c.address?.postcode || '',
         instructions: c.instructions || '',
-      }
+        netsuiteId: c.companyId || c.customerInternalId || undefined,
+        coordinates: c.coordinates || undefined
+      },
+      billing: (c.billing as BillingOption) || formData.billing
     });
+    setIsExistingCustomer(true);
+    setIsBillingFixed(!!c.billing);
+    setCustomerStatus(c.status || "Active");
     setSearchResults([]);
   };
 
@@ -139,6 +208,25 @@ const NewJobForm: React.FC = () => {
       
       if (!formData.customer.address || !formData.customer.suburb) {
         setValidationError("Please select a valid address from the dropdown.");
+        return;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!formData.customer.email || !emailRegex.test(formData.customer.email)) {
+        setValidationError("Please enter a valid email address.");
+        return;
+      }
+
+      const phoneRegex = /^(\+?61|0)4\d{8}$|^(\+?61|0)[2378]\d{8}$/;
+      const cleanPhone = formData.customer.phone.replace(/\s/g, '');
+      if (!cleanPhone || !phoneRegex.test(cleanPhone)) {
+        setValidationError("Please enter a valid contact phone number (AU Mobile or Landline).");
+        return;
+      }
+
+      // T&C Compliance Check
+      if (isExistingCustomer && customerStatus !== "Active") {
+        setValidationError(`This customer (${formData.customer.company}) is still Awaiting T&C acceptance. You cannot proceed until their status is changed to Active.`);
         return;
       }
 
@@ -174,6 +262,12 @@ const NewJobForm: React.FC = () => {
 
     if (step === 2) {
       setValidationError(null);
+      
+      if (formData.jobType === 'scheduled' && formData.frequency.length === 0) {
+        setValidationError("Please select at least one day for the scheduled service.");
+        return;
+      }
+
       const now = new Date();
       const todayStr = formatDateForInput(now);
       
@@ -225,6 +319,12 @@ const NewJobForm: React.FC = () => {
 
       const fullStreet = `${streetNumber} ${route}`.trim();
 
+      const location = place.geometry?.location;
+      const coordinates = location ? {
+        lat: location.lat(),
+        lng: location.lng()
+      } : undefined;
+
       setFormData(prev => ({
         ...prev,
         customer: {
@@ -232,42 +332,200 @@ const NewJobForm: React.FC = () => {
           address: fullStreet,
           suburb: suburb,
           state: state,
-          postcode: postcode
+          postcode: postcode,
+          coordinates
         }
       }));
     }
   };
 
+  const generateStops = (data: JobData, lpoData: any) => {
+    const stops = [];
+    const customerLoc = {
+      name: data.customer.company,
+      address: data.customer.address,
+      suburb: data.customer.suburb,
+      state: data.customer.state,
+      postcode: data.customer.postcode,
+      lat: data.customer.coordinates?.lat,
+      lng: data.customer.coordinates?.lng
+    };
+    const lpoLoc = {
+      name: lpoData?.name || '',
+      address: lpoData?.address1 || lpoData?.address || '',
+      suburb: lpoData?.city || lpoData?.location || lpoData?.suburb || '',
+      state: lpoData?.state || 'NSW',
+      postcode: lpoData?.zip || lpoData?.postcode || '',
+      lat: lpoData?.latitude,
+      lng: lpoData?.longitude
+    };
+
+    if (data.service === 'site-to-lpo') {
+      stops.push(
+        { type: 'pickup', label: 'Pickup Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 1, status: 'pending' },
+        { type: 'delivery', label: 'Delivery LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 2, status: 'pending' }
+      );
+    } else if (data.service === 'lpo-to-site') {
+      stops.push(
+        { type: 'pickup', label: 'Pickup LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 1, status: 'pending' },
+        { type: 'delivery', label: 'Delivery Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 2, status: 'pending' }
+      );
+    } else if (data.service === 'round-trip') {
+      stops.push(
+        { type: 'pickup', label: 'Pickup LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 1, status: 'pending' },
+        { type: 'delivery', label: 'Delivery Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 2, status: 'pending' },
+        { type: 'pickup', label: 'Pickup Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 3, status: 'pending' },
+        { type: 'delivery', label: 'Delivery LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 4, status: 'pending' }
+      );
+    }
+    return stops;
+  };
+
+  const getShorthandFrequency = (days: string[]) => {
+    const map: Record<string, string> = {
+      'Monday': 'M',
+      'Tuesday': 'T',
+      'Wednesday': 'W',
+      'Thursday': 'Th',
+      'Friday': 'F'
+    };
+    return days.map(d => map[d] || d).join(',');
+  };
+
   const handleSubmit = async () => {
     if (!lpo) return;
     setLoading(true);
+    setValidationError(null);
+
     try {
-      if (formData.saveToAddressBook) {
-        await addDoc(collection(db, `lpo/${lpo.id}/customers`), {
-          company_name: formData.customer.company,
-          search_name: formData.customer.company.toLowerCase(),
-          contact_person: formData.customer.contact,
+      const isEditing = window.location.search.includes('edit=true');
+      const requestId = new URLSearchParams(window.location.search).get('id');
+      const stops = generateStops(formData, lpo);
+
+      let nsResult: any = { success: true };
+
+      // 1. NetSuite API Integration (Stage 1) - Only for NEW customers
+      if (!isExistingCustomer) {
+        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2527&deploy=1&compid=1048144&ns-at=AAEJ7tMQJX8dMLsjS5TGMacB9-M8pUB6q50I_ptxbLYqKZ_HR3c";
+        
+        const params = new URLSearchParams({
+          lpo_id: lpo.id,
+          company: formData.customer.company,
+          firstName: formData.customer.firstName,
+          lastName: formData.customer.lastName,
+          email: formData.customer.email,
           phone: formData.customer.phone,
-          address: {
-            street: formData.customer.address,
-            suburb: formData.customer.suburb,
-            state: formData.customer.state,
-            postcode: formData.customer.postcode
-          },
-          instructions: formData.customer.instructions
+          address: formData.customer.address,
+          suburb: formData.customer.suburb,
+          state: formData.customer.state,
+          postcode: formData.customer.postcode,
+          lat: (formData.customer.coordinates?.lat || "").toString(),
+          lng: (formData.customer.coordinates?.lng || "").toString(),
+          service: formData.service,
+          billing: formData.billing,
+          jobType: formData.jobType,
+          startDate: formData.date,
+          frequency: getShorthandFrequency(formData.frequency),
+          preferredTime: formData.preferredTime || ""
         });
+
+        const nsResponse = await fetch(`${NETSUITE_API}&${params.toString()}`);
+        nsResult = await nsResponse.json();
+        
+        console.log("NetSuite Script 2527 Response:", nsResult);
+
+        if (!nsResult.success) {
+          setValidationError(nsResult.message || "Failed to create record in NetSuite.");
+          setLoading(false);
+          return;
+        }
+
+        const initialStatus = formData.billing === 'lpo' ? 'Active' : "Awaiting T&C's to be Accepted";
+        setCustomerStatus(initialStatus);
+
+        if (initialStatus !== 'Active') {
+          setIsQueued(true);
+        }
+      } else {
+        // Existing customer: check their current cached status
+        if (customerStatus !== 'Active') {
+          setIsQueued(true);
+        }
       }
 
-      await addDoc(collection(db, 'jobs'), {
-        ...formData,
-        lpo_id: lpo.id,
-        status: 'scheduled',
-        createdAt: new Date()
-      });
+      // 2. Local Firestore Job Request
+      let finalRequestId = requestId;
+      const jobStatus = isQueued ? 'awaiting-activation' : 'pending';
+
+      if (isEditing && requestId) {
+        await updateDoc(doc(db, 'requests', requestId), JSON.parse(JSON.stringify({
+          ...formData,
+          stops,
+          isExistingCustomer,
+          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
+          updatedAt: new Date()
+        })));
+        localStorage.removeItem('edit_request_draft');
+      } else {
+        const docRef = await addDoc(collection(db, 'requests'), JSON.parse(JSON.stringify({
+          ...formData,
+          stops,
+          lpo_id: lpo.id,
+          isExistingCustomer,
+          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
+          status: jobStatus,
+          skippedDates: [],
+          recurrenceStatus: 'active',
+          chat: [],
+          createdAt: new Date()
+        })));
+        finalRequestId = docRef.id;
+      }
+
+      // 3. Second NetSuite API (Job Confirmation with Request ID)
+      const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2528&deploy=1&compid=1048144&ns-at=AAEJ7tMQM_E8dKF2qjDMy9ESy5q883g7xrb8uKwfgGOku62wheU";
+      try {
+        const customer_id = nsResult.customerInternalId || formData.customer.netsuiteId || "";
+        const confirmResponse = await fetch(`${SECOND_NETSUITE_API}&request_id=${finalRequestId}&lpo_id=${lpo.id}&customer_id=${customer_id}`);
+        const confirmResult = await confirmResponse.json();
+        console.log("NetSuite Script 2528 Response:", confirmResult);
+        if (confirmResult.success && confirmResult.message) {
+          setNetsuiteMessage(confirmResult.message);
+        }
+      } catch (e) {
+        console.error("Secondary NetSuite sync failed", e);
+        // We don't block success state here as the primary records are created
+      }
 
       setSuccess(true);
     } catch (error) {
-      console.error("Error creating job:", error);
+      console.error("Error saving job request:", error);
+      setValidationError("A technical error occurred during submission. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const checkManualStatus = async () => {
+    if (!lpo || !formData.customer.company) return;
+    setLoading(true);
+    try {
+      const q = query(
+        collection(db, `lpo/${lpo.id}/customers`), 
+        where('companyName', '==', formData.customer.company)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const c = snap.docs[0].data();
+        setCustomerStatus(c.status || "Active");
+        if (c.status === "Active") {
+          setIsAwaitingTC(false);
+          // Automatically proceed with submission now that they are active
+          handleSubmit();
+        }
+      }
+    } catch (e) {
+      console.error("Failed to check status", e);
     } finally {
       setLoading(false);
     }
@@ -284,20 +542,66 @@ const NewJobForm: React.FC = () => {
       <div className="form-container">
         {success ? (
           <div className="success-view-premium fade-in">
-            <div className="success-card glass">
+            <div className={`success-card glass ${isQueued ? 'tc-waiting' : ''}`}>
               <div className="success-icon-animation">
-                <CheckCircle2 size={80} strokeWidth={2.5} className="pulse-icon" />
+                {isQueued ? (
+                  <Clock size={80} strokeWidth={2.5} className="pulse-icon warning" />
+                ) : (
+                  <CheckCircle2 size={80} strokeWidth={2.5} className="pulse-icon" />
+                )}
               </div>
               <div className="success-text">
-                <h2>Booking Confirmed!</h2>
-                <p>The adhoc job for <strong>{formData.customer.company}</strong> has been successfully broadcasted and scheduled.</p>
+                <h2>{isQueued ? 'Request Queued!' : 'Request Sent!'}</h2>
+                {isQueued ? (
+                  <p>The job request for <strong>{formData.customer.company}</strong> has been queued and will automatically start once the customer accepts the Terms & Conditions.</p>
+                ) : netsuiteMessage ? (
+                  <p>{netsuiteMessage}</p>
+                ) : (
+                  <p>The job request for <strong>{formData.customer.company}</strong> has been sent to the operator for review.</p>
+                )}
+                <p className="sub-hint">
+                  {isQueued 
+                    ? "You don't need to do anything else. We'll notify the operator as soon as the account is activated."
+                    : "You can track the progress and coordinate with the operator via the chat links in your Job Manager."}
+                </p>
               </div>
               <div className="success-actions-premium">
                 <button onClick={() => window.location.href = '/dashboard'} className="btn-primary flex-1 shadow-teal">
-                   VIEW JOB MANAGER
+                   {isQueued ? 'GO TO DASHBOARD' : 'VIEW PENDING REQUESTS'}
                 </button>
                 <button onClick={() => window.location.reload()} className="btn-secondary full-width">
-                   BOOK ANOTHER JOB
+                   REQUEST ANOTHER JOB
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : isAwaitingTC ? (
+          <div className="success-view-premium fade-in">
+            <div className="success-card glass tc-waiting">
+              <div className="success-icon-animation">
+                <Clock size={80} strokeWidth={2.5} className="pulse-icon warning" />
+              </div>
+              <div className="success-text">
+                <h2>T&C Acceptance Pending</h2>
+                <p>The customer <strong>{formData.customer.company}</strong> has been created, but they must accept the Terms & Conditions before you can request a job.</p>
+                <p className="sub-hint">As soon as the status changes to "Active" in NetSuite, you can proceed with the request.</p>
+              </div>
+              
+              <div className="status-progress">
+                <div className="progress-label">CURRENT STATUS</div>
+                <div className="status-pill warning">AWAITING T&C</div>
+              </div>
+
+              <div className="success-actions-premium">
+                <button 
+                  onClick={checkManualStatus} 
+                  className="btn-primary flex-1 shadow-teal"
+                  disabled={loading}
+                >
+                   {loading ? 'CHECKING...' : 'REFRESH STATUS'}
+                </button>
+                <button onClick={() => window.location.reload()} className="btn-secondary">
+                   CANCEL
                 </button>
               </div>
             </div>
@@ -309,7 +613,7 @@ const NewJobForm: React.FC = () => {
                 <Rocket size={20} />
               </div>
               <h1>Book a Job</h1>
-              <p>Create a one-off service job for your customers in seconds.</p>
+              <p>Create a service job for your customers in seconds.</p>
             </header>
 
             <div className="step-tracker">
@@ -337,26 +641,64 @@ const NewJobForm: React.FC = () => {
                         type="text" 
                         placeholder="Company Name" 
                         value={formData.customer.company}
-                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, company: e.target.value}})}
+                        onChange={(e) => {
+                          setFormData({...formData, customer: {...formData.customer, company: e.target.value}});
+                          setIsExistingCustomer(false);
+                          setIsBillingFixed(false);
+                        }}
                       />
                       {searchResults.length > 0 && (
-                        <div className="search-dropdown glass">
+                        <div className="match-badge">
+                          <Sparkles size={14} className="sparkle-icon" />
+                          <span>SAVED</span>
+                        </div>
+                      )}
+                      {searchResults.length > 0 && (
+                        <div className="search-dropdown glass floating-dropdown">
+                          <div className="dropdown-header">
+                            <Database size={12} />
+                            <span>MATCHED FROM ADDRESS BOOK</span>
+                          </div>
                           {searchResults.map(c => (
-                            <div key={c.id} className="search-item" onClick={() => selectCustomer(c)}>
-                              <div><strong>{c.company_name}</strong></div>
-                              <div className="sub">{c.address.suburb}, {c.address.postcode}</div>
+                            <div key={c.id} className="search-item-premium" onClick={() => selectCustomer(c)}>
+                              <div className="item-info">
+                                <div className="company-name">{c.companyName || c.company_name}</div>
+                                <div className="sub">{(c.city || c.address?.suburb)}, {(c.zip || c.address?.postcode)}</div>
+                              </div>
+                              <div className="item-action">
+                                <span>SELECT CLIENT</span>
+                                <ChevronRight size={14} />
+                              </div>
                             </div>
                           ))}
                         </div>
                       )}
                     </div>
-                    <div className="input-pill">
+                    <div className="input-pill half">
                       <User size={18} />
                       <input 
                         type="text" 
-                        placeholder="Contact Person"
-                        value={formData.customer.contact}
-                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, contact: e.target.value}})}
+                        placeholder="First Name"
+                        value={formData.customer.firstName}
+                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, firstName: e.target.value}})}
+                      />
+                    </div>
+                    <div className="input-pill half">
+                      <User size={18} />
+                      <input 
+                        type="text" 
+                        placeholder="Last Name"
+                        value={formData.customer.lastName}
+                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, lastName: e.target.value}})}
+                      />
+                    </div>
+                    <div className="input-pill">
+                      <Mail size={18} />
+                      <input 
+                        type="email" 
+                        placeholder="Email Address"
+                        value={formData.customer.email}
+                        onChange={(e) => setFormData({...formData, customer: {...formData.customer, email: e.target.value}})}
                       />
                     </div>
                     <div className="input-pill">
@@ -436,16 +778,6 @@ const NewJobForm: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="toggle-section">
-                    <label className="toggle-pill">
-                      <input 
-                        type="checkbox" 
-                        checked={formData.saveToAddressBook}
-                        onChange={(e) => setFormData({...formData, saveToAddressBook: e.target.checked})}
-                      />
-                      <span>Save to Address Book</span>
-                    </label>
-                  </div>
 
                   {validationError && (
                     <div className="error-pill glass">
@@ -464,26 +796,33 @@ const NewJobForm: React.FC = () => {
                 <div className="glass-card step-card">
                   <div className="card-top-info">
                     <ClipboardList size={20} />
-                    <h3>Service Selection</h3>
+                    <h3>Service & Schedule</h3>
                   </div>
 
                   <div className="selection-group">
                     <label className="group-label">Billing Option</label>
-                    <div className="billing-grid two-cols">
-                       {[
-                         { id: 'customer', label: 'Customer Pays' },
-                         { id: 'lpo', label: 'LPO Pays' }
-                       ].map(opt => (
-                         <button 
-                           key={opt.id}
-                           className={`billing-btn glass ${formData.billing === opt.id ? 'active' : ''}`}
-                           onClick={() => setFormData({...formData, billing: opt.id as BillingOption})}
-                         >
-                           <CreditCard size={18} />
-                           {opt.label}
-                         </button>
-                       ))}
-                    </div>
+                     <div className="billing-grid two-cols">
+                        {[
+                          { id: 'customer', label: 'Customer Pays' },
+                          { id: 'lpo', label: 'LPO Pays' }
+                        ].map(opt => (
+                          <button 
+                            key={opt.id}
+                            className={`billing-btn glass ${formData.billing === opt.id ? 'active' : ''} ${isBillingFixed ? 'disabled' : ''}`}
+                            onClick={() => !isBillingFixed && setFormData({...formData, billing: opt.id as BillingOption})}
+                            type="button"
+                          >
+                            <CreditCard size={18} />
+                            {opt.label}
+                            {isBillingFixed && formData.billing === opt.id && <Lock size={12} className="lock-icon-inline" />}
+                          </button>
+                        ))}
+                     </div>
+                     {isBillingFixed && (
+                       <p className="field-hint central">
+                         <Lock size={12} /> Billing is fixed based on this customer's account profile.
+                       </p>
+                     )}
                   </div>
 
                   <div className="selection-group">
@@ -494,37 +833,97 @@ const NewJobForm: React.FC = () => {
                         { id: 'lpo-to-site', label: 'LPO ➔ Site', icon: Truck, price: '$10.00', flip: true },
                         { id: 'round-trip', label: 'Round Trip', icon: Repeat, price: '$20.00' }
                       ].map(srv => (
-                        <button 
-                          key={srv.id}
-                          className={`service-btn glass ${formData.service === srv.id ? 'active' : ''}`}
-                          onClick={() => setFormData({...formData, service: srv.id as ServiceType})}
-                        >
-                          <srv.icon size={28} style={srv.flip ? { transform: 'scaleX(-1)' } : {}} />
-                          <span className="srv-label">{srv.label}</span>
-                          <strong className="srv-price">{srv.price}</strong>
-                        </button>
+                         <button 
+                           key={srv.id}
+                           className={`service-btn glass ${formData.service === srv.id ? 'active' : ''}`}
+                           onClick={() => setFormData({...formData, service: srv.id as ServiceType})}
+                         >
+                           <srv.icon size={28} style={srv.flip ? { transform: 'scaleX(-1)' } : {}} />
+                           <span className="srv-label">{srv.label}</span>
+                           <strong className="srv-price">{srv.price}</strong>
+                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div className="selection-group">
-                    <label className="group-label">Booking Date</label>
-                    <div className="date-pill-group">
-                      <Calendar size={18} />
-                      <input 
-                        type="date" 
-                        value={formData.date}
-                        min={formatDateForInput(getDefaultBookingDate())}
-                        onChange={(e) => setFormData({...formData, date: e.target.value})}
-                      />
+                  <div className="date-time-row">
+                    <div className="selection-group flex-1">
+                      <label className="group-label">Booking Date</label>
+                      <div className="date-pill-group">
+                        <Calendar size={18} />
+                        <input 
+                          type="date" 
+                          value={formData.date}
+                          min={formatDateForInput(getDefaultBookingDate())}
+                          onChange={(e) => setFormData({...formData, date: e.target.value})}
+                        />
+                      </div>
                     </div>
+
+                    <div className="selection-group flex-1">
+                      <label className="group-label">Time Constraints (Optional)</label>
+                      <div className="input-pill time-pill no-margin">
+                        <Clock size={18} />
+                        <input 
+                          type="time" 
+                          value={formData.preferredTime}
+                          onChange={(e) => setFormData({...formData, preferredTime: e.target.value})}
+                        />
+                      </div>
+                      <p className="field-hint">Are there any timing restrictions for this job? Leave blank if the operator can attend anytime during business hours.</p>
+                    </div>
+                  </div>
+
+                  <div className="alert-wrapper">
                     {new Date().getHours() < 12 ? (
                       <div className="alert-pill glass success">
                         <Info size={14} /> Same-day pickup available before 12:00 PM
                       </div>
                     ) : (
                       <div className="alert-pill glass warning">
-                        <Info size={14} /> Today is closed (Past 12:00 PM cutoff). Booking for next business day.
+                        <Info size={14} /> Today is closed (Past 12:00 PM). Booking for next business day.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="selection-group recurring-section">
+                    <label className="group-label">Is this a recurring job?</label>
+                    <div className="job-type-tabs glass small-tabs">
+                       <button 
+                        className={`type-tab ${formData.jobType === 'one-off' ? 'active' : ''}`}
+                        onClick={() => setFormData({...formData, jobType: 'one-off', frequency: []})}
+                       >
+                         No
+                       </button>
+                       <button 
+                        className={`type-tab ${formData.jobType === 'scheduled' ? 'active' : ''}`}
+                        onClick={() => setFormData({...formData, jobType: 'scheduled', frequency: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']})}
+                       >
+                         Yes
+                       </button>
+                    </div>
+
+                    {formData.jobType === 'scheduled' && (
+                      <div className="frequency-picker fade-in">
+                        <div className="flex-between">
+                          <label className="group-label sub">Select Frequency (Weekdays Only)</label>
+                        </div>
+                        <div className="frequency-grid weekdays-only">
+                          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(day => (
+                            <button
+                              key={day}
+                              className={`freq-pill ${formData.frequency.includes(day) ? 'active' : ''}`}
+                              onClick={() => {
+                                const newFreq = formData.frequency.includes(day)
+                                  ? formData.frequency.filter(d => d !== day)
+                                  : [...formData.frequency, day];
+                                setFormData({...formData, frequency: newFreq});
+                              }}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -553,7 +952,7 @@ const NewJobForm: React.FC = () => {
                   <div className="voucher-card glass">
                     <div className="voucher-header">
                        <div className="v-logo">mailplus</div>
-                       <div className="v-badge">ADHOC JOB</div>
+                       <div className="v-badge">JOB BOOKING</div>
                     </div>
                     <div className="voucher-body">
                       <div className="v-row">
@@ -561,13 +960,29 @@ const NewJobForm: React.FC = () => {
                         <span className="v-val">{formData.customer.company}</span>
                       </div>
                       <div className="v-row">
+                        <span className="v-label">TYPE</span>
+                        <span className="v-val">{formData.jobType.replace(/-/g, ' ').toUpperCase()}</span>
+                      </div>
+                      {formData.jobType === 'scheduled' && (
+                        <div className="v-row">
+                          <span className="v-label">FREQUENCY</span>
+                          <span className="v-val">{formData.frequency.join(', ')}</span>
+                        </div>
+                      )}
+                      <div className="v-row">
                         <span className="v-label">SERVICE</span>
                         <span className="v-val">{formData.service.replace(/-/g, ' ').toUpperCase()}</span>
                       </div>
                       <div className="v-row">
-                        <span className="v-label">SCHEDULED</span>
+                        <span className="v-label">{formData.jobType === 'scheduled' ? 'START DATE' : 'SCHEDULED'}</span>
                         <span className="v-val">{formData.date}</span>
                       </div>
+                      {formData.preferredTime && (
+                        <div className="v-row">
+                          <span className="v-label">BY TIME</span>
+                          <span className="v-val">{formData.preferredTime}</span>
+                        </div>
+                      )}
                       <div className="v-row total">
                         <span className="v-label">TOTAL PRICE</span>
                         <span className="v-val">{formData.service === 'round-trip' ? '$20.00' : '$10.00'}</span>
@@ -585,7 +1000,7 @@ const NewJobForm: React.FC = () => {
                       onClick={handleSubmit}
                       disabled={loading}
                     >
-                      {loading ? 'PROCESSING...' : 'CONFIRM & BOOK JOB'}
+                      {loading ? 'PROCESSING...' : 'REQUEST JOB'}
                     </button>
                   </div>
                 </div>
@@ -642,88 +1057,101 @@ const NewJobForm: React.FC = () => {
         .card-top-info { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; color: var(--mailplus-teal); }
         .card-top-info h3 { font-weight: 800; font-size: 1.25rem; margin: 0; }
 
-        .search-pill { display: flex; align-items: center; gap: 12px; background: white; border-radius: 20px; padding: 8px 8px 8px 20px; border: 1px solid #e0e7e4; margin-bottom: 32px; position: relative; }
-        .has-suggestions { position: relative; }
-        .search-pill input { flex: 1; border: none; background: transparent; font-size: 0.95rem; }
-        .book-btn { background: var(--mailplus-teal); color: white; padding: 8px 20px; border-radius: 14px; font-weight: 800; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; border: none; cursor: pointer; }
-        .search-dropdown { position: absolute; top: calc(100% + 5px); left: 0; right: 0; max-height: 240px; overflow-y: auto; background: white; border-radius: 16px; padding: 8px; z-index: 1000; box-shadow: 0 10px 40px rgba(0,65,65,0.15); border: 1px solid rgba(0,65,65,0.05); }
-        .search-item { padding: 12px 16px; border-radius: 10px; cursor: pointer; transition: background 0.2s; border-bottom: 1px solid rgba(0,0,0,0.02); }
-        .search-item:last-child { border-bottom: none; }
-        .search-item:hover { background: rgba(0, 65, 65, 0.05); }
-        .search-item .sub { font-size: 0.75rem; color: #8fa6a0; margin-top: 4px; }
+        .search-dropdown { position: absolute; top: calc(100% + 8px); left: 0; right: 0; max-height: 280px; overflow-y: auto; background: white; border-radius: 20px; padding: 12px; z-index: 1000; box-shadow: 0 20px 50px rgba(0,65,65,0.15); border: 1px solid rgba(0,65,65,0.08); animation: dropdownSlide 0.3s cubic-bezier(0.19, 1, 0.22, 1) forwards; }
+        @keyframes dropdownSlide { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .dropdown-header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: 0.65rem; font-weight: 800; color: var(--mailplus-teal); opacity: 0.6; letter-spacing: 1px; border-bottom: 1px solid #f0f4f4; margin-bottom: 8px; }
+        
+        .search-item-premium { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-radius: 14px; cursor: pointer; transition: all 0.2s; margin-bottom: 4px; border: 1px solid transparent; }
+        .search-item-premium:hover { background: #f8fcfb; border-color: rgba(0, 65, 65, 0.05); transform: translateX(4px); }
+        .company-name { font-weight: 800; color: #1a3c34; font-size: 1rem; }
+        .search-item-premium .sub { font-size: 0.75rem; color: #8fa6a0; margin-top: 2px; }
+        
+        .item-action { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 800; color: var(--mailplus-teal); opacity: 0; transition: opacity 0.2s; }
+        .search-item-premium:hover .item-action { opacity: 1; }
+
+        .input-pill.has-suggestions { position: relative; }
+        .match-badge { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: var(--mailplus-teal); color: white; padding: 4px 10px; border-radius: 8px; font-size: 0.55rem; font-weight: 900; display: flex; align-items: center; gap: 4px; animation: badgePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; box-shadow: 0 4px 12px rgba(0, 65, 65, 0.1); }
+        @keyframes badgePop { from { transform: translateY(-50%) scale(0.5); opacity: 0; } to { transform: translateY(-50%) scale(1); opacity: 1; } }
+        .sparkle-icon { animation: sparkleSpin 2s infinite linear; }
+        @keyframes sparkleSpin { 0% { transform: rotate(0); } 50% { transform: scale(1.2); } 100% { transform: rotate(360deg); } }
 
         .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
         .input-pill { display: flex; align-items: center; gap: 12px; background: white; border-radius: 18px; padding: 12px 20px; border: 1px solid #f0f4f4; transition: border-color 0.2s; }
         .input-pill:focus-within { border-color: var(--mailplus-teal); }
         .input-pill.full { grid-column: span 2; }
-        .input-pill.area { padding: 8px 20px; }
         .input-pill input, .input-pill textarea { border: none; background: transparent; width: 100%; font-size: 0.95rem; color: var(--mailplus-teal); font-weight: 500; }
         .input-pill.area textarea { resize: none; margin-top: 8px; }
-        .input-pill input::placeholder, .input-pill textarea::placeholder { color: #8fa6a0; }
+        .input-pill.read-only { background: #f8fcfb; }
+        .lock-icon { color: #8fa6a0; }
 
         .toggle-section { margin-bottom: 32px; }
         .toggle-pill { display: inline-flex; align-items: center; gap: 12px; background: white; padding: 10px 20px; border-radius: 14px; font-weight: 700; color: #5b7971; cursor: pointer; border: 1px solid #f0f4f4; }
-        .toggle-pill input { width: 18px; height: 18px; }
 
         .error-pill { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 16px; background: #fff5f5 !important; color: #c53030; font-weight: 700; font-size: 0.9rem; margin-bottom: 24px; }
 
-        .group-label { display: block; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; letter-spacing: 1px; margin-bottom: 16px; }
         .selection-group { margin-bottom: 40px; }
-        .billing-grid { display: grid; gap: 12px; }
-        .billing-grid.two-cols { grid-template-columns: 1fr 1fr; max-width: 500px; margin: 0 auto; }
-        .alert-pill.success { color: #2ecc71; background: rgba(46, 204, 113, 0.05) !important; }
-        .alert-pill.warning { color: #e67e22; background: rgba(230, 126, 34, 0.05) !important; }
-        .billing-btn { padding: 16px; border-radius: 20px; font-weight: 700; color: #8fa6a0; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; border: none; }
-        .billing-btn.active { background: var(--mailplus-teal) !important; color: white; transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2); }
+        .group-label { display: block; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; letter-spacing: 1px; margin-bottom: 16px; }
+        .billing-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; max-width: 500px; margin: 0 auto; }
+        .billing-btn { padding: 16px; border-radius: 20px; font-weight: 700; color: #8fa6a0; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid #f0f4f4; background: white; position: relative; }
+        .billing-btn.active { background: var(--mailplus-teal); color: white; transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2); }
+        .billing-btn.disabled { cursor: not-allowed; opacity: 0.8; }
+        .billing-btn.disabled:not(.active) { background: #f8fcfb; }
+        .lock-icon-inline { position: absolute; top: 8px; right: 8px; opacity: 0.8; }
+        .field-hint.central { text-align: center; margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+
         .service-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-        .service-btn { padding: 24px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #5b7971; cursor: pointer; transition: all 0.3s; border: none; }
-        .service-btn.active { background: white !important; color: var(--mailplus-teal); transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0, 65, 65, 0.1); border: 2px solid var(--mailplus-teal); }
+        .service-btn { padding: 24px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #5b7971; cursor: pointer; transition: all 0.3s; border: 1px solid #f0f4f4; background: white; }
+        .service-btn.active { background: white; color: var(--mailplus-teal); transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0, 65, 65, 0.1); border: 2px solid var(--mailplus-teal); }
         .srv-label { font-size: 0.75rem; font-weight: 700; opacity: 0.8; }
         .srv-price { font-size: 1.4rem; color: var(--mailplus-teal); }
 
-        .date-pill-group { display: flex; align-items: center; gap: 16px; background: white; padding: 14px 24px; border-radius: 20px; max-width: 300px; border: 1px solid #f0f4f4; }
+        .date-time-row { display: flex; gap: 20px; margin-bottom: 24px; }
+        .date-pill-group { display: flex; align-items: center; gap: 16px; background: white; padding: 14px 24px; border-radius: 20px; border: 1px solid #f0f4f4; }
         .date-pill-group input { border: none; font-weight: 700; color: var(--mailplus-teal); }
-        .alert-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; color: #2ecc71; margin-top: 16px; background: rgba(46, 204, 113, 0.05) !important; }
+        .alert-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; margin-top: 16px; }
+        .alert-pill.success { color: #2ecc71; background: rgba(46, 204, 113, 0.05); }
+        .alert-pill.warning { color: #e67e22; background: rgba(230, 126, 34, 0.05); }
 
-        .voucher-card { padding: 40px; border-radius: 32px; border: 2px dashed #e0e7e4; background: white !important; margin-bottom: 40px; position: relative; }
+        .job-type-tabs { display: flex; gap: 4px; background: #f0f4f4; padding: 4px; border-radius: 12px; width: fit-content; }
+        .type-tab { padding: 8px 24px; border-radius: 10px; border: none; font-weight: 700; color: #8fa6a0; cursor: pointer; transition: all 0.2s; }
+        .type-tab.active { background: white; color: var(--mailplus-teal); box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+
+        .frequency-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 16px; }
+        .freq-pill { padding: 10px; border-radius: 12px; border: 1px solid #f0f4f4; background: white; font-weight: 700; color: #8fa6a0; cursor: pointer; transition: all 0.2s; }
+        .freq-pill.active { background: var(--mailplus-teal); color: white; border-color: var(--mailplus-teal); }
+
+        .voucher-card { padding: 40px; border-radius: 32px; border: 2px dashed #e0e7e4; background: white !important; margin-bottom: 40px; }
         .voucher-header { display: flex; justify-content: space-between; border-bottom: 1px solid #f0f4f4; padding-bottom: 24px; margin-bottom: 32px; }
         .v-logo { font-size: 1.4rem; font-weight: 800; color: var(--mailplus-teal); }
         .v-badge { background: var(--mailplus-yellow); color: var(--mailplus-teal); padding: 4px 12px; border-radius: 6px; font-weight: 800; font-size: 0.65rem; }
-        .v-row { display: flex; justify-content: space-between; padding: 12px 0; }
+        .v-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
         .v-label { font-size: 0.75rem; font-weight: 800; color: #8fa6a0; }
         .v-val { font-weight: 700; color: var(--mailplus-teal); }
-        .v-row.total { margin-top: 24px; padding-top: 24px; border-top: 2px solid #f0f4f4; }
-        .v-row.total .v-val { font-size: 2rem; }
-        .voucher-footer { margin-top: 40px; text-align: center; font-size: 0.8rem; color: #8fa6a0; font-weight: 600; }
+        .v-row.total { margin-top: 24px; padding-top: 24px; border-top: 1px solid #f0f4f4; }
+        .v-row.total .v-val { font-size: 1.5rem; }
+        .voucher-footer { text-align: center; font-size: 0.75rem; color: #8fa6a0; margin-top: 24px; }
 
-        .btn-primary { background: var(--mailplus-teal); color: white; padding: 18px; border-radius: 20px; font-weight: 800; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; gap: 12px; border: none; cursor: pointer; transition: all 0.2s; }
-        .btn-primary:active { transform: scale(0.98); }
-        .shadow-teal { box-shadow: 0 10px 30px rgba(0, 65, 65, 0.15); }
         .form-actions { display: flex; gap: 16px; margin-top: 40px; }
-        .btn-secondary { padding: 18px 32px; border-radius: 20px; background: white; color: var(--mailplus-teal); font-weight: 800; border: 1px solid #e0e7e4; }
-        .btn-text { background: transparent; color: var(--mailplus-teal); padding: 12px; font-weight: 700; font-size: 0.9rem; }
-        
-        .success-view-premium { display: flex; justify-content: center; align-items: center; min-height: 60vh; width: 100%; }
-        .success-card { text-align: center; padding: 60px 40px; max-width: 500px; width: 100%; border-radius: 40px; }
-        .success-icon-animation { color: #2ecc71; margin-bottom: 32px; }
-        .pulse-icon { animation: successPulse 2s infinite; }
-        @keyframes successPulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(1); opacity: 1; } }
-        .success-text h2 { font-size: 2.2rem; font-weight: 900; margin-bottom: 16px; color: var(--mailplus-teal); }
-        .success-text p { font-size: 1.1rem; color: #5b7971; line-height: 1.6; }
-        .success-actions-premium { margin-top: 48px; display: flex; flex-direction: column; gap: 16px; }
-        .full-width { width: 100%; }
+        .btn-primary { background: var(--mailplus-teal); color: white; border: none; padding: 16px 32px; border-radius: 18px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; }
+        .btn-secondary { background: white; color: var(--mailplus-teal); border: 1px solid #f0f4f4; padding: 16px 32px; border-radius: 18px; font-weight: 800; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+        .btn-text { background: transparent; border: none; color: #8fa6a0; font-weight: 700; cursor: pointer; }
 
-        .fade-in { animation: fadeIn 0.4s forwards; }
-        .fade-out { animation: fadeOut 0.3s forwards; }
+        .success-card.tc-waiting { border-top: 6px solid #f39c12; }
+        .pulse-icon.warning { color: #f39c12; }
+        .status-progress { margin: 24px 0; background: #fff8e1; padding: 16px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .progress-label { font-size: 0.6rem; font-weight: 900; color: #d35400; letter-spacing: 1px; }
+
+        .fade-in { animation: fadeIn 0.4s ease-out forwards; }
+        .fade-out { animation: fadeOut 0.3s ease-in forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
 
-        @media screen and (max-width: 700px) {
-          .input-grid, .billing-grid, .service-grid { grid-template-columns: 1fr; }
-          .input-pill.half { grid-column: span 1; }
-          .page-container { padding: 40px 16px; }
-          .form-header h1 { font-size: 2.2rem; }
-          .glass-card { padding: 24px; border-radius: 24px; }
+        @media (max-width: 700px) {
+          .input-grid { grid-template-columns: 1fr; }
+          .input-pill.full { grid-column: span 1; }
+          .service-grid { grid-template-columns: 1fr; }
+          .date-time-row { flex-direction: column; }
         }
       `}</style>
     </div>

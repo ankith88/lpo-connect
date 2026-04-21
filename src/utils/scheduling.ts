@@ -37,3 +37,40 @@ export const formatDateForInput = (date: Date): string => {
   const dd = String(date.getDate()).padStart(2, '0');
   return `${yyyy}-${mm}-${dd}`;
 };
+
+/**
+ * Returns the short day name (e.g. 'Mon', 'Tue').
+ */
+export const getDayName = (date: Date): string => {
+  return date.toLocaleDateString('en-AU', { weekday: 'short' });
+};
+
+/**
+ * Calculates the next N occurrences for a recurring schedule.
+ */
+export const getNextOccurrences = (startDateStr: string, frequency: string[], count: number = 5): string[] => {
+  const occurrences: string[] = [];
+  
+  // Ensure we handle date strings correctly across timezones
+  const [year, month, day] = startDateStr.split('-').map(Number);
+  const start = startOfDay(new Date(year, month - 1, day));
+  let current = start;
+  
+  const today = startOfDay(new Date());
+  if (isBefore(current, today)) {
+    current = today;
+  }
+
+  // Safety counter to prevent infinite loops
+  let safety = 0;
+  while (occurrences.length < count && safety < 100) {
+    const dayName = getDayName(current);
+    if (frequency.includes(dayName)) {
+      occurrences.push(formatDateForInput(current));
+    }
+    current = addDays(current, 1);
+    safety++;
+  }
+  
+  return occurrences;
+};

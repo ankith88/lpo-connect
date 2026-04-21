@@ -32,7 +32,7 @@ const SignIn: React.FC = () => {
       if (loginMethod === 'email') {
         await signInWithEmailAndPassword(auth, identifier, password);
       } else {
-        const email = identifier.includes('@') ? identifier : `${identifier}@lpo-connect.com`;
+        const email = identifier.includes('@') ? identifier : `${identifier}@lpo-hub.com`;
         await signInWithEmailAndPassword(auth, email, password);
       }
       console.log("Sign in successful! Redirecting...");
