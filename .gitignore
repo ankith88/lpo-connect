@@ -28,3 +28,8 @@ node_modules 2/
 scratch/
 *.bak
 
+
+# Firebase
+.firebase/
+functions/lib/
+functions/node_modules/

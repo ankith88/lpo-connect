@@ -118,6 +118,8 @@ const RequestPage: React.FC = () => {
             franchiseeText: lpo.name || "",
             instructions: request.customer.instructions || "",
             lastJobDate: request.date || "",
+            billing: request.billing || "customer",
+            jobType: request.jobType || "one-off",
             updatedAt: new Date()
           };
 

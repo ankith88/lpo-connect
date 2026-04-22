@@ -23,7 +23,7 @@ import {
 import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { getDefaultBookingDate, formatDateForInput } from '../../utils/scheduling';
 import { useLpo } from '../../context/LpoContext';
-import { collection, query, where, getDocs, addDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db, googleMapsApiKey } from '../../firebase/config';
 
 type ServiceType = 'site-to-lpo' | 'lpo-to-site' | 'round-trip';
@@ -64,9 +64,8 @@ const NewJobForm: React.FC = () => {
   const [netsuiteMessage, setNetsuiteMessage] = useState<string | null>(null);
   const [customerStatus, setCustomerStatus] = useState<string | null>(null);
   const [isAwaitingTC, setIsAwaitingTC] = useState(false);
-  const [isQueued, setIsQueued] = useState(false);
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
-  const [isBillingFixed, setIsBillingFixed] = useState(false);
+  const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   
   const { isLoaded } = useJsApiLoader({
@@ -193,11 +192,14 @@ const NewJobForm: React.FC = () => {
         instructions: c.instructions || '',
         netsuiteId: c.companyId || c.customerInternalId || undefined,
         coordinates: c.coordinates || undefined
-      },
-      billing: (c.billing as BillingOption) || formData.billing
+      }
     });
     setIsExistingCustomer(true);
-    setIsBillingFixed(!!c.billing);
+    setFormData(prev => ({
+      ...prev,
+      billing: (c.billing || prev.billing) as BillingOption,
+      jobType: (c.jobtype || c.jobType || prev.jobType) as 'one-off' | 'scheduled'
+    }));
     setCustomerStatus(c.status || "Active");
     setSearchResults([]);
   };
@@ -440,46 +442,65 @@ const NewJobForm: React.FC = () => {
           return;
         }
 
+        // Check if we need to pause for T&C
+        // Billing 'lpo' means "LPO Pays", which sets status to Active immediately
         const initialStatus = formData.billing === 'lpo' ? 'Active' : "Awaiting T&C's to be Accepted";
         setCustomerStatus(initialStatus);
-
-        if (initialStatus !== 'Active') {
-          setIsQueued(true);
-        }
+        
+        // We'll set isAwaitingTC later, after the Firestore write succeeds
       } else {
         // Existing customer: check their current cached status
-        if (customerStatus !== 'Active') {
-          setIsQueued(true);
-        }
+        // We'll set isAwaitingTC later
       }
 
       // 2. Local Firestore Job Request
+      if (!lpo?.id) {
+        throw new Error("LPO ID is missing. Cannot save request.");
+      }
+      
       let finalRequestId = requestId;
-      const jobStatus = isQueued ? 'awaiting-activation' : 'pending';
+      const isActuallyActive = (isExistingCustomer && customerStatus === 'Active') || 
+                               (!isExistingCustomer && formData.billing === 'lpo');
+      
+      const initialRequestStatus = isActuallyActive ? 'pending' : 'awaiting-activation';
 
       if (isEditing && requestId) {
-        await updateDoc(doc(db, 'requests', requestId), JSON.parse(JSON.stringify({
+        const cleanUpdate = JSON.parse(JSON.stringify({
           ...formData,
           stops,
           isExistingCustomer,
-          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
-          updatedAt: new Date()
-        })));
+          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null
+        }));
+
+        await updateDoc(doc(db, 'requests', requestId), {
+          ...cleanUpdate,
+          updatedAt: serverTimestamp()
+        });
         localStorage.removeItem('edit_request_draft');
       } else {
-        const docRef = await addDoc(collection(db, 'requests'), JSON.parse(JSON.stringify({
+        const cleanData = JSON.parse(JSON.stringify({
           ...formData,
           stops,
           lpo_id: lpo.id,
           isExistingCustomer,
           netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
-          status: jobStatus,
+          status: initialRequestStatus,
           skippedDates: [],
           recurrenceStatus: 'active',
-          chat: [],
-          createdAt: new Date()
-        })));
+          chat: []
+        }));
+
+        const requestPayload = {
+          ...cleanData,
+          createdAt: serverTimestamp()
+        };
+
+        console.log("Attempting to create Firestore request with payload:", requestPayload);
+
+        const docRef = await addDoc(collection(db, 'requests'), requestPayload);
         finalRequestId = docRef.id;
+        console.log("Firestore request created successfully. Doc ID:", finalRequestId);
+        setCreatedRequestId(finalRequestId);
       }
 
       // 3. Second NetSuite API (Job Confirmation with Request ID)
@@ -497,7 +518,13 @@ const NewJobForm: React.FC = () => {
         // We don't block success state here as the primary records are created
       }
 
-      setSuccess(true);
+      // Now update the UI state based on the calculated status
+      if (initialRequestStatus !== 'pending') {
+        setIsAwaitingTC(true);
+        console.log("Request created with awaiting-activation status. Showing T&C screen.");
+      } else {
+        setSuccess(true);
+      }
     } catch (error) {
       console.error("Error saving job request:", error);
       setValidationError("A technical error occurred during submission. Please try again.");
@@ -520,8 +547,13 @@ const NewJobForm: React.FC = () => {
         setCustomerStatus(c.status || "Active");
         if (c.status === "Active") {
           setIsAwaitingTC(false);
-          // Automatically proceed with submission now that they are active
-          handleSubmit();
+          // If we already created a request, just show success. 
+          // Otherwise, submit now that they are active.
+          if (createdRequestId) {
+            setSuccess(true);
+          } else {
+            handleSubmit();
+          }
         }
       }
     } catch (e) {
@@ -542,32 +574,22 @@ const NewJobForm: React.FC = () => {
       <div className="form-container">
         {success ? (
           <div className="success-view-premium fade-in">
-            <div className={`success-card glass ${isQueued ? 'tc-waiting' : ''}`}>
+            <div className="success-card glass">
               <div className="success-icon-animation">
-                {isQueued ? (
-                  <Clock size={80} strokeWidth={2.5} className="pulse-icon warning" />
-                ) : (
-                  <CheckCircle2 size={80} strokeWidth={2.5} className="pulse-icon" />
-                )}
+                <CheckCircle2 size={80} strokeWidth={2.5} className="pulse-icon" />
               </div>
               <div className="success-text">
-                <h2>{isQueued ? 'Request Queued!' : 'Request Sent!'}</h2>
-                {isQueued ? (
-                  <p>The job request for <strong>{formData.customer.company}</strong> has been queued and will automatically start once the customer accepts the Terms & Conditions.</p>
-                ) : netsuiteMessage ? (
+                <h2>Request Sent!</h2>
+                {netsuiteMessage ? (
                   <p>{netsuiteMessage}</p>
                 ) : (
                   <p>The job request for <strong>{formData.customer.company}</strong> has been sent to the operator for review.</p>
                 )}
-                <p className="sub-hint">
-                  {isQueued 
-                    ? "You don't need to do anything else. We'll notify the operator as soon as the account is activated."
-                    : "You can track the progress and coordinate with the operator via the chat links in your Job Manager."}
-                </p>
+                <p className="sub-hint">You can track the progress and coordinate with the operator via the chat links in your Job Manager.</p>
               </div>
               <div className="success-actions-premium">
                 <button onClick={() => window.location.href = '/dashboard'} className="btn-primary flex-1 shadow-teal">
-                   {isQueued ? 'GO TO DASHBOARD' : 'VIEW PENDING REQUESTS'}
+                   VIEW PENDING REQUESTS
                 </button>
                 <button onClick={() => window.location.reload()} className="btn-secondary full-width">
                    REQUEST ANOTHER JOB
@@ -644,7 +666,6 @@ const NewJobForm: React.FC = () => {
                         onChange={(e) => {
                           setFormData({...formData, customer: {...formData.customer, company: e.target.value}});
                           setIsExistingCustomer(false);
-                          setIsBillingFixed(false);
                         }}
                       />
                       {searchResults.length > 0 && (
@@ -801,28 +822,32 @@ const NewJobForm: React.FC = () => {
 
                   <div className="selection-group">
                     <label className="group-label">Billing Option</label>
-                     <div className="billing-grid two-cols">
-                        {[
-                          { id: 'customer', label: 'Customer Pays' },
-                          { id: 'lpo', label: 'LPO Pays' }
-                        ].map(opt => (
-                          <button 
-                            key={opt.id}
-                            className={`billing-btn glass ${formData.billing === opt.id ? 'active' : ''} ${isBillingFixed ? 'disabled' : ''}`}
-                            onClick={() => !isBillingFixed && setFormData({...formData, billing: opt.id as BillingOption})}
-                            type="button"
-                          >
-                            <CreditCard size={18} />
-                            {opt.label}
-                            {isBillingFixed && formData.billing === opt.id && <Lock size={12} className="lock-icon-inline" />}
-                          </button>
-                        ))}
-                     </div>
-                     {isBillingFixed && (
-                       <p className="field-hint central">
-                         <Lock size={12} /> Billing is fixed based on this customer's account profile.
-                       </p>
-                     )}
+                    {isExistingCustomer && (
+                      <div className="locked-badge fade-in">
+                         <Lock size={12} />
+                         <span>LOCKED BY CUSTOMER HUB</span>
+                      </div>
+                    )}
+                    <div className={`billing-grid two-cols ${isExistingCustomer ? 'locked-group' : ''}`}>
+                       {[
+                         { id: 'customer', label: 'Customer Pays' },
+                         { id: 'lpo', label: 'LPO Pays' }
+                       ].map(opt => (
+                         <button 
+                           key={opt.id}
+                           className={`billing-btn glass ${formData.billing === opt.id ? 'active' : ''}`}
+                           onClick={() => !isExistingCustomer && setFormData({...formData, billing: opt.id as BillingOption})}
+                           disabled={isExistingCustomer && formData.billing !== opt.id}
+                           style={isExistingCustomer && formData.billing !== opt.id ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                         >
+                           <CreditCard size={18} />
+                           {opt.label}
+                         </button>
+                       ))}
+                    </div>
+                    {isExistingCustomer && (
+                      <p className="field-hint mini">Billing for this client is permanently set to {formData.billing.toUpperCase()} as per their Customer Hub profile.</p>
+                    )}
                   </div>
 
                   <div className="selection-group">
@@ -1079,6 +1104,10 @@ const NewJobForm: React.FC = () => {
         .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
         .input-pill { display: flex; align-items: center; gap: 12px; background: white; border-radius: 18px; padding: 12px 20px; border: 1px solid #f0f4f4; transition: border-color 0.2s; }
         .input-pill:focus-within { border-color: var(--mailplus-teal); }
+        
+        .locked-badge { display: inline-flex; align-items: center; gap: 8px; background: #e8f4ef; color: var(--mailplus-teal); padding: 8px 16px; border-radius: 12px; font-size: 0.65rem; font-weight: 800; margin-bottom: 24px; border: 1px solid rgba(0, 65, 65, 0.05); }
+        .locked-group { pointer-events: none; margin-top: 8px; }
+        .field-hint.mini { font-size: 0.7rem; margin-top: 8px; }
         .input-pill.full { grid-column: span 2; }
         .input-pill input, .input-pill textarea { border: none; background: transparent; width: 100%; font-size: 0.95rem; color: var(--mailplus-teal); font-weight: 500; }
         .input-pill.area textarea { resize: none; margin-top: 8px; }
@@ -1093,12 +1122,8 @@ const NewJobForm: React.FC = () => {
         .selection-group { margin-bottom: 40px; }
         .group-label { display: block; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; letter-spacing: 1px; margin-bottom: 16px; }
         .billing-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; max-width: 500px; margin: 0 auto; }
-        .billing-btn { padding: 16px; border-radius: 20px; font-weight: 700; color: #8fa6a0; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid #f0f4f4; background: white; position: relative; }
+        .billing-btn { padding: 16px; border-radius: 20px; font-weight: 700; color: #8fa6a0; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid #f0f4f4; background: white; }
         .billing-btn.active { background: var(--mailplus-teal); color: white; transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2); }
-        .billing-btn.disabled { cursor: not-allowed; opacity: 0.8; }
-        .billing-btn.disabled:not(.active) { background: #f8fcfb; }
-        .lock-icon-inline { position: absolute; top: 8px; right: 8px; opacity: 0.8; }
-        .field-hint.central { text-align: center; margin-top: 12px; display: flex; align-items: center; justify-content: center; gap: 6px; }
 
         .service-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
         .service-btn { padding: 24px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #5b7971; cursor: pointer; transition: all 0.3s; border: 1px solid #f0f4f4; background: white; }

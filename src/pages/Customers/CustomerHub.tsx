@@ -8,7 +8,8 @@ import {
   Filter,
   Plus,
   Mail,
-  CreditCard
+  CreditCard,
+  Rocket
 } from 'lucide-react';
 import { collection, query, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase/config';
@@ -137,10 +138,17 @@ const CustomerHub: React.FC = () => {
                              <Mail size={14} />
                              <span>{(customer.state || customer.address?.state || '')} {(customer.zip || customer.address?.postcode || '')}</span>
                           </div>
-                          <div className="contact-item billing-relationship">
-                             <CreditCard size={14} />
-                             <span>Billing: {customer.billing === 'lpo' ? 'LPO Pays' : customer.billing === 'split' ? 'Split Billing' : 'Customer Pays'}</span>
-                          </div>
+                      </div>
+
+                      <div className="service-details-premium">
+                         <div className="detail-tag">
+                            <CreditCard size={12} />
+                            <span>Billing: <strong style={{ textTransform: 'uppercase' }}>{customer.billing || 'N/A'}</strong></span>
+                         </div>
+                         <div className="detail-tag">
+                            <Rocket size={12} />
+                            <span>Job Type: <strong style={{ textTransform: 'capitalize' }}>{customer.jobtype || customer.jobType || 'N/A'}</strong></span>
+                         </div>
                       </div>
 
                       <div className="card-footer">
@@ -219,8 +227,11 @@ const CustomerHub: React.FC = () => {
         .card-body { border-top: 1px solid #f0f4f4; border-bottom: 1px solid #f0f4f4; padding: 16px 0; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
         .contact-item { display: flex; align-items: center; gap: 10px; color: #5b7971; font-size: 0.85rem; font-weight: 600; }
         .contact-item svg { color: #8fa6a0; }
-        .billing-relationship { margin-top: 4px; padding-top: 8px; border-top: 1px dashed rgba(0, 65, 65, 0.05); color: var(--mailplus-teal); font-weight: 700; }
-        .billing-relationship svg { color: var(--mailplus-teal); opacity: 0.7; }
+
+        .service-details-premium { padding: 0 24px 16px; display: flex; gap: 12px; }
+        .detail-tag { display: flex; align-items: center; gap: 6px; background: #f8faf9; padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; color: #5b7971; }
+        .detail-tag svg { color: var(--mailplus-teal); }
+        .detail-tag strong { color: var(--mailplus-teal); }
 
         .card-footer { display: flex; justify-content: space-between; align-items: flex-end; }
         .stats { display: flex; gap: 20px; }

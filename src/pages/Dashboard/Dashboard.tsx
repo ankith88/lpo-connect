@@ -11,7 +11,6 @@ import {
   Plus,
   RefreshCw,
   Clock,
-  LineChart,
   MapPin,
   Mail,
   MessageSquare,
@@ -33,7 +32,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'in-progress' | 'history'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'awaiting-activation' | 'upcoming' | 'in-progress' | 'history'>('pending');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
 
@@ -61,15 +60,15 @@ const Dashboard: React.FC = () => {
           const jobsSnapshot = await getDocs(jobsQ);
           setJobs(jobsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
 
-          // Fetch Requests
+          // Fetch Requests (Both pending and awaiting-activation)
           const reqQ = query(
             collection(db, 'requests'),
             where('lpo_id', '==', lpo.id),
-            where('status', '==', 'pending'),
             orderBy('createdAt', 'desc')
           );
           const reqSnapshot = await getDocs(reqQ);
-          setRequests(reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          const allReqs = reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setRequests(allReqs);
 
         } catch (error) {
           console.error("Error fetching data:", error);
@@ -78,7 +77,7 @@ const Dashboard: React.FC = () => {
           const jobsSnapshot = await getDocs(jobsQ);
           setJobs(jobsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
           
-          const reqQ = query(collection(db, 'requests'), where('lpo_id', '==', lpo.id), where('status', '==', 'pending'));
+          const reqQ = query(collection(db, 'requests'), where('lpo_id', '==', lpo.id));
           const reqSnapshot = await getDocs(reqQ);
           setRequests(reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         } finally {
@@ -104,7 +103,7 @@ const Dashboard: React.FC = () => {
 
   const today = new Date().toISOString().split('T')[0];
 
-  const filteredJobs = (activeTab === 'pending' ? requests : jobs).filter(j => {
+  const filteredJobs = (activeTab === 'pending' || activeTab === 'awaiting-activation' ? requests : jobs).filter(j => {
     const matchesSearch = j.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          j.customer.address.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesService = serviceFilter === 'all' || j.service === serviceFilter;
@@ -114,7 +113,9 @@ const Dashboard: React.FC = () => {
     // Tab Filtering
     let matchesTab = false;
     if (activeTab === 'pending') {
-      matchesTab = true; 
+      matchesTab = j.status === 'pending'; 
+    } else if (activeTab === 'awaiting-activation') {
+      matchesTab = j.status === 'awaiting-activation';
     } else {
       const isOneOff = j.jobType === 'one-off';
       const isScheduled = j.jobType === 'scheduled' && j.recurrenceStatus !== 'stopped';
@@ -239,8 +240,8 @@ const Dashboard: React.FC = () => {
            <div className="stats-row">
               {[
                 { label: 'Active Jobs', value: jobs.length, icon: Calendar, color: '#004141' },
-                { label: 'Pending Requests', value: requests.length, icon: MessageSquare, color: '#f39c12' },
-                { label: 'Total Volume', value: `$${jobs.length * 10}`, icon: LineChart, color: '#2ecc71' }
+                { label: 'Pending Requests', value: requests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: '#f39c12' },
+                { label: 'Awaiting T&C', value: requests.filter(r => r.status === 'awaiting-activation').length, icon: Clock, color: '#ff4757' }
               ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
                    <div className="stat-icon" style={{ background: `${stat.color}15`, color: stat.color }}>
@@ -259,6 +260,7 @@ const Dashboard: React.FC = () => {
               <div className="tabs-glass">
                 {[
                   { id: 'pending', label: 'Pending Requests', icon: Clock },
+                  { id: 'awaiting-activation', label: 'Awaiting T&C', icon: Clock },
                   { id: 'upcoming', label: 'Upcoming', icon: Calendar },
                   { id: 'in-progress', label: 'Active Today', icon: Clock },
                   { id: 'history', label: 'History', icon: RotateCcw }
@@ -271,7 +273,9 @@ const Dashboard: React.FC = () => {
                     <tab.icon size={16} />
                     <span>{tab.label}</span>
                     <span className="count-badge">
-                      {tab.id === 'pending' ? requests.length : jobs.filter(j => {
+                      {tab.id === 'pending' ? requests.filter(r => r.status === 'pending').length : 
+                       tab.id === 'awaiting-activation' ? requests.filter(r => r.status === 'awaiting-activation').length :
+                       jobs.filter(j => {
                         const todayDayName = getDayName(new Date());
                         if (tab.id === 'in-progress') {
                           return (j.jobType === 'one-off' && j.date === today) || 
@@ -426,7 +430,7 @@ const Dashboard: React.FC = () => {
                                 </div>
 
                                  <div className="card-actions">
-                                     {activeTab === 'pending' ? (
+                                     {activeTab === 'pending' || activeTab === 'awaiting-activation' ? (
                                       <div className="messaging-group">
                                         <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
                                            <MessageSquare size={16} />
@@ -450,7 +454,7 @@ const Dashboard: React.FC = () => {
                                        <div className="menu-trigger">
                                           <MoreHorizontal size={18} />
                                           <div className="menu-dropdown glass">
-                                             {activeTab === 'pending' ? (
+                                             {activeTab === 'pending' || activeTab === 'awaiting-activation' ? (
                                                <>
                                                  <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
                                                  <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
