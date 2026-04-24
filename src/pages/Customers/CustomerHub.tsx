@@ -11,6 +11,7 @@ import {
   CreditCard,
   Rocket
 } from 'lucide-react';
+import LoadingScreen from '../../components/LoadingScreen';
 import { collection, query, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
@@ -98,7 +99,7 @@ const CustomerHub: React.FC = () => {
 
         <div className="customers-view">
            {loading ? (
-             <div className="loading-state">Syncing Database...</div>
+             <LoadingScreen fullScreen={false} message="Syncing Database" />
            ) : filteredCustomers.length === 0 ? (
              <div className="empty-hub glass-card">
                 <Users size={64} className="empty-icon" />
@@ -192,7 +193,7 @@ const CustomerHub: React.FC = () => {
       </div>
 
       <style>{`
-        .customer-hub-premium { min-height: 100vh; background: var(--cream); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
+        .customer-hub-premium { min-height: 100vh; background: var(--offwhite); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
         .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }
@@ -258,7 +259,7 @@ const CustomerHub: React.FC = () => {
         .setup-tags { display: flex; flex-wrap: wrap; gap: 8px; }
         .service-tag-pill { font-family: var(--font-ui); padding: 4px 10px; border-radius: 20px; font-size: 0.55rem; font-weight: 500; border: 1px solid transparent; text-transform: uppercase; letter-spacing: 0.05em; }
         .service-tag-pill.enabled { background: var(--cream-warm); color: var(--ink); border-color: rgba(26, 61, 51, 0.1); }
-        .service-tag-pill.disabled { background: var(--cream); color: var(--ink-soft); border-color: var(--cream-warm); text-decoration: line-through; opacity: 0.6; }
+        .service-tag-pill.disabled { background: var(--offwhite); color: var(--ink-soft); border-color: var(--cream-warm); text-decoration: line-through; opacity: 0.6; }
 
         .card-footer { display: flex; justify-content: space-between; align-items: flex-end; }
         .stats { display: flex; gap: 20px; }

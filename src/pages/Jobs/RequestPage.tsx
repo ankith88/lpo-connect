@@ -22,6 +22,7 @@ import {
   ChevronLeft,
   Mail
 } from 'lucide-react';
+import LoadingScreen from '../../components/LoadingScreen';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
@@ -177,12 +178,7 @@ const RequestPage: React.FC = () => {
   };
 
   if (loading) {
-    return (
-      <div className="request-page-loading">
-        <Clock className="spinner" />
-        <p>Loading Request Coordination...</p>
-      </div>
-    );
+    return <LoadingScreen message="Coordinating Request" />;
   }
 
   if (error) {
@@ -197,7 +193,7 @@ const RequestPage: React.FC = () => {
             </button>
          </div>
          <style>{`
-            .request-page-error { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--cream); padding: 20px; }
+            .request-page-error { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--offwhite); padding: 20px; }
             .error-card { text-align: center; padding: 40px; border-radius: 32px; max-width: 500px; }
             .error-card h2 { margin: 24px 0 12px; color: var(--ink); }
             .error-card p { color: var(--ink-soft); margin-bottom: 32px; }
@@ -387,7 +383,7 @@ const RequestPage: React.FC = () => {
       )}
 
       <style>{`
-        .request-page-premium { min-height: 100vh; background: var(--cream); padding: 40px 24px; position: relative; overflow-x: hidden; }
+        .request-page-premium { min-height: 100vh; background: var(--offwhite); padding: 40px 24px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
         .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }
@@ -469,7 +465,7 @@ const RequestPage: React.FC = () => {
             box-shadow: 0 4px 10px rgba(168, 118, 58, 0.3);
             text-transform: uppercase;
             letter-spacing: 0.16em;
-            border: 2px solid var(--cream);
+            border: 2px solid var(--offwhite);
           }
 
         .instructions-box { background: var(--cream-warm); padding: 16px; border-radius: 16px; font-size: 0.85rem; color: var(--ink-soft); font-weight: 600; line-height: 1.5; border-left: 4px solid var(--gold); }
@@ -499,8 +495,6 @@ const RequestPage: React.FC = () => {
         .empty-chat .hint { font-size: 0.8rem; font-weight: 500; }
 
         .request-page-loading { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink-soft); opacity: 0.6; }
-        .spinner { animation: spin 1s linear infinite; margin-bottom: 16px; width: 40px; height: 40px; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
         .mobile-only { display: none; }
         .desktop-only { display: flex; }

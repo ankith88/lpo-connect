@@ -332,7 +332,7 @@ const Schedules: React.FC = () => {
         .schedules-premium {
           position: relative;
           min-height: 100vh;
-          background: var(--cream);
+          background: var(--offwhite);
           overflow-x: hidden;
         }
 
@@ -435,7 +435,7 @@ const Schedules: React.FC = () => {
           background: rgba(26, 61, 51, 0.08); border-radius: 2px;
         }
         .stop-entry { display: flex; gap: 16px; margin-bottom: 20px; }
-        .stop-node { width: 16px; height: 16px; border-radius: 50%; background: white; border: 3px solid var(--cream); margin-top: 4px; }
+        .stop-node { width: 16px; height: 16px; border-radius: 50%; background: white; border: 3px solid var(--offwhite); margin-top: 4px; }
         .stop-node.pickup { border-color: var(--ink); }
         .stop-node.delivery { border-color: var(--gold); }
         .stop-type-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
@@ -499,13 +499,13 @@ const Schedules: React.FC = () => {
 
         .occurrences-list { display: flex; flex-direction: column; gap: 10px; }
         .occ-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border: 1px solid var(--cream-warm); border-radius: 14px; }
-        .occ-row.skipped { background: var(--cream-warm); border-color: var(--red); opacity: 0.7; }
+        .occ-row.skipped { background: var(--cream-warm); border-color: var(--danger); opacity: 0.7; }
         .occ-date { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700; color: var(--ink); }
         .skip-toggle { padding: 6px 14px; border-radius: 50px; font-size: 0.65rem; font-weight: 800; border: 1px solid var(--cream-warm); background: white; color: var(--ink-soft); cursor: pointer; }
-        .skip-toggle.active { background: var(--red); color: white; border-color: var(--red); }
+        .skip-toggle.active { background: var(--danger); color: white; border-color: var(--danger); }
 
         .modal-danger-zone { border-top: 1px solid var(--cream-warm); padding-top: 24px; margin-top: 10px; }
-        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--red); color: var(--red); background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
+        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--danger); color: var(--danger); background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
         .btn-danger-outline:hover { background: var(--cream-warm); }
 
         .fade-in { animation: fadeIn 0.3s ease-out; }

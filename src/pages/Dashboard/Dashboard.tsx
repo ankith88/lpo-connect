@@ -21,6 +21,7 @@ import {
   MoreHorizontal,
   CheckCircle2
 } from 'lucide-react';
+import LoadingScreen from '../../components/LoadingScreen';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
@@ -384,10 +385,7 @@ const Dashboard: React.FC = () => {
             {/* Logistics Timeline */}
             <div className="timeline-container">
                {loading ? (
-                 <div className="loading-state">
-                   <RefreshCw className="spinner" />
-                   <p>Syncing Manifest...</p>
-                 </div>
+                 <LoadingScreen fullScreen={false} message="Syncing Manifest" />
                ) : groupedJobs.length === 0 ? (
                  <div className="glass-card empty-state">
                    <div className="empty-icon"><Layers size={48} /></div>
@@ -549,7 +547,7 @@ const Dashboard: React.FC = () => {
         .job-manager-premium {
           position: relative;
           min-height: 100vh;
-          background: var(--cream);
+          background: var(--offwhite);
           overflow-x: hidden;
         }
 
@@ -660,7 +658,7 @@ const Dashboard: React.FC = () => {
         }
         .node-inner {
           width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
-          background: white; border: 3px solid var(--cream); color: var(--ink);
+          background: white; border: 3px solid var(--offwhite); color: var(--ink);
           box-shadow: 0 8px 20px rgba(26, 61, 51, 0.08); transition: all 0.3s;
         }
         .node-inner.pill-scheduled { border-color: var(--ink); color: var(--ink); }
@@ -685,11 +683,11 @@ const Dashboard: React.FC = () => {
         }
         .status-tag.status-scheduled { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-not-accepted { background: var(--cream-warm); color: var(--gold); }
-        .status-tag.status-unperformed { background: var(--cream-warm); color: var(--red); }
+        .status-tag.status-unperformed { background: var(--cream-warm); color: var(--danger); }
         .status-tag.status-accepted { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-in-progress { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-completed { background: var(--ink); color: white; }
-        .status-tag.status-rejected { background: var(--cream-warm); color: var(--red); }
+        .status-tag.status-rejected { background: var(--cream-warm); color: var(--danger); }
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); opacity: 0.6; text-transform: capitalize; }
@@ -743,8 +741,6 @@ const Dashboard: React.FC = () => {
         }
 
         .loading-state { padding: 100px; text-align: center; color: var(--ink-soft); opacity: 0.6; font-weight: 600; }
-        .spinner { animation: spin 1s linear infinite; margin-bottom: 16px; width: 32px; height: 32px; }
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
         .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.4); padding: 32px; }
 
@@ -807,7 +803,7 @@ const Dashboard: React.FC = () => {
         .stop-entry:last-child { margin-bottom: 0; }
         .stop-node {
           width: 16px; height: 16px; border-radius: 50%; background: white;
-          border: 3px solid var(--cream); z-index: 2; margin-top: 4px;
+          border: 3px solid var(--offwhite); z-index: 2; margin-top: 4px;
           box-shadow: 0 4px 10px rgba(26,61,51,0.1);
         }
         .stop-node.pickup { border-color: var(--ink); }
@@ -878,7 +874,7 @@ const Dashboard: React.FC = () => {
         .header-title h2 { font-size: 1.25rem; font-weight: 800; margin: 0; }
         .close-btn { background: transparent; border: none; color: var(--ink-soft); opacity: 0.6; cursor: pointer; }
 
-        .schedule-info-summary { background: var(--cream); padding: 20px; border-radius: 20px; margin-bottom: 32px; }
+        .schedule-info-summary { background: var(--offwhite); padding: 20px; border-radius: 20px; margin-bottom: 32px; }
         .m-company { font-weight: 800; color: var(--ink); font-size: 1.1rem; margin-bottom: 4px; }
         .m-address { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; }
 
@@ -892,18 +888,18 @@ const Dashboard: React.FC = () => {
 
         .occurrences-list { display: flex; flex-direction: column; gap: 10px; }
         .occ-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border: 1px solid var(--cream-warm); border-radius: 14px; }
-        .occ-row.skipped { background: var(--cream-warm); border-color: var(--red); opacity: 0.7; }
+        .occ-row.skipped { background: var(--cream-warm); border-color: var(--danger); opacity: 0.7; }
         .occ-date { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700; color: var(--ink); }
         .occ-date svg { color: var(--ink-soft); opacity: 0.6; }
         .skip-toggle { padding: 6px 14px; border-radius: 50px; font-size: 0.65rem; font-weight: 800; border: 1px solid var(--cream-warm); background: white; color: var(--ink-soft); cursor: pointer; }
-        .skip-toggle.active { background: var(--red); color: white; border-color: var(--red); }
+        .skip-toggle.active { background: var(--danger); color: white; border-color: var(--danger); }
 
         .modal-danger-zone { border-top: 1px solid var(--cream-warm); padding-top: 24px; margin-top: 10px; }
-        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--red); color: var(--red); background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
+        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--danger); color: var(--danger); background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
         .btn-danger-outline:hover { background: var(--cream-warm); }
 
         .manage-schedule { width: 100%; margin-bottom: 8px; border: 1px solid rgba(26, 61, 51, 0.1) !important; background: white !important; color: var(--ink) !important; }
-        .manage-schedule:hover { background: var(--cream) !important; border-color: var(--ink) !important; }
+        .manage-schedule:hover { background: var(--offwhite) !important; border-color: var(--ink) !important; }
       `}</style>
     </div>
   );

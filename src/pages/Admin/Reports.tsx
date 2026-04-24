@@ -252,7 +252,7 @@ const Reports: React.FC = () => {
       </div>
 
       <style>{`
-        .reports-premium { min-height: 100vh; background: var(--cream); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
+        .reports-premium { min-height: 100vh; background: var(--offwhite); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
         .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }

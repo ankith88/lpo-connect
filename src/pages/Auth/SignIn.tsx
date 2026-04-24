@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
+import LoadingScreen from '../../components/LoadingScreen';
 
 const SignIn: React.FC = () => {
   const navigate = useNavigate();
@@ -47,6 +48,7 @@ const SignIn: React.FC = () => {
 
   return (
     <div className="signin-page">
+      {loading && <LoadingScreen message="Establishing Secure Connection" />}
       <div className="signin-container">
         <div className="signin-card">
           <div className="logo-section">
@@ -125,7 +127,7 @@ const SignIn: React.FC = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          background-color: var(--cream);
+          background-color: var(--offwhite);
           padding: 20px;
         }
 
@@ -156,7 +158,7 @@ const SignIn: React.FC = () => {
         }
         
         .brand-logo .logo-plus {
-          color: var(--red);
+          color: var(--yellow);
           font-family: var(--font-headings);
           font-weight: 500;
           font-style: italic;
@@ -236,7 +238,7 @@ const SignIn: React.FC = () => {
         }
 
         .error-message {
-          color: var(--red);
+          color: var(--danger);
           font-size: 0.85rem;
           margin-bottom: 20px;
           padding: 10px;

@@ -1,11 +1,13 @@
 :root {
+  --sidebar-bg: #095c7b;
+  --offwhite: #FFFDF6;
+  --cream-warm: #F0EDE4;
+  --paper: #FFFFFF;
+  --gold: #A8763A;
+  --yellow: #EAF044;
   --ink: #1A3D33;
   --ink-soft: #2A4E43;
-  --cream: #F5F0E4;
-  --cream-warm: #EFE8D4;
-  --paper: #FBF7ED;
-  --gold: #A8763A;
-  --red: #8F3424;
+  --danger: #d32f2f;
   
   --font-headings: 'Fraunces', serif;
   --font-body: 'Manrope', sans-serif;
@@ -24,7 +26,7 @@
 
 body {
   font-family: var(--font-main);
-  background-color: var(--cream);
+  background-color: var(--offwhite);
   color: var(--ink-soft);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -93,7 +95,7 @@ h3 {
 }
 
 .logo-plus {
-  color: var(--red);
+  color: var(--yellow);
 }
 
 .text-center { text-align: center; }

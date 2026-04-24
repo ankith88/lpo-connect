@@ -165,7 +165,7 @@ const ShareLink: React.FC = () => {
           position: relative;
           min-height: 100vh;
           overflow: hidden;
-          background: var(--cream);
+          background: var(--offwhite);
           color: var(--ink);
         }
 

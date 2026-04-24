@@ -226,7 +226,7 @@ const ServiceArea: React.FC = () => {
           height: 100vh;
           width: 100%;
           overflow: hidden;
-          background: var(--cream);
+          background: var(--offwhite);
           color: var(--ink);
         }
 

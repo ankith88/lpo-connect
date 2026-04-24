@@ -115,7 +115,7 @@ const Sidebar: React.FC = () => {
           left: 0;
           top: 0;
           z-index: 1000;
-          background: var(--ink);
+          background: var(--sidebar-bg);
           border-right: 1px solid rgba(255, 255, 255, 0.1);
           overflow: hidden;
         }
@@ -180,7 +180,7 @@ const Sidebar: React.FC = () => {
           font-family: var(--font-headings);
           font-weight: 500;
           font-style: italic;
-          color: var(--red);
+          color: var(--yellow);
         }
         
         .logo-platform {

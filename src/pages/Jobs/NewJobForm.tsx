@@ -1125,7 +1125,7 @@ const NewJobForm: React.FC = () => {
           position: relative;
           min-height: 100vh;
           overflow-x: hidden;
-          background: var(--cream);
+          background: var(--offwhite);
           padding-bottom: 60px;
         }
 
