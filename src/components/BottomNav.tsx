@@ -68,8 +68,11 @@ const BottomNav: React.FC = () => {
           gap: 4px;
           color: #666;
           text-decoration: none;
-          font-size: 0.7rem;
+          font-family: var(--font-ui);
+          font-size: 0.6rem;
           font-weight: 500;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
           flex: 1;
           background: none;
           border: none;

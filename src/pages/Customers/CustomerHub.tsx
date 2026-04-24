@@ -203,8 +203,8 @@ const CustomerHub: React.FC = () => {
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
         .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-size: 2.2rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; letter-spacing: -1px; }
-        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 500; }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
 
         .btn-premium-action {
           background: var(--mailplus-teal); color: white; border: none; padding: 14px 28px; border-radius: 18px;
@@ -234,11 +234,11 @@ const CustomerHub: React.FC = () => {
         .customer-card:hover { transform: translateY(-8px); background: white; box-shadow: 0 20px 40px rgba(0, 65, 65, 0.08); }
 
         .card-top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; position: relative; }
-        .avatar { width: 44px; height: 44px; background: #e8f4ef; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; color: var(--mailplus-teal); font-size: 1.2rem; }
-        .main-info h3 { margin: 0; font-size: 1.1rem; font-weight: 800; color: #1a3c34; letter-spacing: -0.3px; }
-        .sub-info { display: flex; align-items: center; gap: 6px; color: #5b7971; font-size: 0.75rem; font-weight: 600; margin-top: 2px; }
+        .avatar { width: 44px; height: 44px; background: #e8f4ef; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 400; color: var(--mailplus-teal); font-size: 1.2rem; font-family: var(--font-headings); }
+        .main-info h3 { margin: 0; font-size: 1.1rem; font-weight: 400; color: #1a3c34; letter-spacing: -0.015em; font-family: var(--font-headings); }
+        .sub-info { display: flex; align-items: center; gap: 6px; color: #5b7971; font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
         .franchisee-tag { color: var(--mailplus-teal); background: rgba(0, 65, 65, 0.05); padding: 2px 8px; border-radius: 6px; width: fit-content; }
-        .status-badge-premium { padding: 4px 10px; border-radius: 8px; font-size: 0.55rem; font-weight: 900; letter-spacing: 0.5px; }
+        .status-badge-premium { font-family: var(--font-ui); padding: 4px 10px; border-radius: 8px; font-size: 0.55rem; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; }
         .status-badge-premium.active { background: #e2f9ec; color: #27ae60; }
         .status-badge-premium.awaiting { background: #fff8e1; color: #f39c12; }
 
@@ -253,18 +253,18 @@ const CustomerHub: React.FC = () => {
  
         .services-setup-premium { padding: 0 24px 16px; }
         .setup-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-        .setup-header span { font-size: 0.65rem; font-weight: 800; color: #8fa6a0; letter-spacing: 0.5px; }
+        .setup-header span { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; letter-spacing: 0.16em; text-transform: uppercase; }
         .setup-header svg { color: var(--mailplus-teal); opacity: 0.6; }
         .setup-tags { display: flex; flex-wrap: wrap; gap: 8px; }
-        .service-tag-pill { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid transparent; }
+        .service-tag-pill { font-family: var(--font-ui); padding: 4px 10px; border-radius: 20px; font-size: 0.55rem; font-weight: 500; border: 1px solid transparent; text-transform: uppercase; letter-spacing: 0.05em; }
         .service-tag-pill.enabled { background: #e8f4ef; color: var(--mailplus-teal); border-color: rgba(0, 65, 65, 0.1); }
         .service-tag-pill.disabled { background: #f5f5f5; color: #b0b0b0; border-color: #eee; text-decoration: line-through; opacity: 0.6; }
 
         .card-footer { display: flex; justify-content: space-between; align-items: flex-end; }
         .stats { display: flex; gap: 20px; }
         .stat-item { display: flex; flex-direction: column; }
-        .stat-item label { font-size: 0.6rem; font-weight: 800; color: #8fa6a0; text-transform: uppercase; margin-bottom: 2px; }
-        .stat-item span { font-size: 0.8rem; font-weight: 700; color: var(--mailplus-teal); }
+        .stat-item label { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.16em; }
+        .stat-item span { font-family: var(--font-ui); font-size: 0.75rem; font-weight: 500; color: var(--mailplus-teal); }
 
         .view-details { width: 40px; height: 40px; border-radius: 12px; background: #f0f7f4; border: none; color: var(--mailplus-teal); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
         .view-details:hover { background: var(--mailplus-teal); color: white; }

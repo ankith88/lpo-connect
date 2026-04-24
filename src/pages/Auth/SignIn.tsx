@@ -50,7 +50,7 @@ const SignIn: React.FC = () => {
       <div className="signin-container">
         <div className="signin-card">
           <div className="logo-section">
-            <h1 className="brand-logo">LPO<span>.PLUS</span></h1>
+            <h1 className="brand-logo">LPO<span className="logo-plus">.plus</span></h1>
             <p className="powered-by">Powered by MailPlus</p>
             <p className="welcome-text">Connected Logistics for LPOs</p>
           </div>
@@ -147,22 +147,29 @@ const SignIn: React.FC = () => {
         }
 
         .brand-logo {
-          font-size: 2.5rem;
-          font-weight: 800;
+          font-family: var(--font-headings);
+          font-size: 2.8rem;
+          font-weight: 400;
           color: var(--mailplus-teal);
-          letter-spacing: -1px;
+          letter-spacing: -0.025em;
+          margin-bottom: 4px;
         }
-
-        .brand-logo span {
+        
+        .brand-logo .logo-plus {
           color: var(--mailplus-yellow);
+          font-family: var(--font-headings);
+          font-weight: 500;
+          font-style: italic;
         }
 
         .powered-by {
-          font-size: 0.9rem;
-          font-weight: 600;
+          font-family: var(--font-ui);
+          font-size: 0.65rem;
+          font-weight: 500;
           color: #888;
-          margin-top: -10px;
-          margin-bottom: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.16em;
+          margin-bottom: 24px;
         }
 
         .welcome-text {
@@ -203,10 +210,13 @@ const SignIn: React.FC = () => {
 
         .input-group label {
           display: block;
-          font-size: 0.9rem;
-          font-weight: 600;
+          font-family: var(--font-ui);
+          font-size: 0.7rem;
+          font-weight: 500;
           margin-bottom: 8px;
           color: var(--mailplus-teal);
+          text-transform: uppercase;
+          letter-spacing: 0.16em;
         }
 
         .input-wrapper {

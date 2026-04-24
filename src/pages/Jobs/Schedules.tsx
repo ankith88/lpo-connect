@@ -355,8 +355,8 @@ const Schedules: React.FC = () => {
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
         .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-size: 2.2rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; letter-spacing: -1px; }
-        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 500; }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
 
         .btn-premium-action {
           background: var(--mailplus-teal);
@@ -421,8 +421,8 @@ const Schedules: React.FC = () => {
 
         .header-meta-group { display: flex; align-items: center; gap: 16px; }
         .status-tag {
-          padding: 6px 14px; border-radius: 10px; font-size: 0.7rem; font-weight: 800;
-          text-transform: uppercase; background: #e2f9ec; color: #2ecc71;
+          padding: 6px 14px; border-radius: 10px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500;
+          text-transform: uppercase; background: #e2f9ec; color: #2ecc71; letter-spacing: 0.16em;
         }
         .expand-icon { color: #8fa6a0; }
 
@@ -439,14 +439,14 @@ const Schedules: React.FC = () => {
         .stop-node.pickup { border-color: var(--mailplus-teal); }
         .stop-node.delivery { border-color: #f39c12; }
         .stop-type-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
-        .type-pill { font-size: 0.6rem; font-weight: 800; color: #8fa6a0; }
-        .stop-seq { font-size: 0.6rem; color: #c0d1cc; }
+        .type-pill { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
+        .stop-seq { font-family: var(--font-ui); font-size: 0.6rem; color: #c0d1cc; font-weight: 500; }
         .stop-loc-name { font-weight: 800; color: var(--mailplus-teal); font-size: 0.9rem; }
         .stop-addr { font-size: 0.75rem; color: #5b7971; }
 
         .card-meta { display: flex; gap: 16px; align-items: center; padding: 20px 0; border-top: 1px solid rgba(0,0,0,0.03); margin-top: 20px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: #8fa6a0; }
-        .job-ref { margin-left: auto; font-family: monospace; font-size: 0.75rem; color: #c0d1cc; }
+        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.7rem; color: #c0d1cc; font-weight: 500; }
 
         .btn-primary-glass {
           width: 100%;

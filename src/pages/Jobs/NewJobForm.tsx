@@ -1150,22 +1150,22 @@ const NewJobForm: React.FC = () => {
         .form-container { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; padding: 60px 24px; }
         .form-header { text-align: center; margin-bottom: 48px; }
         .header-icon-pill { width: 48px; height: 48px; background: white; border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: var(--mailplus-teal); box-shadow: 0 8px 24px rgba(0,0,0,0.05); }
-        .form-header h1 { font-size: 2.8rem; font-weight: 800; color: var(--mailplus-teal); letter-spacing: -1px; margin-bottom: 8px; }
-        .form-header p { font-size: 1.1rem; color: #5b7971; }
+        .form-header h1 { font-family: var(--font-headings); font-size: 2.8rem; font-weight: 400; color: var(--mailplus-teal); letter-spacing: -0.025em; margin-bottom: 8px; }
+        .form-header p { font-size: 1.1rem; color: #5b7971; font-weight: 400; }
 
         .step-tracker { display: flex; justify-content: space-between; max-width: 500px; margin: 0 auto 60px; position: relative; }
         .step-item { display: flex; flex-direction: column; align-items: center; gap: 12px; position: relative; z-index: 2; flex: 1; }
-        .step-circle { width: 40px; height: 40px; border-radius: 50%; background: #e2ebe2; color: #8fa6a0; display: flex; align-items: center; justify-content: center; font-weight: 800; transition: all 0.3s; border: 2px solid white; }
+        .step-circle { width: 40px; height: 40px; border-radius: 50%; background: #e2ebe2; color: #8fa6a0; display: flex; align-items: center; justify-content: center; font-weight: 500; transition: all 0.3s; border: 2px solid white; font-family: var(--font-ui); }
         .step-item.active .step-circle { background: var(--mailplus-teal); color: white; transform: scale(1.1); box-shadow: 0 8px 20px rgba(0, 65, 65, 0.2); }
         .step-item.completed .step-circle { background: #2ecc71; color: white; }
-        .step-label { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; letter-spacing: 1px; }
+        .step-label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 500; text-transform: uppercase; color: #8fa6a0; letter-spacing: 0.16em; }
         .step-item.active .step-label { color: var(--mailplus-teal); }
         .step-connector { position: absolute; top: 20px; left: calc(50% + 20px); width: calc(100% - 40px); height: 2px; background: #e2ebe2; z-index: 1; }
         .step-item.completed .step-connector { background: #2ecc71; }
 
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 32px; padding: 40px; box-shadow: 0 20px 60px rgba(0, 65, 65, 0.05); }
         .card-top-info { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; color: var(--mailplus-teal); }
-        .card-top-info h3 { font-weight: 800; font-size: 1.25rem; margin: 0; }
+        .card-top-info h3 { font-family: var(--font-headings); font-weight: 500; font-size: 1.25rem; margin: 0; }
 
         .search-dropdown { position: absolute; top: calc(100% + 8px); left: 0; right: 0; max-height: 280px; overflow-y: auto; background: white; border-radius: 20px; padding: 12px; z-index: 1000; box-shadow: 0 20px 50px rgba(0,65,65,0.15); border: 1px solid rgba(0,65,65,0.08); animation: dropdownSlide 0.3s cubic-bezier(0.19, 1, 0.22, 1) forwards; }
         @keyframes dropdownSlide { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -1205,7 +1205,7 @@ const NewJobForm: React.FC = () => {
         .error-pill { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 16px; background: #fff5f5 !important; color: #c53030; font-weight: 700; font-size: 0.9rem; margin-bottom: 24px; }
 
         .selection-group { margin-bottom: 40px; }
-        .group-label { display: block; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; letter-spacing: 1px; margin-bottom: 16px; }
+        .group-label { display: block; font-family: var(--font-ui); font-size: 0.7rem; font-weight: 500; text-transform: uppercase; color: #8fa6a0; letter-spacing: 0.16em; margin-bottom: 16px; }
         .billing-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; max-width: 500px; margin: 0 auto; }
         .billing-btn { padding: 16px; border-radius: 20px; font-weight: 700; color: #8fa6a0; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid #f0f4f4; background: white; }
         .billing-btn.active { background: var(--mailplus-teal); color: white; transform: translateY(-4px); box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2); }
@@ -1213,8 +1213,8 @@ const NewJobForm: React.FC = () => {
         .service-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
         .service-btn { padding: 24px; border-radius: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; color: #5b7971; cursor: pointer; transition: all 0.3s; border: 1px solid #f0f4f4; background: white; }
         .service-btn.active { background: white; color: var(--mailplus-teal); transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0, 65, 65, 0.1); border: 2px solid var(--mailplus-teal); }
-        .srv-label { font-size: 0.75rem; font-weight: 700; opacity: 0.8; }
-        .srv-price { font-size: 1.4rem; color: var(--mailplus-teal); }
+        .srv-label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 500; opacity: 0.8; text-transform: uppercase; letter-spacing: 0.05em; }
+        .srv-price { font-family: var(--font-ui); font-size: 1.4rem; color: var(--mailplus-teal); font-weight: 500; }
 
         .date-time-row { display: flex; gap: 20px; margin-bottom: 24px; }
         .date-pill-group { display: flex; align-items: center; gap: 16px; background: white; padding: 14px 24px; border-radius: 20px; border: 1px solid #f0f4f4; }
@@ -1233,10 +1233,10 @@ const NewJobForm: React.FC = () => {
 
         .voucher-card { padding: 40px; border-radius: 32px; border: 2px dashed #e0e7e4; background: white !important; margin-bottom: 40px; }
         .voucher-header { display: flex; justify-content: space-between; border-bottom: 1px solid #f0f4f4; padding-bottom: 24px; margin-bottom: 32px; }
-        .v-logo { font-size: 1.4rem; font-weight: 800; color: var(--mailplus-teal); }
-        .v-badge { background: var(--mailplus-yellow); color: var(--mailplus-teal); padding: 4px 12px; border-radius: 6px; font-weight: 800; font-size: 0.65rem; }
+        .v-logo { font-family: var(--font-headings); font-size: 1.4rem; font-weight: 400; color: var(--mailplus-teal); }
+        .v-badge { font-family: var(--font-ui); background: var(--mailplus-yellow); color: var(--mailplus-teal); padding: 4px 12px; border-radius: 6px; font-weight: 500; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.1em; }
         .v-row { display: flex; justify-content: space-between; margin-bottom: 12px; }
-        .v-label { font-size: 0.75rem; font-weight: 800; color: #8fa6a0; }
+        .v-label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.1em; }
         .v-val { font-weight: 700; color: var(--mailplus-teal); }
         .v-row.total { margin-top: 24px; padding-top: 24px; border-top: 1px solid #f0f4f4; }
         .v-row.total .v-val { font-size: 1.5rem; }

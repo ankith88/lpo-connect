@@ -166,7 +166,6 @@ const ShareLink: React.FC = () => {
           min-height: 100vh;
           overflow: hidden;
           background: #f0f7f4;
-          font-family: 'Inter', system-ui, -apple-system, sans-serif;
           color: var(--mailplus-teal);
         }
 
@@ -249,9 +248,10 @@ const ShareLink: React.FC = () => {
         }
 
         .page-header h1 {
+          font-family: var(--font-headings);
           font-size: 3rem;
-          font-weight: 800;
-          letter-spacing: -1px;
+          font-weight: 400;
+          letter-spacing: -0.025em;
           margin-bottom: 16px;
         }
 
@@ -307,8 +307,9 @@ const ShareLink: React.FC = () => {
         }
 
         .glass-card h3 {
+          font-family: var(--font-headings);
           font-size: 1.25rem;
-          font-weight: 800;
+          font-weight: 500;
           margin: 0;
         }
 
@@ -396,12 +397,13 @@ const ShareLink: React.FC = () => {
 
         .share-section label {
           display: block;
-          font-weight: 700;
+          font-family: var(--font-ui);
+          font-weight: 500;
           margin-bottom: 12px;
-          font-size: 0.9rem;
+          font-size: 0.7rem;
           color: #5b7971;
           text-transform: uppercase;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.16em;
         }
 
         .url-copy-pill {
@@ -482,9 +484,12 @@ const ShareLink: React.FC = () => {
           color: var(--mailplus-teal);
           padding: 10px 24px;
           border-radius: 12px;
-          font-size: 0.9rem;
-          font-weight: 600;
+          font-family: var(--font-ui);
+          font-size: 0.65rem;
+          font-weight: 500;
           margin-top: 20px;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
         }
 
         /* Footer */

@@ -397,9 +397,9 @@ const RequestPage: React.FC = () => {
 
         .request-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
         .back-btn { display: flex; align-items: center; gap: 8px; background: transparent; border: none; color: #5b7971; font-weight: 700; cursor: pointer; }
-        .header-main h1 { font-size: 2rem; font-weight: 900; color: var(--mailplus-teal); margin: 8px 0 4px; }
-        .header-main p { font-weight: 700; color: #8fa6a0; font-family: monospace; }
-        .status-pill { display: inline-block; padding: 4px 12px; borderRadius: 20px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; }
+        .header-main h1 { font-family: var(--font-headings); font-size: 2rem; font-weight: 400; color: var(--mailplus-teal); margin: 8px 0 4px; letter-spacing: -0.025em; }
+        .header-main p { font-weight: 500; color: #8fa6a0; font-family: var(--font-ui); font-size: 0.75rem; letter-spacing: 0.05em; }
+        .status-pill { display: inline-block; padding: 4px 12px; borderRadius: 20px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; }
         .status-pill.pending { background: #fff8e1; color: #f39c12; }
 
         .operator-actions { display: flex; gap: 12px; }
@@ -410,7 +410,7 @@ const RequestPage: React.FC = () => {
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 32px; padding: 32px; }
         
         .section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; color: var(--mailplus-teal); }
-        .section-title h3 { font-size: 0.9rem; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+        .section-title h3 { font-family: var(--font-ui); font-size: 0.7rem; font-weight: 500; margin: 0; text-transform: uppercase; letter-spacing: 0.16em; }
 
         .info-box { background: white; padding: 16px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px; }
         .info-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #5b7971; }
@@ -422,7 +422,7 @@ const RequestPage: React.FC = () => {
 
         .logistics-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-bottom: 20px; }
         .log-item { display: flex; flex-direction: column; gap: 4px; }
-        .log-item label { font-size: 0.65rem; font-weight: 800; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.5px; }
+        .log-item label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
         .log-item span { font-weight: 700; color: #1a3c34; font-size: 0.9rem; }
 
         .time-highlight-banner { 
@@ -450,32 +450,33 @@ const RequestPage: React.FC = () => {
          @keyframes clockPulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
          
          .time-text-area { display: flex; flex-direction: column; gap: 2px; }
-         .time-text-area label { font-size: 0.6rem; font-weight: 900; color: #b28900; letter-spacing: 0.5px; }
+         .time-text-area label { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 900; color: #b28900; letter-spacing: 0.5px; }
          .time-value { font-size: 1.3rem; font-weight: 900; color: #5c4700; letter-spacing: -0.5px; }
 
          .btn-accept { position: relative; overflow: visible; display: flex; flex-direction: column; align-items: center; padding: 12px 24px; min-width: 160px; background: var(--mailplus-teal); color: white; border: none; border-radius: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; }
          .accept-content { display: flex; align-items: center; gap: 8px; }
-         .btn-badge { 
-           position: absolute; 
-           top: -10px; 
-           right: -10px; 
-           background: #e67e22; 
-           color: white; 
-           font-size: 0.6rem; 
-           font-weight: 900; 
-           padding: 4px 10px; 
-           border-radius: 20px; 
-           box-shadow: 0 4px 10px rgba(230, 126, 34, 0.3);
-           text-transform: uppercase;
-           border: 2px solid #f0f7f4;
-         }
+          .btn-badge { 
+            position: absolute; 
+            top: -10px; 
+            right: -10px; 
+            background: #e67e22; 
+            color: white; 
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.55rem; 
+            font-weight: 500; 
+            padding: 4px 10px; 
+            border-radius: 20px; 
+            box-shadow: 0 4px 10px rgba(230, 126, 34, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            border: 2px solid #f0f7f4;
+          }
 
         .instructions-box { background: #fff9db; padding: 16px; border-radius: 16px; font-size: 0.85rem; color: #7a6e2a; font-weight: 600; line-height: 1.5; }
 
         .chat-interface { flex: 1; display: flex; flex-direction: column; min-height: 500px; padding: 0 !important; overflow: hidden; }
         .chat-header { display: flex; align-items: center; gap: 12px; margin: 32px 32px 24px; }
-        .chat-header h2 { font-size: 1.25rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; }
-        .live-indicator { background: #e2f9ec; color: #2ecc71; font-size: 0.6rem; font-weight: 900; padding: 2px 8px; border-radius: 50px; }
+        .live-indicator { font-family: var(--font-ui); background: #e2f9ec; color: #2ecc71; font-size: 0.55rem; font-weight: 500; padding: 2px 8px; border-radius: 50px; letter-spacing: 0.16em; }
 
         .chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; padding-right: 15px; }
         .message-bubble { max-width: 80%; padding: 16px; border-radius: 20px; position: relative; }

@@ -8,7 +8,10 @@
   --mailplus-red: #e63946;
   --mailplus-green: #2ecc71;
   
-  --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-headings: 'Fraunces', serif;
+  --font-body: 'Manrope', sans-serif;
+  --font-ui: 'JetBrains Mono', monospace;
+  --font-main: var(--font-body);
   --sidebar-width: 260px;
   --header-height: 64px;
   --bottom-nav-height: 70px;
@@ -24,7 +27,7 @@ body {
   font-family: var(--font-main);
   background-color: var(--mailplus-light-green);
   color: var(--mailplus-teal);
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -63,6 +66,30 @@ input:focus {
 h1, h2, h3, h4 {
   color: var(--mailplus-teal);
   margin-bottom: 1rem;
+}
+
+h1, h2 {
+  font-family: var(--font-headings);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+h3 {
+  font-family: var(--font-headings);
+  font-weight: 500;
+  letter-spacing: -0.015em;
+}
+
+.font-ui {
+  font-family: var(--font-ui);
+  font-weight: 500;
+}
+
+.label-eyebrow {
+  font-family: var(--font-ui);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
 }
 
 .text-center { text-align: center; }

@@ -104,7 +104,12 @@ const Dashboard: React.FC = () => {
 
   const today = formatDateForInput(new Date());
 
-  const filteredJobs = (activeTab === 'pending' || activeTab === 'awaiting-activation' ? requests : jobs).filter(j => {
+  // Define source based on tab
+  const source = (activeTab === 'pending' || activeTab === 'awaiting-activation') 
+    ? requests 
+    : (activeTab === 'history' ? [...jobs, ...requests] : jobs);
+
+  const filteredJobs = source.filter(j => {
     const matchesSearch = j.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          j.customer.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          j.id.toLowerCase().includes(searchTerm.toLowerCase());
@@ -114,25 +119,25 @@ const Dashboard: React.FC = () => {
     
     // Tab Filtering
     let matchesTab = false;
+    const isOneOff = j.jobType === 'one-off';
+    const isScheduled = j.jobType === 'scheduled' && j.recurrenceStatus !== 'stopped';
+
     if (activeTab === 'pending') {
-      matchesTab = j.status === 'pending'; 
+      // Only show pending requests that are for today or future
+      matchesTab = j.status === 'pending' && (!isOneOff || j.date >= today); 
     } else if (activeTab === 'awaiting-activation') {
       matchesTab = j.status === 'awaiting-activation';
-    } else {
-      const isOneOff = j.jobType === 'one-off';
-      const isScheduled = j.jobType === 'scheduled' && j.recurrenceStatus !== 'stopped';
-      
-      if (activeTab === 'in-progress') {
-        const matchesOneOff = isOneOff && j.date === today;
-        const matchesRecurring = isScheduled && j.frequency.includes(todayDayName) && today >= j.date && !(j.skippedDates || []).includes(today);
-        matchesTab = matchesOneOff || matchesRecurring;
-      } else if (activeTab === 'upcoming') {
-        const matchesOneOff = isOneOff && j.date > today;
-        const matchesRecurring = isScheduled && j.date > today && !(j.skippedDates || []).includes(j.date);
-        matchesTab = matchesOneOff || matchesRecurring;
-      } else if (activeTab === 'history') {
-        matchesTab = isOneOff && j.date < today;
-      }
+    } else if (activeTab === 'in-progress') {
+      const matchesOneOff = isOneOff && j.date === today;
+      const matchesRecurring = isScheduled && j.frequency.includes(todayDayName) && today >= j.date && !(j.skippedDates || []).includes(today);
+      matchesTab = matchesOneOff || matchesRecurring;
+    } else if (activeTab === 'upcoming') {
+      const matchesOneOff = isOneOff && j.date > today;
+      const matchesRecurring = isScheduled && j.date > today && !(j.skippedDates || []).includes(j.date);
+      matchesTab = matchesOneOff || matchesRecurring;
+    } else if (activeTab === 'history') {
+      // Show both completed jobs AND one-off requests that were never accepted
+      matchesTab = isOneOff && j.date < today;
     }
 
     // Date selection filter
@@ -424,8 +429,14 @@ const Dashboard: React.FC = () => {
                                        </div>
                                     </div>
                                     <div className="header-meta-group">
-                                      <div className={`status-tag status-${job.status}`}>
-                                         {job.status}
+                                      <div className={`status-tag status-${
+                                        (activeTab === 'history' && job.date < today && job.status === 'pending') ? 'not-accepted' :
+                                        (activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'scheduled')) ? 'unperformed' :
+                                        job.status
+                                      }`}>
+                                         {activeTab === 'history' && job.date < today && job.status === 'pending' ? 'Not Accepted' :
+                                          activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'scheduled') ? 'Unperformed' :
+                                          job.status}
                                       </div>
                                       <div className="expand-icon">
                                         {expandedJobIds.has(job.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -561,8 +572,8 @@ const Dashboard: React.FC = () => {
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
         .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-size: 2.2rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; letter-spacing: -1px; }
-        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 500; }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
 
         .btn-premium-action {
           background: var(--mailplus-teal);
@@ -590,8 +601,8 @@ const Dashboard: React.FC = () => {
         }
         .stat-icon { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
         .stat-data { display: flex; flex-direction: column; }
-        .stat-label { font-size: 0.75rem; font-weight: 800; color: #8fa6a0; text-transform: uppercase; letter-spacing: 1px; }
-        .stat-value { font-size: 1.6rem; font-weight: 900; color: var(--mailplus-teal); }
+        .stat-label { font-family: var(--font-ui); font-size: 0.7rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
+        .stat-value { font-family: var(--font-headings); font-size: 1.6rem; font-weight: 500; color: var(--mailplus-teal); }
 
         .filter-bar {
           display: flex;
@@ -637,9 +648,9 @@ const Dashboard: React.FC = () => {
         .separator-line { flex: 1; height: 1px; background: rgba(0, 65, 65, 0.1); }
         .date-badge {
           padding: 8px 24px; border-radius: 50px; background: white !important;
-          display: flex; align-items: center; gap: 10px; font-weight: 800;
-          color: var(--mailplus-teal); font-size: 0.85rem; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-          text-transform: uppercase; letter-spacing: 1px;
+          display: flex; align-items: center; gap: 10px; font-family: var(--font-ui); font-weight: 500;
+          color: var(--mailplus-teal); font-size: 0.75rem; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+          text-transform: uppercase; letter-spacing: 0.16em;
         }
 
         .timeline-item { position: relative; margin-bottom: 24px; display: flex; align-items: center; }
@@ -665,14 +676,16 @@ const Dashboard: React.FC = () => {
         }
 
         .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-        .company-name { font-size: 1.1rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; }
+        .company-name { font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--mailplus-teal); margin: 0; }
         .location-info { display: flex; align-items: center; gap: 6px; color: #8fa6a0; font-size: 0.75rem; font-weight: 600; margin-top: 4px; }
         
         .status-tag {
-          padding: 4px 10px; border-radius: 8px; font-size: 0.6rem; font-weight: 800;
-          text-transform: uppercase; background: rgba(0, 65, 65, 0.05); color: #5b7971;
+          padding: 4px 10px; border-radius: 8px; font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500;
+          text-transform: uppercase; background: rgba(0, 65, 65, 0.05); color: #5b7971; letter-spacing: 0.16em;
         }
         .status-tag.status-scheduled { background: #e2f9ec; color: #2ecc71; }
+        .status-tag.status-not-accepted { background: #fff3e0; color: #f39c12; }
+        .status-tag.status-unperformed { background: #ffebee; color: #e74c3c; }
         .status-tag.status-accepted { background: #e2f9ec; color: #2ecc71; }
         .status-tag.status-in-progress { background: #e1f5fe; color: #03a9f4; }
         .status-tag.status-completed { background: #004141; color: white; }
@@ -680,7 +693,7 @@ const Dashboard: React.FC = () => {
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: #8fa6a0; text-transform: capitalize; }
-        .job-ref { margin-left: auto; font-family: monospace; font-size: 0.7rem; color: #c0d1cc; font-weight: 700; }
+        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.65rem; color: #c0d1cc; font-weight: 500; }
 
         .card-actions {
           display: flex; justify-content: space-between; align-items: center;
@@ -747,7 +760,8 @@ const Dashboard: React.FC = () => {
         .tab-btn.active { background: white; color: var(--mailplus-teal); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
         .count-badge {
           background: rgba(0, 65, 65, 0.1); color: var(--mailplus-teal); 
-          font-size: 0.65rem; padding: 2px 6px; border-radius: 6px;
+          font-family: var(--font-ui); font-size: 0.6rem; padding: 2px 6px; border-radius: 6px;
+          font-weight: 500;
         }
 
         .select-glass:focus { border-color: var(--mailplus-teal); }
@@ -801,8 +815,8 @@ const Dashboard: React.FC = () => {
         
         .stop-details { flex: 1; }
         .stop-type-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        .type-pill { font-size: 0.6rem; font-weight: 800; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.5px; }
-        .stop-seq { font-size: 0.65rem; color: #c0d1cc; font-weight: 700; }
+        .type-pill { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
+        .stop-seq { font-family: var(--font-ui); font-size: 0.6rem; color: #c0d1cc; font-weight: 500; letter-spacing: 0.05em; }
         .stop-loc-name { font-weight: 800; color: var(--mailplus-teal); font-size: 0.9rem; }
         .stop-addr { font-size: 0.75rem; color: #5b7971; font-weight: 600; margin-top: 2px; }
         

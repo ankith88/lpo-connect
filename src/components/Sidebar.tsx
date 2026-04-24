@@ -11,7 +11,6 @@ import {
   TrendingUp, 
   HelpCircle, 
   LogOut,
-  Mail,
   BarChart3
 } from 'lucide-react';
 import { auth } from '../firebase/config';
@@ -46,13 +45,12 @@ const Sidebar: React.FC = () => {
 
       <div className="sidebar-content">
         <div className="sidebar-header">
-          <div className="brand">
-            <div className="logo-icon">
-              <Mail size={24} color="white" />
+          <div className="brand-redesign">
+            <div className="logo-text">
+              <span className="logo-lpo">lpo</span><span className="logo-plus">.plus</span>
             </div>
-            <div className="brand-text">
-              <span className="brand-main">LPO<span>.PLUS</span></span>
-              <span className="brand-sub">Powered by MailPlus</span>
+            <div className="logo-platform">
+              A MAILPLUS PLATFORM
             </div>
           </div>
           
@@ -157,35 +155,40 @@ const Sidebar: React.FC = () => {
           padding: 32px 24px;
         }
 
-        .brand {
+        .brand-redesign {
           display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 32px;
+          flex-direction: column;
+          gap: 6px;
+          margin-bottom: 40px;
+          padding-left: 4px;
         }
-
-        .logo-icon {
-          width: 40px; height: 40px;
-          background: var(--mailplus-teal);
-          border-radius: 12px;
-          display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 4px 12px rgba(0, 65, 65, 0.2);
+        
+        .logo-text {
+          font-family: var(--font-headings);
+          font-size: 1.6rem;
+          font-weight: 400;
+          color: #ffffff;
+          display: flex;
+          align-items: baseline;
+          letter-spacing: -0.025em;
+          line-height: 1;
         }
-
-        .brand-text {
-          display: flex; flex-direction: column;
-        }
-        .brand-main {
-          font-weight: 900; font-size: 1.2rem; color: #ffffff;
-          letter-spacing: -0.2px; line-height: 1;
-        }
-        .brand-main span {
+        
+        .logo-plus {
+          font-family: var(--font-headings);
+          font-weight: 500;
+          font-style: italic;
           color: var(--mailplus-yellow);
         }
-        .brand-sub {
-          font-size: 0.6rem; font-weight: 600; color: rgba(255, 255, 255, 0.6);
-          letter-spacing: 0.2px; margin-top: 2px;
-          opacity: 0.9;
+        
+        .logo-platform {
+          font-family: var(--font-ui);
+          font-size: 0.5rem;
+          font-weight: 500;
+          letter-spacing: 0.16em;
+          color: rgba(255, 255, 255, 0.4);
+          white-space: nowrap;
+          text-transform: uppercase;
         }
 
         .user-profile-glass {
@@ -223,8 +226,9 @@ const Sidebar: React.FC = () => {
           margin-bottom: 24px;
         }
         .group-title {
-          font-size: 0.65rem; font-weight: 800; color: rgba(255, 255, 255, 0.3);
-          text-transform: uppercase; letter-spacing: 1px;
+          font-family: var(--font-ui);
+          font-size: 0.6rem; font-weight: 500; color: rgba(255, 255, 255, 0.3);
+          text-transform: uppercase; letter-spacing: 0.16em;
           margin: 0 0 12px 16px;
         }
 

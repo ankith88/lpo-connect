@@ -227,7 +227,6 @@ const ServiceArea: React.FC = () => {
           width: 100%;
           overflow: hidden;
           background: #f0f7f4;
-          font-family: 'Inter', system-ui, sans-serif;
           color: var(--mailplus-teal);
         }
 
@@ -292,17 +291,19 @@ const ServiceArea: React.FC = () => {
           color: white;
           padding: 6px 12px;
           border-radius: 20px;
-          font-size: 0.65rem;
-          font-weight: 800;
-          letter-spacing: 1px;
+          font-family: var(--font-ui);
+          font-size: 0.6rem;
+          font-weight: 500;
+          letter-spacing: 0.16em;
           margin-bottom: 20px;
         }
 
         .side-header h1 {
+          font-family: var(--font-headings);
           font-size: 2.2rem;
-          font-weight: 800;
+          font-weight: 400;
           margin-bottom: 12px;
-          letter-spacing: -0.5px;
+          letter-spacing: -0.025em;
         }
 
         .side-header p {
@@ -372,8 +373,9 @@ const ServiceArea: React.FC = () => {
         }
 
         .card-info h3 {
+          font-family: var(--font-headings);
           font-size: 1.15rem;
-          font-weight: 800;
+          font-weight: 500;
           margin-bottom: 8px;
         }
 
@@ -389,19 +391,22 @@ const ServiceArea: React.FC = () => {
         }
 
         .postcode-tag {
-          font-size: 0.75rem;
-          font-weight: 700;
+          font-family: var(--font-ui);
+          font-size: 0.7rem;
+          font-weight: 500;
           color: var(--mailplus-teal);
           background: #e9f2ee;
           padding: 2px 8px;
           border-radius: 6px;
+          letter-spacing: 0.05em;
         }
 
         .active-badge {
-          font-size: 0.65rem;
-          font-weight: 800;
+          font-family: var(--font-ui);
+          font-size: 0.6rem;
+          font-weight: 500;
           color: #2ecc71;
-          letter-spacing: 0.5px;
+          letter-spacing: 0.16em;
         }
 
         .empty-state {

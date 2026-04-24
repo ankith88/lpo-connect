@@ -263,8 +263,8 @@ const Reports: React.FC = () => {
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
         .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-size: 2.2rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; letter-spacing: -1px; }
-        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 500; }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
 
         .date-range-glass {
           display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.7);
@@ -285,16 +285,16 @@ const Reports: React.FC = () => {
         .stat-icon-wrapper.purple { background: #f3e5f5; color: #8e24aa; }
         .stat-icon-wrapper.orange { background: #fff3e0; color: #fb8c00; }
 
-        .stat-content label { display: block; font-size: 0.75rem; font-weight: 800; color: #8fa6a0; text-transform: uppercase; margin-bottom: 4px; }
+        .stat-content label { display: block; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.16em; }
         .stat-value-row { display: flex; align-items: baseline; gap: 8px; }
-        .stat-value-row h3 { margin: 0; font-size: 1.5rem; font-weight: 900; color: var(--mailplus-teal); }
+        .stat-value-row h3 { margin: 0; font-family: var(--font-ui); font-size: 1.5rem; font-weight: 500; color: var(--mailplus-teal); }
         .trend { font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; gap: 2px; padding: 2px 6px; border-radius: 6px; }
         .trend.up { background: #e2f9ec; color: #27ae60; }
         .trend.down { background: #fff1f1; color: #ff4757; }
 
         .charts-row { display: grid; grid-template-columns: 1fr 350px; gap: 24px; }
         .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .chart-header h3 { margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--mailplus-teal); }
+        .chart-header h3 { margin: 0; font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--mailplus-teal); }
         
         .chart-legend { display: flex; gap: 16px; font-size: 0.8rem; font-weight: 700; color: #5b7971; }
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -302,7 +302,7 @@ const Reports: React.FC = () => {
         
         .viz-placeholder { height: 240px; position: relative; }
         .trend-viz { width: 100%; height: 180px; }
-        .x-axis { display: flex; justify-content: space-between; padding-top: 12px; color: #8fa6a0; font-size: 0.7rem; font-weight: 700; }
+        .x-axis { display: flex; justify-content: space-between; padding-top: 12px; color: #8fa6a0; font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; }
 
         .viz-placeholder.pie { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
         .pie-wrapper { position: relative; width: 150px; height: 150px; margin-bottom: 24px; }
