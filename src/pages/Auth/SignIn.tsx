@@ -32,7 +32,7 @@ const SignIn: React.FC = () => {
       if (loginMethod === 'email') {
         await signInWithEmailAndPassword(auth, identifier, password);
       } else {
-        const email = identifier.includes('@') ? identifier : `${identifier}@lpo-hub.com`;
+        const email = identifier.includes('@') ? identifier : `${identifier}@lpo.plus`;
         await signInWithEmailAndPassword(auth, email, password);
       }
       console.log("Sign in successful! Redirecting...");
@@ -50,7 +50,8 @@ const SignIn: React.FC = () => {
       <div className="signin-container">
         <div className="signin-card">
           <div className="logo-section">
-            <h1 className="brand-logo">mail<span>plus</span></h1>
+            <h1 className="brand-logo">LPO<span>.PLUS</span></h1>
+            <p className="powered-by">Powered by MailPlus</p>
             <p className="welcome-text">Connected Logistics for LPOs</p>
           </div>
 
@@ -156,10 +157,18 @@ const SignIn: React.FC = () => {
           color: var(--mailplus-yellow);
         }
 
+        .powered-by {
+          font-size: 0.9rem;
+          font-weight: 600;
+          color: #888;
+          margin-top: -10px;
+          margin-bottom: 12px;
+        }
+
         .welcome-text {
           color: #666;
           font-weight: 500;
-          margin-top: 8px;
+          margin-top: 4px;
         }
 
         .method-toggle {

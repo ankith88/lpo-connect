@@ -39,6 +39,16 @@ export const formatDateForInput = (date: Date): string => {
 };
 
 /**
+ * Parses a YYYY-MM-DD string into a local Date object.
+ * This avoids timezone shifts compared to new Date(dateString).
+ */
+export const parseLocalDate = (dateStr: string): Date => {
+  if (!dateStr) return new Date();
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+/**
  * Returns the short day name (e.g. 'Mon', 'Tue').
  */
 export const getDayName = (date: Date): string => {

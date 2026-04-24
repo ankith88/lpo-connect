@@ -11,7 +11,8 @@ import {
   TrendingUp, 
   HelpCircle, 
   LogOut,
-  Mail
+  Mail,
+  BarChart3
 } from 'lucide-react';
 import { auth } from '../firebase/config';
 
@@ -25,6 +26,7 @@ const Sidebar: React.FC = () => {
     { name: 'Customer Hub', icon: Users, path: '/customers' },
     { name: 'Weekly Invoices', icon: FileText, path: '/invoices' },
     { name: 'Growth Leads', icon: TrendingUp, path: '/leads' },
+    { name: 'Operational Insights', icon: BarChart3, path: '/reports' },
   ];
 
   const handleLogout = async () => {
@@ -38,10 +40,8 @@ const Sidebar: React.FC = () => {
 
   return (
     <aside className="sidebar-premium">
-      {/* Background blobs for glass effect */}
+      {/* Background decoration removed for clean dark look */}
       <div className="sidebar-mesh">
-        <div className="mesh-blob blob-1"></div>
-        <div className="mesh-blob blob-2"></div>
       </div>
 
       <div className="sidebar-content">
@@ -51,8 +51,8 @@ const Sidebar: React.FC = () => {
               <Mail size={24} color="white" />
             </div>
             <div className="brand-text">
-              <span className="brand-main">MailPlus</span>
-              <span className="brand-sub">LPO HUB</span>
+              <span className="brand-main">LPO<span>.PLUS</span></span>
+              <span className="brand-sub">Powered by MailPlus</span>
             </div>
           </div>
           
@@ -117,10 +117,8 @@ const Sidebar: React.FC = () => {
           left: 0;
           top: 0;
           z-index: 1000;
-          background: rgba(255, 255, 255, 0.4);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border-right: 1px solid rgba(255, 255, 255, 0.3);
+          background: #103d39;
+          border-right: 1px solid rgba(255, 255, 255, 0.1);
           overflow: hidden;
         }
 
@@ -178,23 +176,26 @@ const Sidebar: React.FC = () => {
           display: flex; flex-direction: column;
         }
         .brand-main {
-          font-weight: 900; font-size: 1.2rem; color: var(--mailplus-teal);
-          letter-spacing: -0.5px; line-height: 1;
+          font-weight: 900; font-size: 1.2rem; color: #ffffff;
+          letter-spacing: -0.2px; line-height: 1;
+        }
+        .brand-main span {
+          color: var(--mailplus-yellow);
         }
         .brand-sub {
-          font-size: 0.65rem; font-weight: 800; color: #5b7971;
-          letter-spacing: 1px; margin-top: 2px;
+          font-size: 0.6rem; font-weight: 600; color: rgba(255, 255, 255, 0.6);
+          letter-spacing: 0.2px; margin-top: 2px;
+          opacity: 0.9;
         }
 
         .user-profile-glass {
-          background: rgba(255, 255, 255, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.6);
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           padding: 16px;
           border-radius: 20px;
           display: flex;
           align-items: center;
           gap: 12px;
-          box-shadow: 0 8px 32px rgba(0, 65, 65, 0.05);
         }
 
         .avatar-ring {
@@ -209,8 +210,8 @@ const Sidebar: React.FC = () => {
           font-weight: 900; font-size: 0.75rem; color: var(--mailplus-teal);
         }
 
-        .user-name { font-weight: 800; font-size: 0.85rem; color: var(--mailplus-teal); margin: 0; }
-        .lpo-name { font-size: 0.65rem; font-weight: 600; color: #8fa6a0; margin: 0; }
+        .user-name { font-weight: 800; font-size: 0.85rem; color: #ffffff; margin: 0; }
+        .lpo-name { font-size: 0.65rem; font-weight: 600; color: rgba(255, 255, 255, 0.5); margin: 0; }
 
         .sidebar-nav {
           flex: 1;
@@ -222,7 +223,7 @@ const Sidebar: React.FC = () => {
           margin-bottom: 24px;
         }
         .group-title {
-          font-size: 0.65rem; font-weight: 800; color: #8fa6a0;
+          font-size: 0.65rem; font-weight: 800; color: rgba(255, 255, 255, 0.3);
           text-transform: uppercase; letter-spacing: 1px;
           margin: 0 0 12px 16px;
         }
@@ -231,7 +232,7 @@ const Sidebar: React.FC = () => {
           display: flex; align-items: center; gap: 12px;
           padding: 12px 16px;
           text-decoration: none;
-          color: #5b7971;
+          color: rgba(255, 255, 255, 0.7);
           font-size: 0.85rem; font-weight: 700;
           border-radius: 14px;
           margin-bottom: 4px;
@@ -240,28 +241,28 @@ const Sidebar: React.FC = () => {
         }
 
         .nav-item-glass:hover {
-          background: rgba(255, 255, 255, 0.6);
-          color: var(--mailplus-teal);
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
           transform: translateX(4px);
         }
 
         .nav-item-glass.active {
-          background: var(--mailplus-teal);
-          color: white;
-          box-shadow: 0 8px 16px rgba(0, 65, 65, 0.15);
+          background: rgba(255, 255, 255, 0.15);
+          color: var(--mailplus-yellow);
+          border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .nav-item-glass.active .nav-icon { color: white; }
+        .nav-item-glass.active .nav-icon { color: var(--mailplus-yellow); }
 
         .sidebar-footer {
           padding: 16px;
-          border-top: 1px solid rgba(255, 255, 255, 0.6);
-          background: rgba(255, 255, 255, 0.3);
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(0, 0, 0, 0.1);
         }
 
         .logout-btn {
           width: 100%; border: none; background: transparent; cursor: pointer;
         }
-        .logout-btn:hover { background: #fff1f1; color: #c53030; border-color: #ffdada; }
+        .logout-btn:hover { background: rgba(229, 62, 62, 0.2); color: #feb2b2; }
 
         @media (max-width: 1024px) {
           .sidebar-premium { display: none; }

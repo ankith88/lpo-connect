@@ -45,6 +45,8 @@ interface JobData {
     coordinates?: { lat: number, lng: number };
   };
   service: ServiceType;
+  serviceInternalId?: string;
+  serviceRate?: string;
   billing: BillingOption;
   date: string;
   jobType: 'one-off' | 'scheduled';
@@ -97,6 +99,7 @@ const NewJobForm: React.FC = () => {
 
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
+  const [availableServices, setAvailableServices] = useState<{id: ServiceType, internalId: string, rate: string}[]>([]);
 
   useEffect(() => {
     const draft = localStorage.getItem('rebook_draft');
@@ -141,7 +144,87 @@ const NewJobForm: React.FC = () => {
         console.error("Failed to parse edit draft", e);
       }
     }
-  }, []);
+  }, [lpo]);
+
+  const selectCustomer = (c: any) => {
+    const displayName = c.companyName || c.company_name || '';
+    const parts = displayName.split(' ');
+    
+    // Extract service metadata
+    const services: {id: ServiceType, internalId: string, rate: string}[] = [];
+    
+    if (c.lpoServiceAMPOInternalID && c.lpoServiceAMPOInternalID !== 'null') {
+      services.push({ id: 'lpo-to-site', internalId: c.lpoServiceAMPOInternalID, rate: c.lpoServiceAMPORate || '10.00' });
+    }
+    
+    if (c.lpoServicePMPOInternalID && c.lpoServicePMPOInternalID !== 'null') {
+      services.push({ id: 'site-to-lpo', internalId: c.lpoServicePMPOInternalID, rate: c.lpoServicePMPORate || '10.00' });
+    }
+    
+    if (c.lpoServiceAMPOPMPOInternalID && c.lpoServiceAMPOPMPOInternalID !== 'null') {
+      services.push({ id: 'round-trip', internalId: c.lpoServiceAMPOPMPOInternalID, rate: c.lpoServiceAMPOPMPORate || '20.00' });
+    }
+
+    setAvailableServices(services);
+    
+    // Determine default service
+    let defaultService = formData.service;
+    let defaultId = '';
+    let defaultRate = '';
+    
+    if (services.length > 0) {
+      const match = services.find(s => s.id === formData.service);
+      if (match) {
+        defaultId = match.internalId;
+        defaultRate = match.rate;
+      } else {
+        defaultService = services[0].id;
+        defaultId = services[0].internalId;
+        defaultRate = services[0].rate;
+      }
+    }
+
+    setFormData({
+      ...formData,
+      customer: {
+        company: displayName,
+        firstName: c.first_name || parts[0] || '',
+        lastName: c.last_name || (parts.length > 1 ? parts.slice(1).join(' ') : ''),
+        email: c.customerEmail || c.email || '',
+        phone: c.customerPhone || c.phone || '',
+        address: c.address1 || c.address?.street || '',
+        suburb: c.city || c.address?.suburb || '',
+        state: c.state || c.address?.state || '',
+        postcode: c.zip || c.address?.postcode || '',
+        instructions: c.instructions || '',
+        netsuiteId: c.companyId || c.customerInternalId || undefined,
+        coordinates: c.coordinates || undefined
+      },
+      service: defaultService,
+      serviceInternalId: defaultId,
+      serviceRate: defaultRate
+    });
+    setIsExistingCustomer(true);
+    setFormData(prev => ({
+      ...prev,
+      billing: (c.billing || prev.billing) as BillingOption,
+      jobType: (c.jobtype || c.jobType || prev.jobType) as 'one-off' | 'scheduled'
+    }));
+    setCustomerStatus(c.status || "Active");
+    setSearchResults([]);
+  };
+
+  // Handle available services for new customers (Allow all, but no internal IDs)
+  useEffect(() => {
+    if (!isExistingCustomer) {
+      const services: {id: ServiceType, internalId: string, rate: string}[] = [
+        { id: 'site-to-lpo', internalId: '', rate: '10.00' },
+        { id: 'lpo-to-site', internalId: '', rate: '10.00' },
+        { id: 'round-trip', internalId: '', rate: '20.00' }
+      ];
+      setAvailableServices(services);
+    }
+  }, [isExistingCustomer]);
 
   useEffect(() => {
     if (lpo) {
@@ -149,7 +232,18 @@ const NewJobForm: React.FC = () => {
         try {
           const q = query(collection(db, `lpo/${lpo.id}/customers`));
           const snapshot = await getDocs(q);
-          setAllCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          const customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setAllCustomers(customers);
+
+          // Handle pre-fill from URL params (e.g. from Customer Hub)
+          const params = new URLSearchParams(window.location.search);
+          const customerId = params.get('customerId');
+          if (customerId) {
+            const customer = customers.find(c => c.id === customerId);
+            if (customer) {
+              selectCustomer(customer);
+            }
+          }
         } catch (error) {
           console.error("Error fetching customers for cache:", error);
         }
@@ -173,36 +267,7 @@ const NewJobForm: React.FC = () => {
     }
   }, [formData.customer.company, allCustomers]);
 
-  const selectCustomer = (c: any) => {
-    const displayName = c.companyName || c.company_name || '';
-    const parts = displayName.split(' ');
-    
-    setFormData({
-      ...formData,
-      customer: {
-        company: displayName,
-        firstName: c.first_name || parts[0] || '',
-        lastName: c.last_name || (parts.length > 1 ? parts.slice(1).join(' ') : ''),
-        email: c.customerEmail || c.email || '',
-        phone: c.customerPhone || c.phone || '',
-        address: c.address1 || c.address?.street || '',
-        suburb: c.city || c.address?.suburb || '',
-        state: c.state || c.address?.state || '',
-        postcode: c.zip || c.address?.postcode || '',
-        instructions: c.instructions || '',
-        netsuiteId: c.companyId || c.customerInternalId || undefined,
-        coordinates: c.coordinates || undefined
-      }
-    });
-    setIsExistingCustomer(true);
-    setFormData(prev => ({
-      ...prev,
-      billing: (c.billing || prev.billing) as BillingOption,
-      jobType: (c.jobtype || c.jobType || prev.jobType) as 'one-off' | 'scheduled'
-    }));
-    setCustomerStatus(c.status || "Active");
-    setSearchResults([]);
-  };
+
 
   const handleNext = () => {
     if (step === 1) {
@@ -364,20 +429,20 @@ const NewJobForm: React.FC = () => {
 
     if (data.service === 'site-to-lpo') {
       stops.push(
-        { type: 'pickup', label: 'Pickup Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 1, status: 'pending' },
-        { type: 'delivery', label: 'Delivery LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 2, status: 'pending' }
+        { type: 'pickup', label: 'Pickup Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 1, status: 'pending', appJobId: null },
+        { type: 'delivery', label: 'Delivery LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 2, status: 'pending', appJobId: null }
       );
     } else if (data.service === 'lpo-to-site') {
       stops.push(
-        { type: 'pickup', label: 'Pickup LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 1, status: 'pending' },
-        { type: 'delivery', label: 'Delivery Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 2, status: 'pending' }
+        { type: 'pickup', label: 'Pickup LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 1, status: 'pending', appJobId: null },
+        { type: 'delivery', label: 'Delivery Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 2, status: 'pending', appJobId: null }
       );
     } else if (data.service === 'round-trip') {
       stops.push(
-        { type: 'pickup', label: 'Pickup LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 1, status: 'pending' },
-        { type: 'delivery', label: 'Delivery Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 2, status: 'pending' },
-        { type: 'pickup', label: 'Pickup Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 3, status: 'pending' },
-        { type: 'delivery', label: 'Delivery LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 4, status: 'pending' }
+        { type: 'pickup', label: 'Pickup LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 1, status: 'pending', appJobId: null },
+        { type: 'delivery', label: 'Delivery Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 2, status: 'pending', appJobId: null },
+        { type: 'pickup', label: 'Pickup Site', locationName: customerLoc.name, address: customerLoc.address, suburb: customerLoc.suburb, state: customerLoc.state, postcode: customerLoc.postcode, lat: customerLoc.lat, lng: customerLoc.lng, sequence: 3, status: 'pending', appJobId: null },
+        { type: 'delivery', label: 'Delivery LPO', locationName: lpoLoc.name, address: lpoLoc.address, suburb: lpoLoc.suburb, state: lpoLoc.state, postcode: lpoLoc.postcode, lat: lpoLoc.lat, lng: lpoLoc.lng, sequence: 4, status: 'pending', appJobId: null }
       );
     }
     return stops;
@@ -423,7 +488,8 @@ const NewJobForm: React.FC = () => {
           postcode: formData.customer.postcode,
           lat: (formData.customer.coordinates?.lat || "").toString(),
           lng: (formData.customer.coordinates?.lng || "").toString(),
-          service: formData.service,
+          service_name: formData.service || "null",
+          service_internal_id: formData.serviceInternalId || "null",
           billing: formData.billing,
           jobType: formData.jobType,
           startDate: formData.date,
@@ -469,7 +535,8 @@ const NewJobForm: React.FC = () => {
           ...formData,
           stops,
           isExistingCustomer,
-          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null
+          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
+          appJobGroupId: null
         }));
 
         await updateDoc(doc(db, 'requests', requestId), {
@@ -492,6 +559,7 @@ const NewJobForm: React.FC = () => {
 
         const requestPayload = {
           ...cleanData,
+          appJobGroupId: null,
           createdAt: serverTimestamp()
         };
 
@@ -857,18 +925,35 @@ const NewJobForm: React.FC = () => {
                         { id: 'site-to-lpo', label: 'Site ➔ LPO', icon: Truck, price: '$10.00' },
                         { id: 'lpo-to-site', label: 'LPO ➔ Site', icon: Truck, price: '$10.00', flip: true },
                         { id: 'round-trip', label: 'Round Trip', icon: Repeat, price: '$20.00' }
-                      ].map(srv => (
-                         <button 
-                           key={srv.id}
-                           className={`service-btn glass ${formData.service === srv.id ? 'active' : ''}`}
-                           onClick={() => setFormData({...formData, service: srv.id as ServiceType})}
-                         >
-                           <srv.icon size={28} style={srv.flip ? { transform: 'scaleX(-1)' } : {}} />
-                           <span className="srv-label">{srv.label}</span>
-                           <strong className="srv-price">{srv.price}</strong>
-                         </button>
-                      ))}
+                      ].filter(srv => availableServices.some(as => as.id === srv.id))
+                       .map(srv => {
+                         const metadata = availableServices.find(as => as.id === srv.id);
+                         const displayPrice = metadata ? `$${parseFloat(metadata.rate).toFixed(2)}` : srv.price;
+                         
+                         return (
+                           <button 
+                             key={srv.id}
+                             className={`service-btn glass ${formData.service === srv.id ? 'active' : ''}`}
+                             onClick={() => setFormData({
+                               ...formData, 
+                               service: srv.id as ServiceType,
+                               serviceInternalId: metadata?.internalId,
+                               serviceRate: metadata?.rate
+                             })}
+                           >
+                             <srv.icon size={28} style={srv.flip ? { transform: 'scaleX(-1)' } : {}} />
+                             <span className="srv-label">{srv.label}</span>
+                             <strong className="srv-price">{displayPrice}</strong>
+                           </button>
+                         );
+                       })}
                     </div>
+                    {availableServices.length === 0 && (
+                      <div className="error-pill glass">
+                        <Info size={16} />
+                        No services are currently configured for this customer in NetSuite.
+                      </div>
+                    )}
                   </div>
 
                   <div className="date-time-row">
@@ -1010,7 +1095,7 @@ const NewJobForm: React.FC = () => {
                       )}
                       <div className="v-row total">
                         <span className="v-label">TOTAL PRICE</span>
-                        <span className="v-val">{formData.service === 'round-trip' ? '$20.00' : '$10.00'}</span>
+                        <span className="v-val">{formData.serviceRate ? `$${parseFloat(formData.serviceRate).toFixed(2)}` : (formData.service === 'round-trip' ? '$20.00' : '$10.00')}</span>
                       </div>
                     </div>
                     <div className="voucher-footer">

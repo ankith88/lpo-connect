@@ -18,12 +18,13 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  MoreHorizontal
+  MoreHorizontal,
+  CheckCircle2
 } from 'lucide-react';
-import { collection, query, where, getDocs, deleteDoc, doc, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
-import { getDayName } from '../../utils/scheduling';
+import { getDayName, formatDateForInput, parseLocalDate } from '../../utils/scheduling';
 
 const Dashboard: React.FC = () => {
   const { lpo } = useLpo();
@@ -101,11 +102,12 @@ const Dashboard: React.FC = () => {
     console.log(`Triggering NetSuite-ready ${type} for job ${job.id}`);
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = formatDateForInput(new Date());
 
   const filteredJobs = (activeTab === 'pending' || activeTab === 'awaiting-activation' ? requests : jobs).filter(j => {
     const matchesSearch = j.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         j.customer.address.toLowerCase().includes(searchTerm.toLowerCase());
+                         j.customer.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         j.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesService = serviceFilter === 'all' || j.service === serviceFilter;
     
     const todayDayName = getDayName(new Date());
@@ -173,7 +175,7 @@ const Dashboard: React.FC = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `jobs_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `jobs_export_${formatDateForInput(new Date())}.csv`);
     document.body.appendChild(link);
     link.click();
   };
@@ -196,6 +198,45 @@ const Dashboard: React.FC = () => {
       setRequests(requests.filter(r => r.id !== id));
     }
   };
+
+  const handleUpdateStopStatus = async (jobId: string, stopIndex: number, newStatus: string) => {
+    const job = (activeTab === 'pending' || activeTab === 'awaiting-activation' ? requests : jobs).find(j => j.id === jobId);
+    if (!job) return;
+
+    const updatedStops = [...(job.stops || [])];
+    updatedStops[stopIndex] = { ...updatedStops[stopIndex], status: newStatus };
+
+    // Calculate overall job status
+    const allCompleted = updatedStops.every(s => s.status === 'completed');
+    const anyCompleted = updatedStops.some(s => s.status === 'completed');
+    
+    let newJobStatus = job.status;
+    if (allCompleted) {
+      newJobStatus = 'completed';
+    } else if (anyCompleted) {
+      newJobStatus = 'in-progress';
+    }
+
+    try {
+      const collectionName = (activeTab === 'pending' || activeTab === 'awaiting-activation') ? 'requests' : 'jobs';
+      await updateDoc(doc(db, collectionName, jobId), {
+        stops: updatedStops,
+        status: newJobStatus,
+        updatedAt: new Date()
+      });
+      
+      if (collectionName === 'requests') {
+        setRequests(requests.map(r => r.id === jobId ? { ...r, stops: updatedStops, status: newJobStatus } : r));
+      } else {
+        setJobs(jobs.map(j => j.id === jobId ? { ...j, stops: updatedStops, status: newJobStatus } : j));
+      }
+    } catch (err) {
+      console.error("Error updating stop status:", err);
+      alert("Failed to update status.");
+    }
+  };
+
+
 
   const handleEditRequest = (request: any) => {
     localStorage.setItem('edit_request_draft', JSON.stringify(request));
@@ -361,7 +402,7 @@ const Dashboard: React.FC = () => {
                            <div className="separator-line"></div>
                            <div className="date-badge glass">
                               <Calendar size={14} />
-                              <span>{new Date(group.date).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
+                              <span>{parseLocalDate(group.date).toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' })}</span>
                            </div>
                            <div className="separator-line"></div>
                         </div>
@@ -406,7 +447,18 @@ const Dashboard: React.FC = () => {
                                             <div className="stop-loc-name">{stop.locationName}</div>
                                             <div className="stop-addr">{stop.address}, {stop.suburb}</div>
                                           </div>
-                                          <div className="stop-status">{stop.status}</div>
+                                          <div className="stop-action-group">
+                                            <div className={`stop-status-pill ${stop.status}`}>{stop.status}</div>
+                                            {stop.status !== 'completed' && (activeTab !== 'pending' && activeTab !== 'awaiting-activation') && (
+                                              <button 
+                                                className="btn-complete-stop"
+                                                onClick={() => handleUpdateStopStatus(job.id, sIdx, 'completed')}
+                                                title="Mark Stop Completed"
+                                              >
+                                                <CheckCircle2 size={16} />
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
                                       ))}
                                       {(!job.stops || job.stops.length === 0) && (
@@ -426,7 +478,7 @@ const Dashboard: React.FC = () => {
                                       <RotateCcw size={12} />
                                       <span>{job.billing}</span>
                                    </div>
-                                   <div className="job-ref">REF: {job.id.slice(0, 6)}</div>
+                                    <div className="job-ref">REF: {job.id}</div>
                                 </div>
 
                                  <div className="card-actions">
@@ -462,7 +514,9 @@ const Dashboard: React.FC = () => {
                                              ) : (
                                                <>
                                                  <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
-                                                 <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> Cancel</button>
+                                                 {job.status !== 'accepted' && job.status !== 'rejected' && (
+                                                   <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> Cancel</button>
+                                                 )}
                                                </>
                                              )}
                                           </div>
@@ -619,6 +673,10 @@ const Dashboard: React.FC = () => {
           text-transform: uppercase; background: rgba(0, 65, 65, 0.05); color: #5b7971;
         }
         .status-tag.status-scheduled { background: #e2f9ec; color: #2ecc71; }
+        .status-tag.status-accepted { background: #e2f9ec; color: #2ecc71; }
+        .status-tag.status-in-progress { background: #e1f5fe; color: #03a9f4; }
+        .status-tag.status-completed { background: #004141; color: white; }
+        .status-tag.status-rejected { background: #ffebee; color: #f44336; }
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: #8fa6a0; text-transform: capitalize; }
@@ -748,9 +806,42 @@ const Dashboard: React.FC = () => {
         .stop-loc-name { font-weight: 800; color: var(--mailplus-teal); font-size: 0.9rem; }
         .stop-addr { font-size: 0.75rem; color: #5b7971; font-weight: 600; margin-top: 2px; }
         
-        .stop-status {
-          font-size: 0.6rem; font-weight: 800; color: #8fa6a0; text-transform: uppercase;
-          background: rgba(0,0,0,0.03); padding: 4px 8px; border-radius: 6px; align-self: flex-start;
+        .stop-action-group {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          align-self: flex-start;
+        }
+
+        .stop-status-pill {
+          font-size: 0.6rem;
+          font-weight: 800;
+          color: #8fa6a0;
+          text-transform: uppercase;
+          background: rgba(0,0,0,0.03);
+          padding: 4px 8px;
+          border-radius: 6px;
+        }
+        
+        .stop-status-pill.completed {
+          background: #e2f9ec;
+          color: #2ecc71;
+        }
+
+        .btn-complete-stop {
+          background: transparent;
+          border: none;
+          color: #2ecc71;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          padding: 4px;
+        }
+        .btn-complete-stop:hover {
+          transform: scale(1.2);
+          color: #27ae60;
         }
 
         .legacy-hint { padding: 20px; text-align: center; color: #8fa6a0; font-size: 0.8rem; font-weight: 600; font-style: italic; }

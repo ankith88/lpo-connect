@@ -139,6 +139,24 @@ const CustomerHub: React.FC = () => {
                              <span>{(customer.state || customer.address?.state || '')} {(customer.zip || customer.address?.postcode || '')}</span>
                           </div>
                       </div>
+ 
+                       <div className="services-setup-premium">
+                          <div className="setup-header">
+                             <Rocket size={12} />
+                             <span>SERVICES SETUP</span>
+                          </div>
+                          <div className="setup-tags">
+                             <span className={`service-tag-pill ${customer.lpoServiceAMPOInternalID && customer.lpoServiceAMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
+                               LPO ➔ Site
+                             </span>
+                             <span className={`service-tag-pill ${customer.lpoServicePMPOInternalID && customer.lpoServicePMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
+                               Site ➔ LPO
+                             </span>
+                             <span className={`service-tag-pill ${customer.lpoServiceAMPOPMPOInternalID && customer.lpoServiceAMPOPMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
+                               Round Trip
+                             </span>
+                          </div>
+                       </div>
 
                       <div className="service-details-premium">
                          <div className="detail-tag">
@@ -232,6 +250,15 @@ const CustomerHub: React.FC = () => {
         .detail-tag { display: flex; align-items: center; gap: 6px; background: #f8faf9; padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; color: #5b7971; }
         .detail-tag svg { color: var(--mailplus-teal); }
         .detail-tag strong { color: var(--mailplus-teal); }
+ 
+        .services-setup-premium { padding: 0 24px 16px; }
+        .setup-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+        .setup-header span { font-size: 0.65rem; font-weight: 800; color: #8fa6a0; letter-spacing: 0.5px; }
+        .setup-header svg { color: var(--mailplus-teal); opacity: 0.6; }
+        .setup-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+        .service-tag-pill { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; border: 1px solid transparent; }
+        .service-tag-pill.enabled { background: #e8f4ef; color: var(--mailplus-teal); border-color: rgba(0, 65, 65, 0.1); }
+        .service-tag-pill.disabled { background: #f5f5f5; color: #b0b0b0; border-color: #eee; text-decoration: line-through; opacity: 0.6; }
 
         .card-footer { display: flex; justify-content: space-between; align-items: flex-end; }
         .stats { display: flex; gap: 20px; }

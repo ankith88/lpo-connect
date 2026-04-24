@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
+import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
+import { requestNotificationPermission, saveTokenToFirestore, onForegroundMessage } from '../../utils/notifications';
 
 const RequestPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -66,6 +68,25 @@ const RequestPage: React.FC = () => {
   }, [id]);
 
   useEffect(() => {
+    // Request notification permission and save token
+    const setupNotifications = async () => {
+      const token = await requestNotificationPermission();
+      if (token) {
+        if (isOperator && lpo?.id) {
+          // If operator is logged in, we save to user doc (handled in LpoContext usually, but here for safety)
+          // Actually, let's just save to current session
+          saveTokenToFirestore(token, 'operator', lpo.id); 
+        } else if (id) {
+          saveTokenToFirestore(token, 'customer', id);
+        }
+      }
+    };
+
+    setupNotifications();
+    onForegroundMessage();
+  }, [id, isOperator, lpo?.id]);
+
+  useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [request?.chat]);
 
@@ -95,48 +116,45 @@ const RequestPage: React.FC = () => {
     if (window.confirm("Accept this job request?")) {
       try {
         // 1. Create Job
-        await addDoc(collection(db, 'jobs'), {
+        const jobDocRef = await addDoc(collection(db, 'jobs'), {
           ...request,
           lpo_id: lpo.id,
-          status: 'scheduled',
+          status: 'accepted',
           createdAt: new Date(),
           originalRequestId: request.id
         });
 
-        // 2. Create/Update Customer in Hub (Only for NEW customers)
-        if (!request.isExistingCustomer) {
-          const customerData = {
-            companyName: request.customer.company || "",
-            address1: request.customer.address || "",
-            city: request.customer.suburb || "",
-            state: request.customer.state || "",
-            zip: request.customer.postcode || "",
-            customerEmail: request.customer.email || "",
-            customerPhone: request.customer.phone || "",
-            companyId: request.customer.netsuiteId || "",
-            lpoContactName: `${request.customer.firstName || ""} ${request.customer.lastName || ""}`.trim(),
-            franchiseeText: lpo.name || "",
-            instructions: request.customer.instructions || "",
-            lastJobDate: request.date || "",
-            billing: request.billing || "customer",
-            jobType: request.jobType || "one-off",
-            updatedAt: new Date()
-          };
+        // 1.5 Sync with NetSuite if same-day job
+        const today = formatDateForInput(new Date());
+        if (request.date === today) {
+          const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
+          
+          const params = new URLSearchParams({
+            job_id: jobDocRef.id,
+            billing: request.billing || "",
+            customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+            instructions: request.customer?.instructions || "",
+            job_type: request.jobType || "",
+            lpo_id: lpo.id,
+            request_id: request.id,
+            preferred_time: request.preferredTime || "",
+            service_name: request.service || "null",
+            service_internal_id: request.serviceInternalId || "null",
+            date: request.date || "null"
+          });
 
-          // For simplicity, we add/replace in customers subcollection
-          await addDoc(collection(db, `lpo/${lpo.id}/customers`), customerData);
+          fetch(`${NETSUITE_API}&${params.toString()}`)
+            .then(res => res.json())
+            .then(data => console.log("NetSuite Script 2529 Response:", data))
+            .catch(err => console.error("NetSuite Script 2529 Error:", err));
         }
 
-        // 3. Update Request Status
+        // 2. Update Request Status
         await updateDoc(doc(db, 'requests', request.id), {
           status: 'accepted'
         });
 
-        const successMsg = request.isExistingCustomer 
-          ? "Job accepted successfully!" 
-          : "Job accepted successfully! The new customer has been added to your Customer Hub.";
-        
-        alert(successMsg);
+        alert("Job accepted successfully!");
       } catch (err) {
         console.error("Error accepting job:", err);
         alert("Failed to accept job.");
@@ -208,7 +226,7 @@ const RequestPage: React.FC = () => {
            </div>
            
            {isOperator && (
-             <div className="operator-actions">
+             <div className="operator-actions desktop-only">
                <button className="btn-reject" onClick={handleReject}>
                  <XCircle size={18} /> DECLINE
                </button>
@@ -276,7 +294,7 @@ const RequestPage: React.FC = () => {
                     </div>
                     <div className="log-item">
                        <label>Date</label>
-                       <span>{new Date(request.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                       <span>{parseLocalDate(request.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                     </div>
                  </div>
                  {request.preferredTime && (
@@ -348,6 +366,25 @@ const RequestPage: React.FC = () => {
            </main>
         </div>
       </div>
+
+      {isOperator && (
+        <div className="mobile-operator-actions mobile-only">
+          <div className="actions-container">
+            <button className="btn-reject" onClick={handleReject}>
+              <XCircle size={18} /> DECLINE
+            </button>
+            <button className="btn-accept shadow-teal" onClick={handleAccept}>
+              <div className="accept-content">
+                <CheckCircle2 size={18} /> 
+                <span>ACCEPT JOB</span>
+              </div>
+              {request.preferredTime && (
+                <div className="btn-badge">Time Priority</div>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       <style>{`
         .request-page-premium { min-height: 100vh; background: #f0f7f4; padding: 40px 24px; position: relative; overflow-x: hidden; }
@@ -464,11 +501,41 @@ const RequestPage: React.FC = () => {
         .spinner { animation: spin 1s linear infinite; margin-bottom: 16px; width: 40px; height: 40px; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+        .mobile-only { display: none; }
+        .desktop-only { display: flex; }
+
         @media (max-width: 900px) {
+           .request-page-premium { padding: 24px 16px 120px; }
            .request-grid { grid-template-columns: 1fr; }
            .details-sidebar { order: 2; }
-           .chat-interface { order: 1; height: 500px; }
-           .request-header { flex-direction: column; align-items: flex-start; gap: 20px; }
+           .chat-interface { order: 1; height: 500px; margin-bottom: 32px; }
+           .request-header { flex-direction: column; align-items: flex-start; gap: 20px; margin-bottom: 32px; }
+           .header-main h1 { font-size: 1.5rem; }
+           
+           .desktop-only { display: none !important; }
+           .mobile-only { display: block; }
+
+           .mobile-operator-actions { 
+             position: fixed; 
+             bottom: 0; 
+             left: 0; 
+             right: 0; 
+             background: rgba(255, 255, 255, 0.9); 
+             backdrop-filter: blur(10px); 
+             padding: 20px; 
+             border-top: 1px solid rgba(0, 65, 65, 0.1); 
+             z-index: 1000; 
+             box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.05);
+           }
+           .actions-container { 
+             max-width: 600px; 
+             margin: 0 auto; 
+             display: flex; 
+             gap: 12px; 
+           }
+           .actions-container button { flex: 1; min-width: 0; }
+           .btn-accept { padding: 12px 16px; }
+           .btn-reject { padding: 12px 16px; justify-content: center; }
         }
       `}</style>
     </div>

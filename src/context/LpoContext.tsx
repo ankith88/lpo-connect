@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { requestNotificationPermission, saveTokenToFirestore } from '../utils/notifications';
 
 interface LpoMetadata {
   id: string;
@@ -47,6 +48,13 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const lpoDoc = await getDoc(doc(db, 'lpo', lpoId));
             if (lpoDoc.exists()) {
               setLpo({ id: lpoId, ...lpoDoc.data() } as LpoMetadata);
+              
+              // Request and save FCM token for operator
+              requestNotificationPermission().then(token => {
+                if (token) {
+                  saveTokenToFirestore(token, 'operator', user.uid);
+                }
+              });
             }
           }
         } catch (error) {

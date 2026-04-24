@@ -15,7 +15,7 @@ import {
 import { collection, query, where, getDocs, doc, orderBy, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
-import { getNextOccurrences } from '../../utils/scheduling';
+import { getNextOccurrences, parseLocalDate } from '../../utils/scheduling';
 
 const Schedules: React.FC = () => {
   const { lpo } = useLpo();
@@ -243,7 +243,7 @@ const Schedules: React.FC = () => {
                             <RotateCcw size={12} />
                             <span>{schedule.billing}</span>
                          </div>
-                         <div className="job-ref">REF: {schedule.id.slice(0, 6)}</div>
+                         <div className="job-ref">REF: {schedule.id}</div>
                       </div>
 
                        <div className="card-actions">
@@ -304,7 +304,7 @@ const Schedules: React.FC = () => {
                       <div key={date} className={`occ-row ${isSkipped ? 'skipped' : ''}`}>
                         <div className="occ-date">
                           <Calendar size={14} />
-                          <span>{new Date(date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                          <span>{parseLocalDate(date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                         </div>
                         <button 
                           className={`skip-toggle ${isSkipped ? 'active' : ''}`}

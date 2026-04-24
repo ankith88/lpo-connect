@@ -1,16 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
+// import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    /*
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'LPO Hub',
-        short_name: 'LPOHub',
+        name: 'LPO.PLUS',
+        short_name: 'LPOPLUS',
         description: 'LPO Courier Logistics Management',
         theme_color: '#004141',
         icons: [
@@ -27,5 +28,6 @@ export default defineConfig({
         ]
       }
     })
+    */
   ],
 })

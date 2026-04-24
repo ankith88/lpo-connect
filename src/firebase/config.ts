@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getMessaging } from 'firebase/messaging';
 
 // TODO: Replace with actual Firebase config from USER
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -19,5 +20,6 @@ export const googleMapsApiKey = "AIzaSyC3uWNpVJ7jFsGyWUKkzQGkDJGrW4yY-2o";
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, "lpoconnect");
+export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 export default app;
