@@ -52,11 +52,11 @@ const BottomNav: React.FC = () => {
           left: 0;
           right: 0;
           height: var(--bottom-nav-height);
-          background: white;
+          background: var(--paper);
           display: flex;
           justify-content: space-around;
           align-items: center;
-          border-top: 1px solid rgba(0,0,0,0.1);
+          border-top: 1px solid var(--cream-warm);
           z-index: 1000;
           padding-bottom: env(safe-area-inset-bottom);
         }
@@ -66,13 +66,13 @@ const BottomNav: React.FC = () => {
           flex-direction: column;
           align-items: center;
           gap: 4px;
-          color: #666;
+          color: var(--ink-soft);
           text-decoration: none;
           font-family: var(--font-ui);
           font-size: 0.6rem;
           font-weight: 500;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.16em;
           flex: 1;
           background: none;
           border: none;
@@ -80,7 +80,7 @@ const BottomNav: React.FC = () => {
         }
 
         .bottom-nav-item.active {
-          color: var(--mailplus-teal);
+          color: var(--ink);
         }
 
         .bottom-nav-item svg {

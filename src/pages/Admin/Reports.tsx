@@ -185,14 +185,14 @@ const Reports: React.FC = () => {
                   <svg viewBox="0 0 800 200" className="trend-viz">
                     <defs>
                       <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--mailplus-teal)" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="var(--mailplus-teal)" stopOpacity="0" />
+                        <stop offset="0%" stopColor="var(--ink)" stopOpacity="0.3" />
+                        <stop offset="100%" stopColor="var(--ink)" stopOpacity="0" />
                       </linearGradient>
                     </defs>
                     <path 
                       d="M0,150 Q100,140 200,160 T400,120 T600,100 T800,80" 
                       fill="none" 
-                      stroke="var(--mailplus-teal)" 
+                      stroke="var(--ink)" 
                       strokeWidth="4"
                       strokeLinecap="round"
                     />
@@ -201,7 +201,7 @@ const Reports: React.FC = () => {
                       fill="url(#chartGradient)"
                     />
                     {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
-                      <circle key={i} cx={i * 114} cy={150 - (i * 10)} r="5" fill="white" stroke="var(--mailplus-teal)" strokeWidth="2" />
+                      <circle key={i} cx={i * 114} cy={150 - (i * 10)} r="5" fill="white" stroke="var(--ink)" strokeWidth="2" />
                     ))}
                   </svg>
                   <div className="x-axis">
@@ -225,14 +225,14 @@ const Reports: React.FC = () => {
                       <circle 
                         cx="50" cy="50" r="40" 
                         fill="transparent" 
-                        stroke="var(--mailplus-teal)" 
+                        stroke="var(--ink)" 
                         strokeWidth="20" 
                         strokeDasharray={`${(stats.serviceSplit['lpo-to-site'] / (stats.totalJobs || 1)) * 251} 251`}
                         transform="rotate(-90 50 50)"
                       />
                     </svg>
                     <div className="pie-center">
-                      <PieChart size={20} color="#8fa6a0" />
+                      <PieChart size={20} color="var(--ink-soft)" />
                     </div>
                   </div>
                   <div className="pie-legend">
@@ -252,24 +252,24 @@ const Reports: React.FC = () => {
       </div>
 
       <style>{`
-        .reports-premium { min-height: 100vh; background: #f0f7f4; padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
+        .reports-premium { min-height: 100vh; background: var(--cream); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
-        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--mailplus-light-green); }
+        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }
-        .blob-2 { bottom: -100px; left: -100px; background: #c3e2d3; }
+        .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); }
 
         .content-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; }
 
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
-        .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
-        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
+        .header-icon { width: 44px; height: 44px; color: var(--ink); }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
         .date-range-glass {
           display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.7);
           backdrop-filter: blur(10px); padding: 12px 20px; border-radius: 16px;
-          border: 1px solid rgba(255,255,255,0.4); color: var(--mailplus-teal);
+          border: 1px solid rgba(255,255,255,0.4); color: var(--ink);
           font-weight: 700; font-size: 0.9rem; cursor: pointer;
         }
 
@@ -285,39 +285,39 @@ const Reports: React.FC = () => {
         .stat-icon-wrapper.purple { background: #f3e5f5; color: #8e24aa; }
         .stat-icon-wrapper.orange { background: #fff3e0; color: #fb8c00; }
 
-        .stat-content label { display: block; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.16em; }
+        .stat-content label { display: block; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; color: var(--ink-soft); text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.16em; }
         .stat-value-row { display: flex; align-items: baseline; gap: 8px; }
-        .stat-value-row h3 { margin: 0; font-family: var(--font-ui); font-size: 1.5rem; font-weight: 500; color: var(--mailplus-teal); }
+        .stat-value-row h3 { margin: 0; font-family: var(--font-ui); font-size: 1.5rem; font-weight: 500; color: var(--ink); }
         .trend { font-size: 0.7rem; font-weight: 800; display: flex; align-items: center; gap: 2px; padding: 2px 6px; border-radius: 6px; }
         .trend.up { background: #e2f9ec; color: #27ae60; }
         .trend.down { background: #fff1f1; color: #ff4757; }
 
         .charts-row { display: grid; grid-template-columns: 1fr 350px; gap: 24px; }
         .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .chart-header h3 { margin: 0; font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--mailplus-teal); }
+        .chart-header h3 { margin: 0; font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--ink); }
         
-        .chart-legend { display: flex; gap: 16px; font-size: 0.8rem; font-weight: 700; color: #5b7971; }
+        .chart-legend { display: flex; gap: 16px; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); }
         .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-        .dot.jobs { background: var(--mailplus-teal); }
+        .dot.jobs { background: var(--ink); }
         
         .viz-placeholder { height: 240px; position: relative; }
         .trend-viz { width: 100%; height: 180px; }
-        .x-axis { display: flex; justify-content: space-between; padding-top: 12px; color: #8fa6a0; font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; }
+        .x-axis { display: flex; justify-content: space-between; padding-top: 12px; color: var(--ink-soft); font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; }
 
         .viz-placeholder.pie { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; }
         .pie-wrapper { position: relative; width: 150px; height: 150px; margin-bottom: 24px; }
         .pie-center { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); }
         
         .pie-legend { width: 100%; display: flex; flex-direction: column; gap: 8px; }
-        .legend-item { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: 600; color: #5b7971; }
+        .legend-item { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; font-weight: 600; color: var(--ink-soft); }
         .legend-item .label { flex: 1; }
-        .legend-item .value { font-weight: 800; color: var(--mailplus-teal); }
+        .legend-item .value { font-weight: 800; color: var(--ink); }
         
-        .dot.lpo-to-site { background: var(--mailplus-teal); }
-        .dot.site-to-lpo { background: #4ecdc4; }
-        .dot.round-trip { background: #ff6b6b; }
+        .dot.lpo-to-site { background: var(--ink); }
+        .dot.site-to-lpo { background: var(--gold); }
+        .dot.round-trip { background: var(--ink-soft); }
 
-        .loading-state { padding: 100px; text-align: center; color: #8fa6a0; font-weight: 800; font-size: 1.2rem; }
+        .loading-state { padding: 100px; text-align: center; color: var(--ink-soft); font-weight: 800; font-size: 1.2rem; }
 
         @media (max-width: 1024px) {
           .stats-grid { grid-template-columns: repeat(2, 1fr); }

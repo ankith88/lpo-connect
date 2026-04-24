@@ -165,8 +165,8 @@ const ShareLink: React.FC = () => {
           position: relative;
           min-height: 100vh;
           overflow: hidden;
-          background: #f0f7f4;
-          color: var(--mailplus-teal);
+          background: var(--cream);
+          color: var(--ink);
         }
 
         /* Mesh Background */
@@ -191,14 +191,14 @@ const ShareLink: React.FC = () => {
         .blob-1 {
           top: -100px;
           right: -100px;
-          background: var(--mailplus-light-green);
+          background: var(--cream-warm);
           animation: transform 20s infinite alternate;
         }
 
         .blob-2 {
           bottom: -150px;
           left: -100px;
-          background: #c3e2d3;
+          background: var(--cream-warm);
           animation: transform 25s infinite alternate-reverse;
         }
 
@@ -207,8 +207,8 @@ const ShareLink: React.FC = () => {
           left: 30%;
           width: 300px;
           height: 300px;
-          background: var(--mailplus-yellow);
-          opacity: 0.3;
+          background: var(--gold);
+          opacity: 0.2;
         }
 
         @keyframes transform {
@@ -243,8 +243,8 @@ const ShareLink: React.FC = () => {
           align-items: center;
           justify-content: center;
           margin: 0 auto 24px;
-          color: var(--mailplus-teal);
-          box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+          color: var(--ink);
+          box-shadow: 0 10px 30px rgba(26, 61, 51, 0.05);
         }
 
         .page-header h1 {
@@ -257,7 +257,7 @@ const ShareLink: React.FC = () => {
 
         .page-header p {
           font-size: 1.25rem;
-          color: #5b7971;
+          color: var(--ink-soft);
           max-width: 600px;
           margin: 0 auto;
           line-height: 1.5;
@@ -266,7 +266,7 @@ const ShareLink: React.FC = () => {
         .page-header p span {
           display: block;
           font-weight: 600;
-          color: var(--mailplus-teal);
+          color: var(--ink);
           margin-top: 8px;
         }
 
@@ -284,13 +284,13 @@ const ShareLink: React.FC = () => {
           border: 1px solid rgba(255, 255, 255, 0.4);
           border-radius: 32px;
           padding: 40px;
-          box-shadow: 0 20px 50px rgba(0, 65, 65, 0.05);
+          box-shadow: 0 20px 50px rgba(26, 61, 51, 0.05);
           transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .glass-card:hover {
           transform: translateY(-5px);
-          box-shadow: 0 25px 60px rgba(0, 65, 65, 0.08);
+          box-shadow: 0 25px 60px rgba(26, 61, 51, 0.08);
         }
 
         .card-header {
@@ -302,7 +302,7 @@ const ShareLink: React.FC = () => {
         }
 
         .header-icon {
-          color: var(--mailplus-teal);
+          color: var(--ink);
           opacity: 0.6;
         }
 
@@ -335,7 +335,7 @@ const ShareLink: React.FC = () => {
           position: absolute;
           width: 80px;
           height: 80px;
-          border: 4px solid var(--mailplus-yellow);
+          border: 4px solid var(--gold);
           z-index: 1;
         }
 
@@ -375,14 +375,14 @@ const ShareLink: React.FC = () => {
         }
 
         .action-btn.primary {
-          background: var(--mailplus-teal);
+          background: var(--ink);
           color: white;
         }
 
         .action-btn.secondary {
           background: white;
-          color: var(--mailplus-teal);
-          box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+          color: var(--ink);
+          box-shadow: 0 4px 12px rgba(26, 61, 51, 0.05);
         }
 
         .action-btn:hover {
@@ -401,7 +401,7 @@ const ShareLink: React.FC = () => {
           font-weight: 500;
           margin-bottom: 12px;
           font-size: 0.7rem;
-          color: #5b7971;
+          color: var(--ink-soft);
           text-transform: uppercase;
           letter-spacing: 0.16em;
         }
@@ -414,7 +414,7 @@ const ShareLink: React.FC = () => {
           align-items: center;
           gap: 12px;
           box-shadow: inset 0 2px 5px rgba(0,0,0,0.02);
-          border: 1px solid #eee;
+          border: 1px solid var(--cream-warm);
         }
 
         .url-text {
@@ -427,8 +427,8 @@ const ShareLink: React.FC = () => {
         }
 
         .copy-pill-btn {
-          background: #f0f4f4;
-          color: var(--mailplus-teal);
+          background: var(--cream-warm);
+          color: var(--ink);
           padding: 10px 20px;
           border-radius: 14px;
           font-weight: 700;
@@ -450,7 +450,7 @@ const ShareLink: React.FC = () => {
           background: white;
           border-radius: 20px;
           padding: 8px;
-          border: 1px solid #eee;
+          border: 1px solid var(--cream-warm);
           gap: 8px;
         }
 
@@ -463,7 +463,7 @@ const ShareLink: React.FC = () => {
         }
 
         .sms-pill-btn {
-          background: var(--mailplus-teal);
+          background: var(--ink);
           color: white;
           padding: 12px 28px;
           border-radius: 16px;
@@ -474,14 +474,15 @@ const ShareLink: React.FC = () => {
 
         .helper-text {
           font-size: 0.8rem;
-          color: #8fa6a0;
+          color: var(--ink-soft);
+          opacity: 0.6;
           margin-top: 12px;
         }
 
         .billing-badge {
           display: inline-block;
-          background: var(--mailplus-yellow);
-          color: var(--mailplus-teal);
+          background: var(--gold);
+          color: white;
           padding: 10px 24px;
           border-radius: 12px;
           font-family: var(--font-ui);
@@ -521,7 +522,7 @@ const ShareLink: React.FC = () => {
           align-items: center;
           gap: 8px;
           text-decoration: none;
-          color: var(--mailplus-teal);
+          color: var(--ink);
           font-weight: 700;
           font-size: 0.95rem;
           transition: opacity 0.2s;

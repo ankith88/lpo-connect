@@ -226,8 +226,8 @@ const ServiceArea: React.FC = () => {
           height: 100vh;
           width: 100%;
           overflow: hidden;
-          background: #f0f7f4;
-          color: var(--mailplus-teal);
+          background: var(--cream);
+          color: var(--ink);
         }
 
         /* Mesh Background */
@@ -249,9 +249,9 @@ const ServiceArea: React.FC = () => {
           border-radius: 50%;
         }
 
-        .blob-1 { top: -100px; right: -100px; background: var(--mailplus-light-green); animation: pulse 20s infinite alternate; }
-        .blob-2 { bottom: -150px; left: -100px; background: #c3e2d3; animation: pulse 25s infinite alternate-reverse; }
-        .blob-3 { top: 40%; left: 30%; width: 400px; height: 400px; background: var(--mailplus-yellow); opacity: 0.2; }
+        .blob-1 { top: -100px; right: -100px; background: var(--cream-warm); animation: pulse 20s infinite alternate; }
+        .blob-2 { bottom: -150px; left: -100px; background: var(--cream-warm); animation: pulse 25s infinite alternate-reverse; }
+        .blob-3 { top: 40%; left: 30%; width: 400px; height: 400px; background: var(--gold); opacity: 0.2; }
 
         @keyframes pulse {
           0%, 100% { border-radius: 63% 37% 54% 46% / 55% 48% 52% 45%; }
@@ -276,7 +276,7 @@ const ServiceArea: React.FC = () => {
           display: flex;
           flex-direction: column;
           padding: 40px 0 0 0;
-          box-shadow: 20px 0 60px rgba(0, 65, 65, 0.05);
+          box-shadow: 20px 0 60px rgba(26, 61, 51, 0.05);
         }
 
         .side-header {
@@ -287,7 +287,7 @@ const ServiceArea: React.FC = () => {
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          background: var(--mailplus-teal);
+          background: var(--ink);
           color: white;
           padding: 6px 12px;
           border-radius: 20px;
@@ -307,7 +307,7 @@ const ServiceArea: React.FC = () => {
         }
 
         .side-header p {
-          color: #5b7971;
+          color: var(--ink-soft);
           font-size: 1rem;
           line-height: 1.5;
           margin-bottom: 32px;
@@ -318,15 +318,15 @@ const ServiceArea: React.FC = () => {
           align-items: center;
           gap: 12px;
           background: white;
-          border: 1px solid #e0e7e4;
+          border: 1px solid var(--cream-warm);
           padding: 12px 20px;
           border-radius: 16px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+          box-shadow: 0 4px 12px rgba(26, 61, 51, 0.03);
           transition: border-color 0.2s;
         }
 
         .search-pill:focus-within {
-          border-color: var(--mailplus-teal);
+          border-color: var(--ink);
         }
 
         .search-pill input {
@@ -363,12 +363,12 @@ const ServiceArea: React.FC = () => {
         .location-card:hover {
           transform: translateX(8px);
           background: white !important;
-          box-shadow: 0 10px 30px rgba(0, 65, 65, 0.08);
+          box-shadow: 0 10px 30px rgba(26, 61, 51, 0.08);
         }
 
         .location-card.highlight {
-          border-color: var(--mailplus-teal);
-          box-shadow: 0 0 0 2px var(--mailplus-teal);
+          border-color: var(--ink);
+          box-shadow: 0 0 0 2px var(--ink);
           background: white !important;
         }
 
@@ -387,15 +387,16 @@ const ServiceArea: React.FC = () => {
         .state-tag {
           font-size: 0.75rem;
           font-weight: 700;
-          color: #a0b7b0;
+          color: var(--ink-soft);
+          opacity: 0.6;
         }
 
         .postcode-tag {
           font-family: var(--font-ui);
           font-size: 0.7rem;
           font-weight: 500;
-          color: var(--mailplus-teal);
-          background: #e9f2ee;
+          color: var(--ink);
+          background: var(--cream-warm);
           padding: 2px 8px;
           border-radius: 6px;
           letter-spacing: 0.05em;
@@ -412,7 +413,8 @@ const ServiceArea: React.FC = () => {
         .empty-state {
           padding: 60px 40px;
           text-align: center;
-          color: #a0b7b0;
+          color: var(--ink-soft);
+          opacity: 0.6;
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -437,23 +439,23 @@ const ServiceArea: React.FC = () => {
           height: 40px;
           border-radius: 12px;
           background: white;
-          border: 1px solid #e0e7e4;
+          border: 1px solid var(--cream-warm);
           display: flex;
           align-items: center;
           justify-content: center;
-          color: var(--mailplus-teal);
+          color: var(--ink);
           cursor: pointer;
           transition: all 0.2s;
         }
 
         .icon-btn:hover {
-          background: var(--mailplus-teal);
+          background: var(--ink);
           color: white;
         }
 
         .region-stat {
           font-size: 0.9rem;
-          color: #5b7971;
+          color: var(--ink-soft);
         }
 
         /* Map Side */
@@ -507,7 +509,7 @@ const ServiceArea: React.FC = () => {
           align-items: center;
           justify-content: center;
           gap: 20px;
-          color: var(--mailplus-teal);
+          color: var(--ink);
           font-weight: 700;
         }
 

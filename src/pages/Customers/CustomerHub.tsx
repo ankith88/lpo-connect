@@ -192,24 +192,24 @@ const CustomerHub: React.FC = () => {
       </div>
 
       <style>{`
-        .customer-hub-premium { min-height: 100vh; background: #f0f7f4; padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
+        .customer-hub-premium { min-height: 100vh; background: var(--cream); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
-        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--mailplus-light-green); }
+        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }
-        .blob-2 { bottom: -100px; left: -100px; background: #c3e2d3; }
+        .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); }
 
         .content-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; }
 
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
-        .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
-        .page-header p { margin: 4px 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
+        .header-icon { width: 44px; height: 44px; color: var(--ink); }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
         .btn-premium-action {
-          background: var(--mailplus-teal); color: white; border: none; padding: 14px 28px; border-radius: 18px;
+          background: var(--ink); color: white; border: none; padding: 14px 28px; border-radius: 18px;
           font-weight: 800; display: flex; align-items: center; gap: 12px; cursor: pointer;
-          box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2); transition: all 0.3s;
+          box-shadow: 0 10px 25px rgba(26, 61, 51, 0.2); transition: all 0.3s;
         }
 
         .hub-controls { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; gap: 20px; }
@@ -218,60 +218,60 @@ const CustomerHub: React.FC = () => {
            backdrop-filter: blur(10px); padding: 0 24px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.4);
            max-width: 600px;
         }
-        .search-bar-glass input { border: none; background: transparent; padding: 18px 0; width: 100%; font-weight: 600; font-size: 1rem; color: var(--mailplus-teal); }
+        .search-bar-glass input { border: none; background: transparent; padding: 18px 0; width: 100%; font-weight: 600; font-size: 1rem; color: var(--ink); }
         .search-bar-glass input:focus { outline: none; }
-        .search-bar-glass svg { color: #8fa6a0; }
+        .search-bar-glass svg { color: var(--ink-soft); }
 
         .filter-pills { display: flex; gap: 10px; }
-        .pill { background: white; border: 1px solid #e2ebe2; padding: 10px 20px; border-radius: 50px; font-weight: 700; color: #5b7971; font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-        .pill.active { background: var(--mailplus-teal); color: white; border-color: var(--mailplus-teal); }
+        .pill { background: white; border: 1px solid var(--cream-warm); padding: 10px 20px; border-radius: 50px; font-weight: 700; color: var(--ink-soft); font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
+        .pill.active { background: var(--ink); color: white; border-color: var(--ink); }
 
         .customers-view { margin-top: 20px; }
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 32px; padding: 24px; }
         
         .customer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; }
         .customer-card { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-        .customer-card:hover { transform: translateY(-8px); background: white; box-shadow: 0 20px 40px rgba(0, 65, 65, 0.08); }
+        .customer-card:hover { transform: translateY(-8px); background: var(--paper); box-shadow: 0 20px 40px rgba(26, 61, 51, 0.08); }
 
         .card-top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; position: relative; }
-        .avatar { width: 44px; height: 44px; background: #e8f4ef; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 400; color: var(--mailplus-teal); font-size: 1.2rem; font-family: var(--font-headings); }
-        .main-info h3 { margin: 0; font-size: 1.1rem; font-weight: 400; color: #1a3c34; letter-spacing: -0.015em; font-family: var(--font-headings); }
-        .sub-info { display: flex; align-items: center; gap: 6px; color: #5b7971; font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
-        .franchisee-tag { color: var(--mailplus-teal); background: rgba(0, 65, 65, 0.05); padding: 2px 8px; border-radius: 6px; width: fit-content; }
+        .avatar { width: 44px; height: 44px; background: var(--cream-warm); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 400; color: var(--ink); font-size: 1.2rem; font-family: var(--font-headings); }
+        .main-info h3 { margin: 0; font-size: 1.1rem; font-weight: 400; color: var(--ink); letter-spacing: -0.015em; font-family: var(--font-headings); }
+        .sub-info { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
+        .franchisee-tag { color: var(--ink); background: rgba(26, 61, 51, 0.05); padding: 2px 8px; border-radius: 6px; width: fit-content; }
         .status-badge-premium { font-family: var(--font-ui); padding: 4px 10px; border-radius: 8px; font-size: 0.55rem; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; }
-        .status-badge-premium.active { background: #e2f9ec; color: #27ae60; }
-        .status-badge-premium.awaiting { background: #fff8e1; color: #f39c12; }
+        .status-badge-premium.active { background: var(--cream-warm); color: var(--ink); }
+        .status-badge-premium.awaiting { background: var(--cream-warm); color: var(--gold); }
 
-        .card-body { border-top: 1px solid #f0f4f4; border-bottom: 1px solid #f0f4f4; padding: 16px 0; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
-        .contact-item { display: flex; align-items: center; gap: 10px; color: #5b7971; font-size: 0.85rem; font-weight: 600; }
-        .contact-item svg { color: #8fa6a0; }
+        .card-body { border-top: 1px solid var(--cream-warm); border-bottom: 1px solid var(--cream-warm); padding: 16px 0; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .contact-item { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 0.85rem; font-weight: 600; }
+        .contact-item svg { color: var(--ink-soft); opacity: 0.6; }
 
         .service-details-premium { padding: 0 24px 16px; display: flex; gap: 12px; }
-        .detail-tag { display: flex; align-items: center; gap: 6px; background: #f8faf9; padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; color: #5b7971; }
-        .detail-tag svg { color: var(--mailplus-teal); }
-        .detail-tag strong { color: var(--mailplus-teal); }
+        .detail-tag { display: flex; align-items: center; gap: 6px; background: var(--paper); padding: 6px 12px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; color: var(--ink-soft); }
+        .detail-tag svg { color: var(--gold); }
+        .detail-tag strong { color: var(--ink); }
  
         .services-setup-premium { padding: 0 24px 16px; }
         .setup-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
-        .setup-header span { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; letter-spacing: 0.16em; text-transform: uppercase; }
-        .setup-header svg { color: var(--mailplus-teal); opacity: 0.6; }
+        .setup-header span { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: var(--ink-soft); opacity: 0.6; letter-spacing: 0.16em; text-transform: uppercase; }
+        .setup-header svg { color: var(--gold); opacity: 0.6; }
         .setup-tags { display: flex; flex-wrap: wrap; gap: 8px; }
         .service-tag-pill { font-family: var(--font-ui); padding: 4px 10px; border-radius: 20px; font-size: 0.55rem; font-weight: 500; border: 1px solid transparent; text-transform: uppercase; letter-spacing: 0.05em; }
-        .service-tag-pill.enabled { background: #e8f4ef; color: var(--mailplus-teal); border-color: rgba(0, 65, 65, 0.1); }
-        .service-tag-pill.disabled { background: #f5f5f5; color: #b0b0b0; border-color: #eee; text-decoration: line-through; opacity: 0.6; }
+        .service-tag-pill.enabled { background: var(--cream-warm); color: var(--ink); border-color: rgba(26, 61, 51, 0.1); }
+        .service-tag-pill.disabled { background: var(--cream); color: var(--ink-soft); border-color: var(--cream-warm); text-decoration: line-through; opacity: 0.6; }
 
         .card-footer { display: flex; justify-content: space-between; align-items: flex-end; }
         .stats { display: flex; gap: 20px; }
         .stat-item { display: flex; flex-direction: column; }
-        .stat-item label { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.16em; }
-        .stat-item span { font-family: var(--font-ui); font-size: 0.75rem; font-weight: 500; color: var(--mailplus-teal); }
+        .stat-item label { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: var(--ink-soft); opacity: 0.6; text-transform: uppercase; margin-bottom: 2px; letter-spacing: 0.16em; }
+        .stat-item span { font-family: var(--font-ui); font-size: 0.75rem; font-weight: 500; color: var(--ink); }
 
-        .view-details { width: 40px; height: 40px; border-radius: 12px; background: #f0f7f4; border: none; color: var(--mailplus-teal); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-        .view-details:hover { background: var(--mailplus-teal); color: white; }
+        .view-details { width: 40px; height: 40px; border-radius: 12px; background: var(--cream-warm); border: none; color: var(--ink); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+        .view-details:hover { background: var(--ink); color: white; }
 
-        .empty-hub { text-align: center; padding: 80px; color: #8fa6a0; }
+        .empty-hub { text-align: center; padding: 80px; color: var(--ink-soft); }
         .empty-icon { opacity: 0.2; margin-bottom: 24px; }
-        .empty-hub h3 { color: var(--mailplus-teal); margin-bottom: 8px; }
+        .empty-hub h3 { color: var(--ink); margin-bottom: 8px; }
 
         @media (max-width: 768px) {
            .hub-controls { flex-direction: column; align-items: stretch; }

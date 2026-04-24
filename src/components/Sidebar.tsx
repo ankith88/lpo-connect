@@ -115,7 +115,7 @@ const Sidebar: React.FC = () => {
           left: 0;
           top: 0;
           z-index: 1000;
-          background: #103d39;
+          background: var(--ink);
           border-right: 1px solid rgba(255, 255, 255, 0.1);
           overflow: hidden;
         }
@@ -134,13 +134,15 @@ const Sidebar: React.FC = () => {
         }
         .blob-1 {
           width: 200px; height: 200px;
-          background: var(--mailplus-teal);
+          background: var(--gold);
           top: -50px; left: -50px;
+          opacity: 0.1;
         }
         .blob-2 {
           width: 150px; height: 150px;
-          background: var(--mailplus-light-green);
+          background: var(--gold);
           bottom: 10%; right: -20px;
+          opacity: 0.1;
         }
 
         .sidebar-content {
@@ -178,7 +180,7 @@ const Sidebar: React.FC = () => {
           font-family: var(--font-headings);
           font-weight: 500;
           font-style: italic;
-          color: var(--mailplus-yellow);
+          color: var(--red);
         }
         
         .logo-platform {
@@ -203,14 +205,14 @@ const Sidebar: React.FC = () => {
 
         .avatar-ring {
           padding: 3px;
-          background: linear-gradient(45deg, var(--mailplus-teal), var(--mailplus-light-green));
+          background: linear-gradient(45deg, var(--gold), #ffffff);
           border-radius: 50%;
         }
         .avatar-placeholder {
           width: 36px; height: 36px;
           background: white; border-radius: 50%;
           display: flex; align-items: center; justify-content: center;
-          font-weight: 900; font-size: 0.75rem; color: var(--mailplus-teal);
+          font-weight: 900; font-size: 0.75rem; color: var(--ink);
         }
 
         .user-name { font-weight: 800; font-size: 0.85rem; color: #ffffff; margin: 0; }
@@ -251,11 +253,14 @@ const Sidebar: React.FC = () => {
         }
 
         .nav-item-glass.active {
-          background: rgba(255, 255, 255, 0.15);
-          color: var(--mailplus-yellow);
-          border: 1px solid rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+          border-left: 4px solid var(--gold);
+          border-radius: 0 14px 14px 0;
+          margin-left: -16px;
+          padding-left: 28px;
         }
-        .nav-item-glass.active .nav-icon { color: var(--mailplus-yellow); }
+        .nav-item-glass.active .nav-icon { color: var(--gold); }
 
         .sidebar-footer {
           padding: 16px;

@@ -285,12 +285,12 @@ const Dashboard: React.FC = () => {
            {/* Stats Section */}
            <div className="stats-row">
               {[
-                { label: 'Active Jobs', value: jobs.length, icon: Calendar, color: '#004141' },
-                { label: 'Pending Requests', value: requests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: '#f39c12' },
-                { label: 'Awaiting T&C', value: requests.filter(r => r.status === 'awaiting-activation').length, icon: Clock, color: '#ff4757' }
+                { label: 'Active Jobs', value: jobs.length, icon: Calendar, color: 'var(--ink)' },
+                { label: 'Pending Requests', value: requests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: 'var(--gold)' },
+                { label: 'Awaiting T&C', value: requests.filter(r => r.status === 'awaiting-activation').length, icon: Clock, color: 'var(--gold)' }
               ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
-                   <div className="stat-icon" style={{ background: `${stat.color}15`, color: stat.color }}>
+                   <div className="stat-icon" style={{ background: `var(--cream-warm)`, color: stat.color }}>
                       <stat.icon size={20} />
                    </div>
                    <div className="stat-data">
@@ -549,7 +549,7 @@ const Dashboard: React.FC = () => {
         .job-manager-premium {
           position: relative;
           min-height: 100vh;
-          background: #f0f7f4;
+          background: var(--cream);
           overflow-x: hidden;
         }
 
@@ -558,9 +558,9 @@ const Dashboard: React.FC = () => {
           top: 0; left: 0; right: 0; bottom: 0;
           z-index: 0; filter: blur(100px); opacity: 0.5;
         }
-        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--mailplus-light-green); animation: blobMove 15s infinite alternate; }
+        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); animation: blobMove 15s infinite alternate; }
         .blob-1 { top: -100px; right: -100px; }
-        .blob-2 { bottom: -100px; left: -100px; background: #c3e2d3; animation-delay: -5s; }
+        .blob-2 { bottom: -100px; left: -100px; background: var(--gold); opacity: 0.2; animation-delay: -5s; }
 
         @keyframes blobMove {
           0% { transform: translate(0, 0) scale(1); }
@@ -571,12 +571,12 @@ const Dashboard: React.FC = () => {
 
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
-        .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
-        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
+        .header-icon { width: 44px; height: 44px; color: var(--ink); }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
         .btn-premium-action {
-          background: var(--mailplus-teal);
+          background: var(--ink);
           color: white;
           border: none;
           padding: 14px 28px;
@@ -586,10 +586,10 @@ const Dashboard: React.FC = () => {
           align-items: center;
           gap: 12px;
           cursor: pointer;
-          box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2);
+          box-shadow: 0 10px 25px rgba(26, 61, 51, 0.2);
           transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .btn-premium-action:hover { transform: translateY(-4px); box-shadow: 0 15px 35px rgba(0, 65, 65, 0.25); }
+        .btn-premium-action:hover { transform: translateY(-4px); box-shadow: 0 15px 35px rgba(26, 61, 51, 0.25); }
 
         .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 32px; }
         .stat-card {
@@ -601,8 +601,8 @@ const Dashboard: React.FC = () => {
         }
         .stat-icon { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; }
         .stat-data { display: flex; flex-direction: column; }
-        .stat-label { font-family: var(--font-ui); font-size: 0.7rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
-        .stat-value { font-family: var(--font-headings); font-size: 1.6rem; font-weight: 500; color: var(--mailplus-teal); }
+        .stat-label { font-family: var(--font-ui); font-size: 0.7rem; font-weight: 500; color: var(--ink-soft); opacity: 0.6; text-transform: uppercase; letter-spacing: 0.16em; }
+        .stat-value { font-family: var(--font-headings); font-size: 1.6rem; font-weight: 500; color: var(--ink); }
 
         .filter-bar {
           display: flex;
@@ -627,7 +627,7 @@ const Dashboard: React.FC = () => {
         .btn-secondary-glass {
           background: rgba(255, 255, 255, 0.8);
           border: 1px solid rgba(255, 255, 255, 0.5);
-          color: var(--mailplus-teal);
+          color: var(--ink);
           padding: 0 16px;
           border-radius: 14px;
           font-weight: 700;
@@ -639,7 +639,7 @@ const Dashboard: React.FC = () => {
         .timeline-manifest { position: relative; padding-left: 60px; }
         .timeline-rail {
           position: absolute; left: 24px; top: 0; bottom: 0; width: 4px;
-          background: rgba(0, 65, 65, 0.05); border-radius: 4px;
+          background: var(--cream-warm); border-radius: 4px;
         }
         
         .date-separator {
@@ -649,7 +649,7 @@ const Dashboard: React.FC = () => {
         .date-badge {
           padding: 8px 24px; border-radius: 50px; background: white !important;
           display: flex; align-items: center; gap: 10px; font-family: var(--font-ui); font-weight: 500;
-          color: var(--mailplus-teal); font-size: 0.75rem; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+          color: var(--ink); font-size: 0.75rem; box-shadow: 0 4px 15px rgba(26, 61, 51, 0.05);
           text-transform: uppercase; letter-spacing: 0.16em;
         }
 
@@ -660,10 +660,10 @@ const Dashboard: React.FC = () => {
         }
         .node-inner {
           width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
-          background: white; border: 3px solid #f0f7f4; color: var(--mailplus-teal);
-          box-shadow: 0 8px 20px rgba(0,65,65,0.08); transition: all 0.3s;
+          background: white; border: 3px solid var(--cream); color: var(--ink);
+          box-shadow: 0 8px 20px rgba(26, 61, 51, 0.08); transition: all 0.3s;
         }
-        .node-inner.pill-scheduled { border-color: #2ecc71; color: #2ecc71; }
+        .node-inner.pill-scheduled { border-color: var(--ink); color: var(--ink); }
 
         .timeline-content-card {
           flex: 1; padding: 20px 24px; border-radius: 24px; background: rgba(255,255,255,0.6);
@@ -672,28 +672,28 @@ const Dashboard: React.FC = () => {
         }
         .timeline-content-card:hover {
           transform: translateX(10px); background: rgba(255,255,255,0.9);
-          box-shadow: 0 15px 40px rgba(0,65,65,0.08);
+          box-shadow: 0 15px 40px rgba(26, 61, 51, 0.08);
         }
 
         .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
-        .company-name { font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--mailplus-teal); margin: 0; }
-        .location-info { display: flex; align-items: center; gap: 6px; color: #8fa6a0; font-size: 0.75rem; font-weight: 600; margin-top: 4px; }
+        .company-name { font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--ink); margin: 0; }
+        .location-info { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); opacity: 0.6; font-size: 0.75rem; font-weight: 600; margin-top: 4px; }
         
         .status-tag {
           padding: 4px 10px; border-radius: 8px; font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500;
-          text-transform: uppercase; background: rgba(0, 65, 65, 0.05); color: #5b7971; letter-spacing: 0.16em;
+          text-transform: uppercase; background: var(--cream-warm); color: var(--ink-soft); letter-spacing: 0.16em;
         }
-        .status-tag.status-scheduled { background: #e2f9ec; color: #2ecc71; }
-        .status-tag.status-not-accepted { background: #fff3e0; color: #f39c12; }
-        .status-tag.status-unperformed { background: #ffebee; color: #e74c3c; }
-        .status-tag.status-accepted { background: #e2f9ec; color: #2ecc71; }
-        .status-tag.status-in-progress { background: #e1f5fe; color: #03a9f4; }
-        .status-tag.status-completed { background: #004141; color: white; }
-        .status-tag.status-rejected { background: #ffebee; color: #f44336; }
+        .status-tag.status-scheduled { background: var(--cream-warm); color: var(--ink); }
+        .status-tag.status-not-accepted { background: var(--cream-warm); color: var(--gold); }
+        .status-tag.status-unperformed { background: var(--cream-warm); color: var(--red); }
+        .status-tag.status-accepted { background: var(--cream-warm); color: var(--ink); }
+        .status-tag.status-in-progress { background: var(--cream-warm); color: var(--ink); }
+        .status-tag.status-completed { background: var(--ink); color: white; }
+        .status-tag.status-rejected { background: var(--cream-warm); color: var(--red); }
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
-        .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: #8fa6a0; text-transform: capitalize; }
-        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.65rem; color: #c0d1cc; font-weight: 500; }
+        .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); opacity: 0.6; text-transform: capitalize; }
+        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.65rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
 
         .card-actions {
           display: flex; justify-content: space-between; align-items: center;
@@ -705,30 +705,30 @@ const Dashboard: React.FC = () => {
           display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 0.7rem;
           transition: all 0.2s; background: white; border: 1px solid rgba(0,0,0,0.05);
         }
-        .mini-action.sms { color: #2ecc71; }
+        .mini-action.sms { color: var(--ink); }
         .mini-action.email { color: #3498db; }
-        .mini-action:hover { background: var(--mailplus-teal); color: white; transform: translateY(-2px); }
+        .mini-action:hover { background: var(--ink); color: white; transform: translateY(-2px); }
 
         .overflow-menu { position: relative; }
-        .menu-trigger { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: #8fa6a0; cursor: pointer; }
-        .menu-trigger:hover { background: rgba(0,0,0,0.05); color: var(--mailplus-teal); }
+        .menu-trigger { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--ink-soft); cursor: pointer; }
+        .menu-trigger:hover { background: rgba(26, 61, 51, 0.05); color: var(--ink); }
         .menu-dropdown {
           position: absolute; bottom: 100%; right: 0;
           min-width: 160px; border-radius: 16px; padding: 6px; z-index: 100;
           display: none; flex-direction: column; gap: 2px;
           background: rgba(255, 255, 255, 0.9);
           backdrop-filter: blur(15px);
-          box-shadow: 0 10px 40px rgba(0, 65, 65, 0.15); 
-          border: 1px solid rgba(0, 65, 65, 0.05);
+          box-shadow: 0 10px 40px rgba(26, 61, 51, 0.15); 
+          border: 1px solid rgba(26, 61, 51, 0.05);
           transform: translateY(-4px);
         }
         .menu-trigger:hover .menu-dropdown, .menu-dropdown:hover { display: flex; }
         .menu-dropdown button {
           padding: 10px 14px; border-radius: 10px; border: none; background: transparent;
           display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 0.8rem;
-          color: #5b7971; cursor: pointer; text-align: left;
+          color: var(--ink-soft); cursor: pointer; text-align: left;
         }
-        .menu-dropdown button:hover { background: rgba(0, 65, 65, 0.05); color: var(--mailplus-teal); }
+        .menu-dropdown button:hover { background: rgba(26, 61, 51, 0.05); color: var(--ink); }
         .menu-dropdown button.cancel:hover { background: #fff5f5; color: #ff4757; }
 
         @media (max-width: 700px) {
@@ -742,7 +742,7 @@ const Dashboard: React.FC = () => {
           .job-ref { width: 100%; margin: 0; }
         }
 
-        .loading-state { padding: 100px; text-align: center; color: #8fa6a0; font-weight: 600; }
+        .loading-state { padding: 100px; text-align: center; color: var(--ink-soft); opacity: 0.6; font-weight: 600; }
         .spinner { animation: spin 1s linear infinite; margin-bottom: 16px; width: 32px; height: 32px; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
@@ -750,26 +750,26 @@ const Dashboard: React.FC = () => {
 
         .controls-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; gap: 20px; }
         .tabs-glass { 
-          display: flex; gap: 4px; background: rgba(0, 65, 65, 0.05); padding: 5px; border-radius: 16px; 
+          display: flex; gap: 4px; background: rgba(26, 61, 51, 0.05); padding: 5px; border-radius: 16px; 
           border: 1px solid rgba(255,255,255,0.4);
         }
         .tab-btn {
           padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 8px;
-          color: #5b7971; font-weight: 700; font-size: 0.85rem; transition: all 0.2s;
+          color: var(--ink-soft); font-weight: 700; font-size: 0.85rem; transition: all 0.2s;
         }
-        .tab-btn.active { background: white; color: var(--mailplus-teal); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .tab-btn.active { background: white; color: var(--ink); box-shadow: 0 4px 12px rgba(26, 61, 51, 0.05); }
         .count-badge {
-          background: rgba(0, 65, 65, 0.1); color: var(--mailplus-teal); 
+          background: rgba(26, 61, 51, 0.1); color: var(--ink); 
           font-family: var(--font-ui); font-size: 0.6rem; padding: 2px 6px; border-radius: 6px;
           font-weight: 500;
         }
 
-        .select-glass:focus { border-color: var(--mailplus-teal); }
+        .select-glass:focus { border-color: var(--ink); }
 
         .date-picker-glass {
           display: flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.8);
           border: 1px solid rgba(255, 255, 255, 0.5); padding: 8px 14px; border-radius: 14px;
-          color: var(--mailplus-teal); font-weight: 600;
+          color: var(--ink); font-weight: 600;
         }
         .date-picker-glass input {
           border: none; background: transparent; color: inherit; font-family: inherit;
@@ -790,8 +790,8 @@ const Dashboard: React.FC = () => {
         }
 
         .header-meta-group { display: flex; align-items: center; gap: 12px; }
-        .expand-icon { color: #8fa6a0; opacity: 0.6; transition: all 0.2s; }
-        .card-header:hover .expand-icon { transform: scale(1.1); opacity: 1; color: var(--mailplus-teal); }
+        .expand-icon { color: var(--ink-soft); opacity: 0.6; transition: all 0.2s; }
+        .card-header:hover .expand-icon { transform: scale(1.1); opacity: 1; color: var(--ink); }
 
         .job-stops-container {
           margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.03);
@@ -799,7 +799,7 @@ const Dashboard: React.FC = () => {
         }
         .stops-visual-line {
           position: absolute; left: 7px; top: 30px; bottom: 30px; width: 2px;
-          background: rgba(0, 65, 65, 0.08); border-radius: 2px;
+          background: rgba(26, 61, 51, 0.08); border-radius: 2px;
         }
         .stop-entry {
           display: flex; gap: 16px; margin-bottom: 24px; position: relative;
@@ -807,18 +807,18 @@ const Dashboard: React.FC = () => {
         .stop-entry:last-child { margin-bottom: 0; }
         .stop-node {
           width: 16px; height: 16px; border-radius: 50%; background: white;
-          border: 3px solid #f0f7f4; z-index: 2; margin-top: 4px;
-          box-shadow: 0 4px 10px rgba(0,65,65,0.1);
+          border: 3px solid var(--cream); z-index: 2; margin-top: 4px;
+          box-shadow: 0 4px 10px rgba(26,61,51,0.1);
         }
-        .stop-node.pickup { border-color: var(--mailplus-teal); }
-        .stop-node.delivery { border-color: #f39c12; }
+        .stop-node.pickup { border-color: var(--ink); }
+        .stop-node.delivery { border-color: var(--gold); }
         
         .stop-details { flex: 1; }
         .stop-type-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        .type-pill { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
-        .stop-seq { font-family: var(--font-ui); font-size: 0.6rem; color: #c0d1cc; font-weight: 500; letter-spacing: 0.05em; }
-        .stop-loc-name { font-weight: 800; color: var(--mailplus-teal); font-size: 0.9rem; }
-        .stop-addr { font-size: 0.75rem; color: #5b7971; font-weight: 600; margin-top: 2px; }
+        .type-pill { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.16em; }
+        .stop-seq { font-family: var(--font-ui); font-size: 0.6rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; letter-spacing: 0.05em; }
+        .stop-loc-name { font-weight: 800; color: var(--ink); font-size: 0.9rem; }
+        .stop-addr { font-size: 0.75rem; color: var(--ink-soft); font-weight: 600; margin-top: 2px; }
         
         .stop-action-group {
           display: flex;
@@ -830,7 +830,8 @@ const Dashboard: React.FC = () => {
         .stop-status-pill {
           font-size: 0.6rem;
           font-weight: 800;
-          color: #8fa6a0;
+          color: var(--ink-soft);
+          opacity: 0.6;
           text-transform: uppercase;
           background: rgba(0,0,0,0.03);
           padding: 4px 8px;
@@ -838,14 +839,14 @@ const Dashboard: React.FC = () => {
         }
         
         .stop-status-pill.completed {
-          background: #e2f9ec;
-          color: #2ecc71;
+          background: var(--cream-warm);
+          color: var(--ink);
         }
 
         .btn-complete-stop {
           background: transparent;
           border: none;
-          color: #2ecc71;
+          color: var(--ink);
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -855,10 +856,10 @@ const Dashboard: React.FC = () => {
         }
         .btn-complete-stop:hover {
           transform: scale(1.2);
-          color: #27ae60;
+          color: var(--ink);
         }
 
-        .legacy-hint { padding: 20px; text-align: center; color: #8fa6a0; font-size: 0.8rem; font-weight: 600; font-style: italic; }
+        .legacy-hint { padding: 20px; text-align: center; color: var(--ink-soft); opacity: 0.6; font-size: 0.8rem; font-weight: 600; font-style: italic; }
 
         .fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -866,43 +867,43 @@ const Dashboard: React.FC = () => {
         /* Modal Styles */
         .modal-overlay {
           position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0, 65, 65, 0.4); backdrop-filter: blur(8px);
+          background: rgba(26, 61, 51, 0.4); backdrop-filter: blur(8px);
           display: none; align-items: center; justify-content: center; z-index: 2000;
           padding: 24px;
         }
         .modal-overlay.active { display: flex; }
         .modal-content { width: 100%; max-width: 550px; padding: 32px; position: relative; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .header-title { display: flex; align-items: center; gap: 12px; color: var(--mailplus-teal); }
+        .header-title { display: flex; align-items: center; gap: 12px; color: var(--ink); }
         .header-title h2 { font-size: 1.25rem; font-weight: 800; margin: 0; }
-        .close-btn { background: transparent; border: none; color: #8fa6a0; cursor: pointer; }
+        .close-btn { background: transparent; border: none; color: var(--ink-soft); opacity: 0.6; cursor: pointer; }
 
-        .schedule-info-summary { background: #f0f7f4; padding: 20px; border-radius: 20px; margin-bottom: 32px; }
-        .m-company { font-weight: 800; color: var(--mailplus-teal); font-size: 1.1rem; margin-bottom: 4px; }
-        .m-address { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #5b7971; font-weight: 600; }
+        .schedule-info-summary { background: var(--cream); padding: 20px; border-radius: 20px; margin-bottom: 32px; }
+        .m-company { font-weight: 800; color: var(--ink); font-size: 1.1rem; margin-bottom: 4px; }
+        .m-address { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; }
 
         .mgmt-section { margin-bottom: 32px; }
-        .m-label { display: block; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; margin-bottom: 8px; letter-spacing: 0.5px; }
-        .m-hint { font-size: 0.8rem; color: #5b7971; margin-bottom: 16px; line-height: 1.4; }
+        .m-label { display: block; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); opacity: 0.6; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .m-hint { font-size: 0.8rem; color: var(--ink-soft); margin-bottom: 16px; line-height: 1.4; }
 
         .m-frequency-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-        .m-freq-pill { padding: 12px; border-radius: 12px; border: 1px solid #e2ebe2; background: white; font-weight: 700; color: #8fa6a0; cursor: pointer; transition: all 0.2s; }
-        .m-freq-pill.active { background: var(--mailplus-teal); color: white; border-color: var(--mailplus-teal); }
+        .m-freq-pill { padding: 12px; border-radius: 12px; border: 1px solid var(--cream-warm); background: white; font-weight: 700; color: var(--ink-soft); cursor: pointer; transition: all 0.2s; }
+        .m-freq-pill.active { background: var(--ink); color: white; border-color: var(--ink); }
 
         .occurrences-list { display: flex; flex-direction: column; gap: 10px; }
-        .occ-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border: 1px solid #e2ebe2; border-radius: 14px; }
-        .occ-row.skipped { background: #fef5f5; border-color: #ffdada; opacity: 0.7; }
-        .occ-date { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700; color: var(--mailplus-teal); }
-        .occ-date svg { color: #8fa6a0; }
-        .skip-toggle { padding: 6px 14px; border-radius: 50px; font-size: 0.65rem; font-weight: 800; border: 1px solid #e2ebe2; background: white; color: #8fa6a0; cursor: pointer; }
-        .skip-toggle.active { background: #ff4757; color: white; border-color: #ff4757; }
+        .occ-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border: 1px solid var(--cream-warm); border-radius: 14px; }
+        .occ-row.skipped { background: var(--cream-warm); border-color: var(--red); opacity: 0.7; }
+        .occ-date { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+        .occ-date svg { color: var(--ink-soft); opacity: 0.6; }
+        .skip-toggle { padding: 6px 14px; border-radius: 50px; font-size: 0.65rem; font-weight: 800; border: 1px solid var(--cream-warm); background: white; color: var(--ink-soft); cursor: pointer; }
+        .skip-toggle.active { background: var(--red); color: white; border-color: var(--red); }
 
-        .modal-danger-zone { border-top: 1px solid #f0f4f4; padding-top: 24px; margin-top: 10px; }
-        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid #ffdada; color: #ff4757; background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
-        .btn-danger-outline:hover { background: #fff5f5; }
+        .modal-danger-zone { border-top: 1px solid var(--cream-warm); padding-top: 24px; margin-top: 10px; }
+        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--red); color: var(--red); background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
+        .btn-danger-outline:hover { background: var(--cream-warm); }
 
-        .manage-schedule { width: 100%; margin-bottom: 8px; border: 1px solid rgba(0, 65, 65, 0.1) !important; background: white !important; color: var(--mailplus-teal) !important; }
-        .manage-schedule:hover { background: #f0f7f4 !important; border-color: var(--mailplus-teal) !important; }
+        .manage-schedule { width: 100%; margin-bottom: 8px; border: 1px solid rgba(26, 61, 51, 0.1) !important; background: white !important; color: var(--ink) !important; }
+        .manage-schedule:hover { background: var(--cream) !important; border-color: var(--ink) !important; }
       `}</style>
     </div>
   );

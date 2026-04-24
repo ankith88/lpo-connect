@@ -332,7 +332,7 @@ const Schedules: React.FC = () => {
         .schedules-premium {
           position: relative;
           min-height: 100vh;
-          background: #f0f7f4;
+          background: var(--cream);
           overflow-x: hidden;
         }
 
@@ -341,9 +341,9 @@ const Schedules: React.FC = () => {
           top: 0; left: 0; right: 0; bottom: 0;
           z-index: 0; filter: blur(100px); opacity: 0.5;
         }
-        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--mailplus-light-green); animation: blobMove 15s infinite alternate; }
+        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); animation: blobMove 15s infinite alternate; }
         .blob-1 { top: -100px; right: -100px; }
-        .blob-2 { bottom: -100px; left: -100px; background: #c3e2d3; animation-delay: -5s; }
+        .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); animation-delay: -5s; }
 
         @keyframes blobMove {
           0% { transform: translate(0, 0) scale(1); }
@@ -354,12 +354,12 @@ const Schedules: React.FC = () => {
 
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
-        .header-icon { width: 44px; height: 44px; color: var(--mailplus-teal); }
-        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--mailplus-teal); margin: 0; letter-spacing: -0.025em; }
-        .page-header p { margin: 4px 0 0; color: #5b7971; font-size: 1rem; font-weight: 400; }
+        .header-icon { width: 44px; height: 44px; color: var(--ink); }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
+        .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
         .btn-premium-action {
-          background: var(--mailplus-teal);
+          background: var(--ink);
           color: white;
           border: none;
           padding: 14px 28px;
@@ -369,7 +369,7 @@ const Schedules: React.FC = () => {
           align-items: center;
           gap: 12px;
           cursor: pointer;
-          box-shadow: 0 10px 25px rgba(0, 65, 65, 0.2);
+          box-shadow: 0 10px 25px rgba(26, 61, 51, 0.2);
           transition: all 0.3s;
         }
 
@@ -395,7 +395,7 @@ const Schedules: React.FC = () => {
         .btn-secondary-glass {
           background: rgba(255, 255, 255, 0.8);
           border: 1px solid rgba(255, 255, 255, 0.5);
-          color: var(--mailplus-teal);
+          color: var(--ink);
           width: 44px;
           height: 44px;
           border-radius: 14px;
@@ -412,19 +412,19 @@ const Schedules: React.FC = () => {
         }
         .timeline-content-card:hover {
           background: rgba(255,255,255,0.9);
-          box-shadow: 0 15px 40px rgba(0,65,65,0.08);
+          box-shadow: 0 15px 40px rgba(26,61,51,0.08);
         }
 
         .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
-        .company-name { font-size: 1.25rem; font-weight: 900; color: var(--mailplus-teal); margin: 0; }
-        .location-info { display: flex; align-items: center; gap: 6px; color: #8fa6a0; font-size: 0.85rem; font-weight: 600; margin-top: 6px; }
+        .company-name { font-size: 1.25rem; font-weight: 900; color: var(--ink); margin: 0; }
+        .location-info { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 0.85rem; font-weight: 600; margin-top: 6px; }
 
         .header-meta-group { display: flex; align-items: center; gap: 16px; }
         .status-tag {
           padding: 6px 14px; border-radius: 10px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500;
-          text-transform: uppercase; background: #e2f9ec; color: #2ecc71; letter-spacing: 0.16em;
+          text-transform: uppercase; background: var(--cream-warm); color: var(--ink); letter-spacing: 0.16em;
         }
-        .expand-icon { color: #8fa6a0; }
+        .expand-icon { color: var(--ink-soft); opacity: 0.6; }
 
         .job-stops-container {
           margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(0,0,0,0.03);
@@ -432,27 +432,27 @@ const Schedules: React.FC = () => {
         }
         .stops-visual-line {
           position: absolute; left: 7px; top: 30px; bottom: 30px; width: 2px;
-          background: rgba(0, 65, 65, 0.08); border-radius: 2px;
+          background: rgba(26, 61, 51, 0.08); border-radius: 2px;
         }
         .stop-entry { display: flex; gap: 16px; margin-bottom: 20px; }
-        .stop-node { width: 16px; height: 16px; border-radius: 50%; background: white; border: 3px solid #f0f7f4; margin-top: 4px; }
-        .stop-node.pickup { border-color: var(--mailplus-teal); }
-        .stop-node.delivery { border-color: #f39c12; }
+        .stop-node { width: 16px; height: 16px; border-radius: 50%; background: white; border: 3px solid var(--cream); margin-top: 4px; }
+        .stop-node.pickup { border-color: var(--ink); }
+        .stop-node.delivery { border-color: var(--gold); }
         .stop-type-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
-        .type-pill { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
-        .stop-seq { font-family: var(--font-ui); font-size: 0.6rem; color: #c0d1cc; font-weight: 500; }
-        .stop-loc-name { font-weight: 800; color: var(--mailplus-teal); font-size: 0.9rem; }
-        .stop-addr { font-size: 0.75rem; color: #5b7971; }
+        .type-pill { font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.16em; }
+        .stop-seq { font-family: var(--font-ui); font-size: 0.6rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
+        .stop-loc-name { font-weight: 800; color: var(--ink); font-size: 0.9rem; }
+        .stop-addr { font-size: 0.75rem; color: var(--ink-soft); }
 
-        .card-meta { display: flex; gap: 16px; align-items: center; padding: 20px 0; border-top: 1px solid rgba(0,0,0,0.03); margin-top: 20px; }
-        .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: #8fa6a0; }
-        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.7rem; color: #c0d1cc; font-weight: 500; }
+        .card-meta { display: flex; gap: 16px; align-items: center; padding: 20px 0; border-top: 1px solid rgba(26,61,51,0.03); margin-top: 20px; }
+        .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); }
+        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.7rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
 
         .btn-primary-glass {
           width: 100%;
-          background: rgba(0, 65, 65, 0.05);
-          border: 1px solid rgba(0, 65, 65, 0.1);
-          color: var(--mailplus-teal);
+          background: rgba(26, 61, 51, 0.05);
+          border: 1px solid rgba(26, 61, 51, 0.1);
+          color: var(--ink);
           padding: 14px;
           border-radius: 14px;
           font-weight: 800;
@@ -463,10 +463,10 @@ const Schedules: React.FC = () => {
           cursor: pointer;
           transition: all 0.2s;
         }
-        .btn-primary-glass:hover { background: var(--mailplus-teal); color: white; }
+        .btn-primary-glass:hover { background: var(--ink); color: white; }
 
         .loading-state, .empty-state {
-          padding: 80px 40px; text-align: center; color: #8fa6a0;
+          padding: 80px 40px; text-align: center; color: var(--ink-soft);
         }
         .spinner { animation: rotate 2s linear infinite; margin-bottom: 16px; }
         @keyframes rotate { 100% { transform: rotate(360deg); } }
@@ -475,38 +475,38 @@ const Schedules: React.FC = () => {
         /* Modal Styles Placeholder (Using the same as Dashboard) */
         .modal-overlay {
           position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0, 65, 65, 0.4); backdrop-filter: blur(8px);
+          background: rgba(26, 61, 51, 0.4); backdrop-filter: blur(8px);
           display: none; align-items: center; justify-content: center; z-index: 2000;
           padding: 24px;
         }
         .modal-overlay.active { display: flex; }
         .modal-content { width: 100%; max-width: 550px; padding: 32px; position: relative; }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-        .header-title { display: flex; align-items: center; gap: 12px; color: var(--mailplus-teal); }
+        .header-title { display: flex; align-items: center; gap: 12px; color: var(--ink); }
         .header-title h2 { font-size: 1.25rem; font-weight: 800; margin: 0; }
-        .close-btn { background: transparent; border: none; color: #8fa6a0; cursor: pointer; }
+        .close-btn { background: transparent; border: none; color: var(--ink-soft); opacity: 0.6; cursor: pointer; }
 
-        .schedule-info-summary { background: #f0f7f4; padding: 20px; border-radius: 20px; margin-bottom: 32px; }
-        .m-company { font-weight: 800; color: var(--mailplus-teal); font-size: 1.1rem; margin-bottom: 4px; }
-        .m-address { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #5b7971; font-weight: 600; }
+        .schedule-info-summary { background: var(--paper); padding: 20px; border-radius: 20px; margin-bottom: 32px; }
+        .m-company { font-weight: 800; color: var(--ink); font-size: 1.1rem; margin-bottom: 4px; }
+        .m-address { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; }
 
         .mgmt-section { margin-bottom: 32px; }
-        .m-label { display: block; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: #8fa6a0; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .m-label { display: block; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); opacity: 0.6; margin-bottom: 8px; letter-spacing: 0.5px; }
 
         .m-frequency-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
-        .m-freq-pill { padding: 12px; border-radius: 12px; border: 1px solid #e2ebe2; background: white; font-weight: 700; color: #8fa6a0; cursor: pointer; transition: all 0.2s; }
-        .m-freq-pill.active { background: var(--mailplus-teal); color: white; border-color: var(--mailplus-teal); }
+        .m-freq-pill { padding: 12px; border-radius: 12px; border: 1px solid var(--cream-warm); background: white; font-weight: 700; color: var(--ink-soft); cursor: pointer; transition: all 0.2s; }
+        .m-freq-pill.active { background: var(--ink); color: white; border-color: var(--ink); }
 
         .occurrences-list { display: flex; flex-direction: column; gap: 10px; }
-        .occ-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border: 1px solid #e2ebe2; border-radius: 14px; }
-        .occ-row.skipped { background: #fef5f5; border-color: #ffdada; opacity: 0.7; }
-        .occ-date { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700; color: var(--mailplus-teal); }
-        .skip-toggle { padding: 6px 14px; border-radius: 50px; font-size: 0.65rem; font-weight: 800; border: 1px solid #e2ebe2; background: white; color: #8fa6a0; cursor: pointer; }
-        .skip-toggle.active { background: #ff4757; color: white; border-color: #ff4757; }
+        .occ-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: white; border: 1px solid var(--cream-warm); border-radius: 14px; }
+        .occ-row.skipped { background: var(--cream-warm); border-color: var(--red); opacity: 0.7; }
+        .occ-date { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; font-weight: 700; color: var(--ink); }
+        .skip-toggle { padding: 6px 14px; border-radius: 50px; font-size: 0.65rem; font-weight: 800; border: 1px solid var(--cream-warm); background: white; color: var(--ink-soft); cursor: pointer; }
+        .skip-toggle.active { background: var(--red); color: white; border-color: var(--red); }
 
-        .modal-danger-zone { border-top: 1px solid #f0f4f4; padding-top: 24px; margin-top: 10px; }
-        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid #ffdada; color: #ff4757; background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
-        .btn-danger-outline:hover { background: #fff5f5; }
+        .modal-danger-zone { border-top: 1px solid var(--cream-warm); padding-top: 24px; margin-top: 10px; }
+        .btn-danger-outline { width: 100%; padding: 14px; border-radius: 14px; border: 1px solid var(--red); color: var(--red); background: transparent; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 10px; cursor: pointer; transition: all 0.2s; }
+        .btn-danger-outline:hover { background: var(--cream-warm); }
 
         .fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }

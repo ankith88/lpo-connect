@@ -1,12 +1,11 @@
 :root {
-  --mailplus-teal: #004141;
-  --mailplus-yellow: #eaf044;
-  --mailplus-light-green: #E2EBE2;
-  --mailplus-dark-teal: #003333;
-  --mailplus-gray: #f5f5f5;
-  --mailplus-white: #ffffff;
-  --mailplus-red: #e63946;
-  --mailplus-green: #2ecc71;
+  --ink: #1A3D33;
+  --ink-soft: #2A4E43;
+  --cream: #F5F0E4;
+  --cream-warm: #EFE8D4;
+  --paper: #FBF7ED;
+  --gold: #A8763A;
+  --red: #8F3424;
   
   --font-headings: 'Fraunces', serif;
   --font-body: 'Manrope', sans-serif;
@@ -25,8 +24,8 @@
 
 body {
   font-family: var(--font-main);
-  background-color: var(--mailplus-light-green);
-  color: var(--mailplus-teal);
+  background-color: var(--cream);
+  color: var(--ink-soft);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
@@ -51,8 +50,8 @@ input, select, textarea {
 
 input:focus {
   outline: none;
-  border-color: var(--mailplus-teal);
-  box-shadow: 0 0 0 2px rgba(0, 65, 65, 0.1);
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px rgba(26, 61, 51, 0.1);
 }
 
 .card {
@@ -64,7 +63,7 @@ input:focus {
 
 /* Typography */
 h1, h2, h3, h4 {
-  color: var(--mailplus-teal);
+  color: var(--ink);
   margin-bottom: 1rem;
 }
 
@@ -90,6 +89,11 @@ h3 {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.16em;
+  color: var(--gold);
+}
+
+.logo-plus {
+  color: var(--red);
 }
 
 .text-center { text-align: center; }

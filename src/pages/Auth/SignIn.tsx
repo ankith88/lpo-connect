@@ -125,7 +125,7 @@ const SignIn: React.FC = () => {
           display: flex;
           align-items: center;
           justify-content: center;
-          background-color: var(--mailplus-light-green);
+          background-color: var(--cream);
           padding: 20px;
         }
 
@@ -135,10 +135,10 @@ const SignIn: React.FC = () => {
         }
 
         .signin-card {
-          background: white;
+          background: var(--paper);
           border-radius: 24px;
           padding: 40px;
-          box-shadow: 0 10px 40px rgba(0, 65, 65, 0.1);
+          box-shadow: 0 10px 40px rgba(26, 61, 51, 0.1);
         }
 
         .logo-section {
@@ -150,13 +150,13 @@ const SignIn: React.FC = () => {
           font-family: var(--font-headings);
           font-size: 2.8rem;
           font-weight: 400;
-          color: var(--mailplus-teal);
+          color: var(--ink);
           letter-spacing: -0.025em;
           margin-bottom: 4px;
         }
         
         .brand-logo .logo-plus {
-          color: var(--mailplus-yellow);
+          color: var(--red);
           font-family: var(--font-headings);
           font-weight: 500;
           font-style: italic;
@@ -166,7 +166,7 @@ const SignIn: React.FC = () => {
           font-family: var(--font-ui);
           font-size: 0.65rem;
           font-weight: 500;
-          color: #888;
+          color: var(--ink-soft);
           text-transform: uppercase;
           letter-spacing: 0.16em;
           margin-bottom: 24px;
@@ -180,7 +180,7 @@ const SignIn: React.FC = () => {
 
         .method-toggle {
           display: flex;
-          background: #f0f4f0;
+          background: var(--cream-warm);
           padding: 4px;
           border-radius: 12px;
           margin-bottom: 24px;
@@ -200,7 +200,7 @@ const SignIn: React.FC = () => {
 
         .method-toggle button.active {
           background: white;
-          color: var(--mailplus-teal);
+          color: var(--ink);
           box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
@@ -214,7 +214,7 @@ const SignIn: React.FC = () => {
           font-size: 0.7rem;
           font-weight: 500;
           margin-bottom: 8px;
-          color: var(--mailplus-teal);
+          color: var(--ink);
           text-transform: uppercase;
           letter-spacing: 0.16em;
         }
@@ -236,7 +236,7 @@ const SignIn: React.FC = () => {
         }
 
         .error-message {
-          color: var(--mailplus-red);
+          color: var(--red);
           font-size: 0.85rem;
           margin-bottom: 20px;
           padding: 10px;
@@ -246,7 +246,7 @@ const SignIn: React.FC = () => {
 
         .signin-btn {
           width: 100%;
-          background: var(--mailplus-teal);
+          background: var(--ink);
           color: white;
           padding: 14px;
           display: flex;
@@ -269,7 +269,7 @@ const SignIn: React.FC = () => {
         }
 
         .footer-link a {
-          color: var(--mailplus-teal);
+          color: var(--ink);
           font-weight: 600;
           text-decoration: none;
         }

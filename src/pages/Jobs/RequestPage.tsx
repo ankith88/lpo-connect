@@ -197,10 +197,10 @@ const RequestPage: React.FC = () => {
             </button>
          </div>
          <style>{`
-            .request-page-error { height: 100vh; display: flex; align-items: center; justify-content: center; background: #f0f7f4; padding: 20px; }
+            .request-page-error { height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--cream); padding: 20px; }
             .error-card { text-align: center; padding: 40px; border-radius: 32px; max-width: 500px; }
-            .error-card h2 { margin: 24px 0 12px; color: var(--mailplus-teal); }
-            .error-card p { color: #5b7971; margin-bottom: 32px; }
+            .error-card h2 { margin: 24px 0 12px; color: var(--ink); }
+            .error-card p { color: var(--ink-soft); margin-bottom: 32px; }
          `}</style>
       </div>
     );
@@ -387,20 +387,20 @@ const RequestPage: React.FC = () => {
       )}
 
       <style>{`
-        .request-page-premium { min-height: 100vh; background: #f0f7f4; padding: 40px 24px; position: relative; overflow-x: hidden; }
+        .request-page-premium { min-height: 100vh; background: var(--cream); padding: 40px 24px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
-        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--mailplus-light-green); }
+        .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }
-        .blob-2 { bottom: -100px; left: -100px; background: #c3e2d3; }
+        .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); }
 
         .coordination-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; }
 
         .request-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
-        .back-btn { display: flex; align-items: center; gap: 8px; background: transparent; border: none; color: #5b7971; font-weight: 700; cursor: pointer; }
-        .header-main h1 { font-family: var(--font-headings); font-size: 2rem; font-weight: 400; color: var(--mailplus-teal); margin: 8px 0 4px; letter-spacing: -0.025em; }
-        .header-main p { font-weight: 500; color: #8fa6a0; font-family: var(--font-ui); font-size: 0.75rem; letter-spacing: 0.05em; }
+        .back-btn { display: flex; align-items: center; gap: 8px; background: transparent; border: none; color: var(--ink-soft); font-weight: 700; cursor: pointer; }
+        .header-main h1 { font-family: var(--font-headings); font-size: 2rem; font-weight: 400; color: var(--ink); margin: 8px 0 4px; letter-spacing: -0.025em; }
+        .header-main p { font-weight: 500; color: var(--ink-soft); font-family: var(--font-ui); font-size: 0.75rem; letter-spacing: 0.05em; }
         .status-pill { display: inline-block; padding: 4px 12px; borderRadius: 20px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; }
-        .status-pill.pending { background: #fff8e1; color: #f39c12; }
+        .status-pill.pending { background: var(--cream-warm); color: var(--gold); }
 
         .operator-actions { display: flex; gap: 12px; }
         .btn-reject { background: white; color: #ff4757; border: 1px solid #ffdada; padding: 12px 24px; border-radius: 14px; font-weight: 800; display: flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -409,37 +409,37 @@ const RequestPage: React.FC = () => {
 
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 32px; padding: 32px; }
         
-        .section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; color: var(--mailplus-teal); }
+        .section-title { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; color: var(--ink); }
         .section-title h3 { font-family: var(--font-ui); font-size: 0.7rem; font-weight: 500; margin: 0; text-transform: uppercase; letter-spacing: 0.16em; }
 
-        .info-box { background: white; padding: 16px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px; }
-        .info-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: #5b7971; }
-        .info-row strong { color: var(--mailplus-teal); }
+        .info-box { background: var(--paper); padding: 16px; border-radius: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .info-row { display: flex; align-items: center; gap: 10px; font-size: 0.9rem; color: var(--ink-soft); }
+        .info-row strong { color: var(--ink); }
 
-        .location-card { background: white; padding: 16px; border-radius: 16px; }
-        .location-card .address { font-weight: 700; color: var(--mailplus-teal); margin-bottom: 4px; }
-        .location-card .suburb { font-size: 0.8rem; color: #8fa6a0; font-weight: 600; }
+        .location-card { background: var(--paper); padding: 16px; border-radius: 16px; }
+        .location-card .address { font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+        .location-card .suburb { font-size: 0.8rem; color: var(--ink-soft); font-weight: 600; }
 
         .logistics-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; margin-bottom: 20px; }
         .log-item { display: flex; flex-direction: column; gap: 4px; }
-        .log-item label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 500; color: #8fa6a0; text-transform: uppercase; letter-spacing: 0.16em; }
-        .log-item span { font-weight: 700; color: #1a3c34; font-size: 0.9rem; }
+        .log-item label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 500; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.16em; }
+        .log-item span { font-weight: 700; color: var(--ink); font-size: 0.9rem; }
 
         .time-highlight-banner { 
-           background: #fff8e6; 
-           border: 1px solid #ffecb3; 
+           background: var(--cream-warm); 
+           border: 1px solid var(--gold); 
            border-radius: 16px; 
            padding: 16px; 
            display: flex; 
            align-items: center; 
            gap: 16px; 
            margin-top: 4px;
-           box-shadow: 0 4px 12px rgba(255, 193, 7, 0.1);
+           box-shadow: 0 4px 12px rgba(168, 118, 58, 0.1);
          }
          .time-icon-area { 
            width: 40px; 
            height: 40px; 
-           background: #ffc107; 
+           background: var(--gold); 
            color: white; 
            border-radius: 12px; 
            display: flex; 
@@ -450,55 +450,55 @@ const RequestPage: React.FC = () => {
          @keyframes clockPulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
          
          .time-text-area { display: flex; flex-direction: column; gap: 2px; }
-         .time-text-area label { font-family: 'JetBrains Mono', monospace; font-size: 0.6rem; font-weight: 900; color: #b28900; letter-spacing: 0.5px; }
-         .time-value { font-size: 1.3rem; font-weight: 900; color: #5c4700; letter-spacing: -0.5px; }
+         .time-text-area label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 900; color: var(--gold); letter-spacing: 0.5px; }
+         .time-value { font-size: 1.3rem; font-weight: 900; color: var(--ink); letter-spacing: -0.5px; }
 
-         .btn-accept { position: relative; overflow: visible; display: flex; flex-direction: column; align-items: center; padding: 12px 24px; min-width: 160px; background: var(--mailplus-teal); color: white; border: none; border-radius: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; }
+         .btn-accept { position: relative; overflow: visible; display: flex; flex-direction: column; align-items: center; padding: 12px 24px; min-width: 160px; background: var(--ink); color: white; border: none; border-radius: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; }
          .accept-content { display: flex; align-items: center; gap: 8px; }
           .btn-badge { 
             position: absolute; 
             top: -10px; 
             right: -10px; 
-            background: #e67e22; 
+            background: var(--gold); 
             color: white; 
-            font-family: 'JetBrains Mono', monospace;
+            font-family: var(--font-ui);
             font-size: 0.55rem; 
             font-weight: 500; 
             padding: 4px 10px; 
             border-radius: 20px; 
-            box-shadow: 0 4px 10px rgba(230, 126, 34, 0.3);
+            box-shadow: 0 4px 10px rgba(168, 118, 58, 0.3);
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-            border: 2px solid #f0f7f4;
+            letter-spacing: 0.16em;
+            border: 2px solid var(--cream);
           }
 
-        .instructions-box { background: #fff9db; padding: 16px; border-radius: 16px; font-size: 0.85rem; color: #7a6e2a; font-weight: 600; line-height: 1.5; }
+        .instructions-box { background: var(--cream-warm); padding: 16px; border-radius: 16px; font-size: 0.85rem; color: var(--ink-soft); font-weight: 600; line-height: 1.5; border-left: 4px solid var(--gold); }
 
         .chat-interface { flex: 1; display: flex; flex-direction: column; min-height: 500px; padding: 0 !important; overflow: hidden; }
         .chat-header { display: flex; align-items: center; gap: 12px; margin: 32px 32px 24px; }
-        .live-indicator { font-family: var(--font-ui); background: #e2f9ec; color: #2ecc71; font-size: 0.55rem; font-weight: 500; padding: 2px 8px; border-radius: 50px; letter-spacing: 0.16em; }
+        .live-indicator { font-family: var(--font-ui); background: var(--cream-warm); color: var(--gold); font-size: 0.55rem; font-weight: 500; padding: 2px 8px; border-radius: 50px; letter-spacing: 0.16em; }
 
         .chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; padding-right: 15px; }
         .message-bubble { max-width: 80%; padding: 16px; border-radius: 20px; position: relative; }
-        .message-bubble.user { align-self: flex-start; background: white; color: #5b7971; border-bottom-left-radius: 4px; }
-        .message-bubble.operator { align-self: flex-end; background: var(--mailplus-teal); color: white; border-bottom-right-radius: 4px; }
+        .message-bubble.user { align-self: flex-start; background: var(--paper); color: var(--ink-soft); border-bottom-left-radius: 4px; }
+        .message-bubble.operator { align-self: flex-end; background: var(--ink); color: white; border-bottom-right-radius: 4px; }
 
         .sender-label { font-size: 0.65rem; font-weight: 800; opacity: 0.7; margin-bottom: 4px; text-transform: uppercase; }
         .message-content { font-weight: 600; font-size: 0.95rem; line-height: 1.4; }
         .message-time { font-size: 0.6rem; opacity: 0.5; margin-top: 6px; text-align: right; }
 
-        .chat-input-area { display: flex; gap: 12px; background: white; padding: 8px; border-radius: 20px; border: 1px solid #e2ebe2; }
-        .chat-input-area input { flex: 1; border: none; padding: 12px 16px; font-weight: 500; font-size: 0.95rem; }
+        .chat-input-area { display: flex; gap: 12px; background: var(--paper); padding: 8px; border-radius: 20px; border: 1px solid var(--cream-warm); }
+        .chat-input-area input { flex: 1; border: none; padding: 12px 16px; font-weight: 500; font-size: 0.95rem; background: transparent; color: var(--ink); }
         .chat-input-area input:focus { outline: none; }
-        .send-btn { background: var(--mailplus-teal); color: white; border: none; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
+        .send-btn { background: var(--ink); color: white; border: none; width: 44px; height: 44px; border-radius: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
         .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .send-btn:hover { transform: scale(1.05); }
 
-        .empty-chat { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #8fa6a0; padding: 40px; }
-        .empty-chat p { font-weight: 800; color: var(--mailplus-teal); margin: 16px 0 8px; }
+        .empty-chat { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--ink-soft); opacity: 0.6; padding: 40px; }
+        .empty-chat p { font-weight: 800; color: var(--ink); margin: 16px 0 8px; }
         .empty-chat .hint { font-size: 0.8rem; font-weight: 500; }
 
-        .request-page-loading { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #8fa6a0; }
+        .request-page-loading { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink-soft); opacity: 0.6; }
         .spinner { animation: spin 1s linear infinite; margin-bottom: 16px; width: 40px; height: 40px; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
@@ -524,7 +524,7 @@ const RequestPage: React.FC = () => {
              background: rgba(255, 255, 255, 0.9); 
              backdrop-filter: blur(10px); 
              padding: 20px; 
-             border-top: 1px solid rgba(0, 65, 65, 0.1); 
+             border-top: 1px solid rgba(26, 61, 51, 0.1); 
              z-index: 1000; 
              box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.05);
            }
