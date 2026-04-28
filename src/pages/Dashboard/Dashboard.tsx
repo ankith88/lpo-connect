@@ -297,34 +297,8 @@ const Dashboard: React.FC = () => {
            </div>
         </header>
 
-        <div className="dashboard-layout-with-sidebar">
-          <aside className="dashboard-sidebar desktop-only">
-            <h3 className="sidebar-title">Views</h3>
-            <nav className="vertical-tabs">
-              {[
-                { id: 'pending', label: 'Pending Requests', icon: MessageSquare },
-                { id: 'in-progress', label: 'Active Today', icon: Clock },
-                { id: 'upcoming', label: 'Upcoming', icon: Calendar },
-                { id: 'history', label: 'History', icon: RotateCcw },
-                { id: 'declined', label: 'Declined', icon: XCircle }
-              ].map(tab => (
-                <button 
-                  key={tab.id}
-                  className={`vertical-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab.id as any)}
-                >
-                  <tab.icon size={16} />
-                  <span>{tab.label}</span>
-                  <span className="count-badge">
-                    {getTabCount(tab.id)}
-                  </span>
-                </button>
-              ))}
-            </nav>
-          </aside>
-
-          <div className="dashboard-grid">
-             {/* Stats Section */}
+        <div className="dashboard-grid">
+           {/* Stats Section */}
            <div className="stats-row">
               {[
                 { label: 'Active Jobs', value: jobs.length, icon: Calendar, color: 'var(--ink)' },
@@ -410,7 +384,33 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Logistics Timeline */}
-            <div className="timeline-container">
+            <div className="dashboard-layout-with-sidebar">
+              <aside className="dashboard-sidebar desktop-only">
+                <h3 className="sidebar-title">Views</h3>
+                <nav className="vertical-tabs">
+                  {[
+                    { id: 'pending', label: 'Pending Requests', icon: MessageSquare },
+                    { id: 'in-progress', label: 'Active Today', icon: Clock },
+                    { id: 'upcoming', label: 'Upcoming', icon: Calendar },
+                    { id: 'history', label: 'History', icon: RotateCcw },
+                    { id: 'declined', label: 'Declined', icon: XCircle }
+                  ].map(tab => (
+                    <button 
+                      key={tab.id}
+                      className={`vertical-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                      onClick={() => setActiveTab(tab.id as any)}
+                    >
+                      <tab.icon size={16} />
+                      <span>{tab.label}</span>
+                      <span className="count-badge">
+                        {getTabCount(tab.id)}
+                      </span>
+                    </button>
+                  ))}
+                </nav>
+              </aside>
+
+              <div className="timeline-container">
                {loading ? (
                  <LoadingScreen fullScreen={false} message="Syncing Manifest" />
                ) : groupedJobs.length === 0 ? (
