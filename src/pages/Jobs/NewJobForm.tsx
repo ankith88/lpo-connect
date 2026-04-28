@@ -536,7 +536,8 @@ const NewJobForm: React.FC = () => {
           stops,
           isExistingCustomer,
           netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
-          appJobGroupId: null
+          appJobGroupId: null,
+          syncedWithNetSuite: null
         }));
 
         await updateDoc(doc(db, 'requests', requestId), {
@@ -560,6 +561,7 @@ const NewJobForm: React.FC = () => {
         const requestPayload = {
           ...cleanData,
           appJobGroupId: null,
+          syncedWithNetSuite: null,
           createdAt: serverTimestamp()
         };
 
