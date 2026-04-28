@@ -35,7 +35,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<'pending' | 'awaiting-activation' | 'upcoming' | 'in-progress' | 'history' | 'declined'>('in-progress');
+  const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'in-progress' | 'history' | 'declined'>('in-progress');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
 
@@ -107,7 +107,7 @@ const Dashboard: React.FC = () => {
   const today = formatDateForInput(new Date());
 
   // Define source based on tab
-  const source = (activeTab === 'pending' || activeTab === 'awaiting-activation' || activeTab === 'declined') 
+  const source = (activeTab === 'pending' || activeTab === 'declined') 
     ? requests 
     : (activeTab === 'history' ? [...jobs, ...requests] : jobs);
 
@@ -127,8 +127,6 @@ const Dashboard: React.FC = () => {
     if (activeTab === 'pending') {
       // Only show pending requests that are for today or future
       matchesTab = j.status === 'pending' && (!isOneOff || j.date >= today); 
-    } else if (activeTab === 'awaiting-activation') {
-      matchesTab = j.status === 'awaiting-activation';
     } else if (activeTab === 'in-progress') {
       const matchesOneOff = isOneOff && j.date === today;
       const matchesRecurring = isScheduled && j.frequency.includes(todayDayName) && today >= j.date && !(j.skippedDates || []).includes(today);
@@ -209,7 +207,7 @@ const Dashboard: React.FC = () => {
   };
 
   const handleUpdateStopStatus = async (jobId: string, stopIndex: number, newStatus: string) => {
-    const job = (activeTab === 'pending' || activeTab === 'awaiting-activation' ? requests : jobs).find(j => j.id === jobId);
+    const job = (activeTab === 'pending' ? requests : jobs).find(j => j.id === jobId);
     if (!job) return;
 
     const updatedStops = [...(job.stops || [])];
@@ -227,7 +225,7 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-      const collectionName = (activeTab === 'pending' || activeTab === 'awaiting-activation') ? 'requests' : 'jobs';
+      const collectionName = (activeTab === 'pending') ? 'requests' : 'jobs';
       await updateDoc(doc(db, collectionName, jobId), {
         stops: updatedStops,
         status: newJobStatus,
@@ -260,7 +258,6 @@ const Dashboard: React.FC = () => {
 
   const getTabCount = (tabId: string) => {
     if (tabId === 'pending') return requests.filter(r => r.status === 'pending').length;
-    if (tabId === 'awaiting-activation') return requests.filter(r => r.status === 'awaiting-activation').length;
     if (tabId === 'declined') return requests.filter(r => r.status === 'rejected').length;
     return jobs.filter(j => {
       const todayDayName = getDayName(new Date());
@@ -306,7 +303,7 @@ const Dashboard: React.FC = () => {
               {[
                 { label: 'Active Jobs', value: jobs.length, icon: Calendar, color: 'var(--ink)' },
                 { label: 'Pending Requests', value: requests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: 'var(--gold)' },
-                { label: 'Awaiting T&C', value: requests.filter(r => r.status === 'awaiting-activation').length, icon: Clock, color: 'var(--gold)' }
+                { label: 'Completed Jobs', value: jobs.filter(j => j.date < today).length, icon: CheckCircle2, color: 'var(--ink)' }
               ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
                    <div className="stat-icon" style={{ background: `var(--cream-warm)`, color: stat.color }}>
@@ -325,12 +322,11 @@ const Dashboard: React.FC = () => {
               {/* Desktop Tabs */}
               <div className="tabs-glass desktop-tabs">
                 {[
-                  { id: 'pending', label: 'Pending Requests', icon: Clock },
-                  { id: 'awaiting-activation', label: 'Awaiting T&C', icon: Clock },
-                  { id: 'declined', label: 'Declined', icon: XCircle },
-                  { id: 'upcoming', label: 'Upcoming', icon: Calendar },
+                  { id: 'pending', label: 'Pending Requests', icon: MessageSquare },
                   { id: 'in-progress', label: 'Active Today', icon: Clock },
-                  { id: 'history', label: 'History', icon: RotateCcw }
+                  { id: 'upcoming', label: 'Upcoming', icon: Calendar },
+                  { id: 'history', label: 'History', icon: RotateCcw },
+                  { id: 'declined', label: 'Declined', icon: XCircle }
                 ].map(tab => (
                   <button 
                     key={tab.id}
@@ -355,11 +351,10 @@ const Dashboard: React.FC = () => {
                 >
                   {[
                     { id: 'pending', label: 'Pending Requests' },
-                    { id: 'awaiting-activation', label: 'Awaiting T&C' },
-                    { id: 'declined', label: 'Declined' },
-                    { id: 'upcoming', label: 'Upcoming' },
                     { id: 'in-progress', label: 'Active Today' },
-                    { id: 'history', label: 'History' }
+                    { id: 'upcoming', label: 'Upcoming' },
+                    { id: 'history', label: 'History' },
+                    { id: 'declined', label: 'Declined' }
                   ].map(tab => (
                     <option key={tab.id} value={tab.id}>
                       {tab.label} ({getTabCount(tab.id)})
@@ -490,7 +485,7 @@ const Dashboard: React.FC = () => {
                                           </div>
                                           <div className="stop-action-group">
                                             <div className={`stop-status-pill ${stop.status}`}>{stop.status}</div>
-                                            {stop.status !== 'completed' && (activeTab !== 'pending' && activeTab !== 'awaiting-activation') && (
+                                            {stop.status !== 'completed' && (activeTab !== 'pending') && (
                                               <button 
                                                 className="btn-complete-stop"
                                                 onClick={() => handleUpdateStopStatus(job.id, sIdx, 'completed')}
@@ -523,7 +518,7 @@ const Dashboard: React.FC = () => {
                                 </div>
 
                                  <div className="card-actions">
-                                     {activeTab === 'pending' || activeTab === 'awaiting-activation' || activeTab === 'declined' ? (
+                                     {activeTab === 'pending' || activeTab === 'declined' ? (
                                       <div className="messaging-group">
                                         <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
                                            <MessageSquare size={16} />
@@ -547,7 +542,7 @@ const Dashboard: React.FC = () => {
                                        <div className="menu-trigger">
                                           <MoreHorizontal size={18} />
                                           <div className="menu-dropdown glass">
-                                             {activeTab === 'pending' || activeTab === 'awaiting-activation' || activeTab === 'declined' ? (
+                                             {activeTab === 'pending' || activeTab === 'declined' ? (
                                                <>
                                                  <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
                                                  <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>

@@ -12,6 +12,7 @@ import ShareLink from './pages/ShareLink/ShareLink';
 import RequestPage from './pages/Jobs/RequestPage';
 import CustomerHub from './pages/Customers/CustomerHub';
 import Schedules from './pages/Jobs/Schedules';
+import AwaitingTCPage from './pages/Jobs/AwaitingTCPage';
 import Reports from './pages/Admin/Reports';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -90,6 +91,14 @@ const App: React.FC = () => {
             <PrivateRoute>
               <AppLayout>
                 <Schedules />
+              </AppLayout>
+            </PrivateRoute>
+          } />
+
+          <Route path="/awaiting-tc" element={
+            <PrivateRoute>
+              <AppLayout>
+                <AwaitingTCPage />
               </AppLayout>
             </PrivateRoute>
           } />

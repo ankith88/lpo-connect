@@ -10,13 +10,15 @@ import {
   TrendingUp, 
   HelpCircle, 
   LogOut,
-  BarChart3
+  BarChart3,
+  Clock
 } from 'lucide-react';
 import { auth } from '../firebase/config';
 
 const Sidebar: React.FC = () => {
   const navItems = [
     { name: 'Job Manager', icon: ClipboardList, path: '/dashboard' },
+    { name: 'Awaiting T&C', icon: Clock, path: '/awaiting-tc' },
     { name: 'Recurring Schedules', icon: RotateCcw, path: '/schedules' },
     { name: 'Service Area', icon: MapPin, path: '/service-area' },
     { name: 'Share Booking Link', icon: Share2, path: '/share' },
