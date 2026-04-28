@@ -57,7 +57,7 @@ const RequestPage: React.FC = () => {
     const unsubscribe = onSnapshot(doc(db, 'requests', id), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.status === 'accepted') {
+        if (data.status === 'scheduled' || data.status === 'accepted') {
           setError("This request has already been accepted and is now an active job.");
         } else {
           // We load the request even if rejected, so we can show the details
@@ -133,7 +133,7 @@ const RequestPage: React.FC = () => {
           const templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
             ...request,
             lpo_id: lpo.id,
-            status: 'accepted',
+            status: 'scheduled',
             createdAt: new Date(),
             originalRequestId: request.id
           });
@@ -144,7 +144,7 @@ const RequestPage: React.FC = () => {
             jobDocRef = await addDoc(collection(db, 'jobs'), {
               ...request,
               lpo_id: lpo.id,
-              status: 'accepted',
+              status: 'scheduled',
               createdAt: new Date(),
               jobType: 'scheduled_instance',
               scheduledJobId: templateRef.id,
@@ -159,7 +159,7 @@ const RequestPage: React.FC = () => {
           jobDocRef = await addDoc(collection(db, 'jobs'), {
             ...request,
             lpo_id: lpo.id,
-            status: 'accepted',
+            status: 'scheduled',
             createdAt: new Date(),
             originalRequestId: request.id
           });
@@ -191,7 +191,7 @@ const RequestPage: React.FC = () => {
 
         // 2. Update Request Status
         await updateDoc(doc(db, 'requests', request.id), {
-          status: 'accepted'
+          status: 'scheduled'
         });
 
         alert("Job accepted successfully!");

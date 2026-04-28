@@ -300,7 +300,7 @@ export const generateDailyScheduledJobs = onSchedule({
           jobType: 'scheduled_instance',
           scheduledJobId: doc.id,
           date: todayStr,
-          status: 'accepted',
+          status: 'scheduled',
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         

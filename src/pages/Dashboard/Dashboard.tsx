@@ -591,7 +591,7 @@ const Dashboard: React.FC = () => {
                                              ) : (
                                                <>
                                                  <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
-                                                 {job.status !== 'accepted' && job.status !== 'rejected' && (
+                                                 {job.status !== 'scheduled' && job.status !== 'accepted' && job.status !== 'rejected' && (
                                                    <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> Cancel</button>
                                                  )}
                                                </>
