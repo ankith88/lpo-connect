@@ -364,8 +364,8 @@ const Dashboard: React.FC = () => {
               </div>
 
               <div className="action-pill-group">
-                <button className="btn-secondary-glass" onClick={exportJobsCSV}>
-                  <Download size={18} /> EXPORT
+                <button className="btn-secondary-glass icon-only" onClick={exportJobsCSV} title="Export Jobs">
+                  <Download size={18} />
                 </button>
               </div>
             </div>
@@ -658,6 +658,10 @@ const Dashboard: React.FC = () => {
           font-weight: 700;
           cursor: pointer;
           display: flex; align-items: center; gap: 8px;
+        }
+        .btn-secondary-glass.icon-only {
+          padding: 10px;
+          justify-content: center;
         }
         
         .timeline-container { position: relative; padding-top: 20px; }
