@@ -297,8 +297,34 @@ const Dashboard: React.FC = () => {
            </div>
         </header>
 
-        <div className="dashboard-grid">
-           {/* Stats Section */}
+        <div className="dashboard-layout-with-sidebar">
+          <aside className="dashboard-sidebar desktop-only">
+            <h3 className="sidebar-title">Views</h3>
+            <nav className="vertical-tabs">
+              {[
+                { id: 'pending', label: 'Pending Requests', icon: MessageSquare },
+                { id: 'in-progress', label: 'Active Today', icon: Clock },
+                { id: 'upcoming', label: 'Upcoming', icon: Calendar },
+                { id: 'history', label: 'History', icon: RotateCcw },
+                { id: 'declined', label: 'Declined', icon: XCircle }
+              ].map(tab => (
+                <button 
+                  key={tab.id}
+                  className={`vertical-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.id as any)}
+                >
+                  <tab.icon size={16} />
+                  <span>{tab.label}</span>
+                  <span className="count-badge">
+                    {getTabCount(tab.id)}
+                  </span>
+                </button>
+              ))}
+            </nav>
+          </aside>
+
+          <div className="dashboard-grid">
+             {/* Stats Section */}
            <div className="stats-row">
               {[
                 { label: 'Active Jobs', value: jobs.length, icon: Calendar, color: 'var(--ink)' },
@@ -319,29 +345,6 @@ const Dashboard: React.FC = () => {
 
             {/* Controls Row */}
             <div className="controls-row">
-              {/* Desktop Tabs */}
-              <div className="tabs-glass desktop-tabs">
-                {[
-                  { id: 'pending', label: 'Pending Requests', icon: MessageSquare },
-                  { id: 'in-progress', label: 'Active Today', icon: Clock },
-                  { id: 'upcoming', label: 'Upcoming', icon: Calendar },
-                  { id: 'history', label: 'History', icon: RotateCcw },
-                  { id: 'declined', label: 'Declined', icon: XCircle }
-                ].map(tab => (
-                  <button 
-                    key={tab.id}
-                    className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                    onClick={() => setActiveTab(tab.id as any)}
-                  >
-                    <tab.icon size={16} />
-                    <span>{tab.label}</span>
-                    <span className="count-badge">
-                      {getTabCount(tab.id)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-
               {/* Mobile Tabs Dropdown */}
               <div className="mobile-tabs-dropdown">
                 <select 
@@ -567,6 +570,7 @@ const Dashboard: React.FC = () => {
                  </div>
                )}
             </div>
+          </div>
         </div>
       </div>
 
@@ -615,6 +619,100 @@ const Dashboard: React.FC = () => {
           transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         .btn-premium-action:hover { transform: translateY(-4px); box-shadow: 0 15px 35px rgba(26, 61, 51, 0.25); }
+
+        .dashboard-layout-with-sidebar {
+          display: flex;
+          flex-direction: column;
+          gap: 24px;
+        }
+
+        @media (min-width: 1024px) {
+          .dashboard-layout-with-sidebar {
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            align-items: start;
+          }
+          .desktop-only { display: block; }
+          .mobile-tabs-dropdown { display: none !important; }
+          .controls-row { justify-content: flex-end !important; margin-bottom: 24px; }
+        }
+        
+        @media (max-width: 1023px) {
+          .desktop-only { display: none; }
+          .mobile-tabs-dropdown { display: block; }
+          .controls-row { justify-content: space-between; }
+        }
+
+        .dashboard-sidebar {
+          position: sticky;
+          top: 100px;
+          background: rgba(255, 255, 255, 0.4);
+          border: 1px solid rgba(255, 255, 255, 0.5);
+          border-radius: 16px;
+          padding: 24px;
+          backdrop-filter: blur(20px);
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+        }
+
+        .sidebar-title {
+          font-size: 0.85rem;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          color: var(--ink);
+          opacity: 0.6;
+          margin-bottom: 20px;
+          font-weight: 700;
+          margin-top: 0;
+        }
+
+        .vertical-tabs {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .vertical-tab-btn {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          width: 100%;
+          padding: 14px 16px;
+          border: none;
+          background: transparent;
+          color: var(--ink);
+          font-weight: 600;
+          font-size: 0.95rem;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          text-align: left;
+        }
+
+        .vertical-tab-btn:hover {
+          background: rgba(255, 255, 255, 0.6);
+        }
+
+        .vertical-tab-btn.active {
+          background: #fff;
+          color: var(--gold);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        .vertical-tab-btn .count-badge {
+          margin-left: auto;
+          background: rgba(0, 0, 0, 0.05);
+          padding: 2px 8px;
+          border-radius: 20px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--ink);
+        }
+        
+        .vertical-tab-btn.active .count-badge {
+          background: rgba(234, 240, 68, 0.5);
+        }
+
+        .dashboard-grid { display: flex; flex-direction: column; gap: 24px; }
 
         .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 32px; }
         .stat-card {
