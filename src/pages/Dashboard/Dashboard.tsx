@@ -365,12 +365,6 @@ const Dashboard: React.FC = () => {
                   ))}
                 </select>
               </div>
-
-              <div className="action-pill-group">
-                <button className="btn-secondary-glass icon-only" onClick={exportJobsCSV} title="Export Jobs">
-                  <Download size={18} />
-                </button>
-              </div>
             </div>
 
             {/* Filter Bar */}
@@ -409,6 +403,9 @@ const Dashboard: React.FC = () => {
                     <option value="round-trip">Round Trip</option>
                   </select>
                   <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
+                  <button className="btn-secondary-glass icon-only" onClick={exportJobsCSV} title="Export Jobs">
+                    <Download size={18} />
+                  </button>
                </div>
             </div>
 
@@ -634,7 +631,7 @@ const Dashboard: React.FC = () => {
           }
           .desktop-only { display: block; }
           .mobile-tabs-dropdown { display: none !important; }
-          .controls-row { justify-content: flex-end !important; margin-bottom: 24px; }
+          .controls-row { display: none !important; }
         }
         
         @media (max-width: 1023px) {
