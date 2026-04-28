@@ -44,9 +44,9 @@ const AwaitingTCPage: React.FC = () => {
         try {
           const reqQ = query(collection(db, 'requests'), where('lpo_id', '==', lpo.id));
           const reqSnapshot = await getDocs(reqQ);
-          const allReqs = reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const allReqs = reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
           // Only show awaiting-activation
-          setRequests(allReqs.filter(r => r.status === 'awaiting-activation'));
+          setRequests(allReqs.filter((r: any) => r.status === 'awaiting-activation'));
         } catch (error) {
           console.error("Error fetching data:", error);
         } finally {
