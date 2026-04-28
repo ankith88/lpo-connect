@@ -23,7 +23,7 @@ import {
 import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
 import { getDefaultBookingDate, formatDateForInput } from '../../utils/scheduling';
 import { useLpo } from '../../context/LpoContext';
-import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db, googleMapsApiKey } from '../../firebase/config';
 
 type ServiceType = 'site-to-lpo' | 'lpo-to-site' | 'round-trip';
@@ -537,12 +537,21 @@ const NewJobForm: React.FC = () => {
           isExistingCustomer,
           netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
           appJobGroupId: null,
-          syncedWithNetSuite: null
+          syncedWithNetSuite: null,
+          status: initialRequestStatus
         }));
+
+        const sysMessage = {
+          id: Date.now().toString(),
+          sender: 'system',
+          text: `Job request updated. New date: ${formData.date}`,
+          timestamp: new Date().toISOString()
+        };
 
         await updateDoc(doc(db, 'requests', requestId), {
           ...cleanUpdate,
-          updatedAt: serverTimestamp()
+          updatedAt: serverTimestamp(),
+          chat: arrayUnion(sysMessage)
         });
         localStorage.removeItem('edit_request_draft');
       } else {

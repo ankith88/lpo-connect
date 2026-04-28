@@ -31,6 +31,7 @@ import { getDayName, formatDateForInput, parseLocalDate } from '../../utils/sche
 const Dashboard: React.FC = () => {
   const { lpo } = useLpo();
   const [jobs, setJobs] = useState<any[]>([]);
+  const [scheduledJobs, setScheduledJobs] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,6 +74,14 @@ const Dashboard: React.FC = () => {
           const allReqs = reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
           setRequests(allReqs);
 
+          // Fetch Scheduled Job Templates
+          const schedQ = query(
+            collection(db, 'scheduled_jobs'),
+            where('lpo_id', '==', lpo.id)
+          );
+          const schedSnapshot = await getDocs(schedQ);
+          setScheduledJobs(schedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
         } catch (error) {
           console.error("Error fetching data:", error);
           // Fallback if index isn't ready
@@ -83,6 +92,10 @@ const Dashboard: React.FC = () => {
           const reqQ = query(collection(db, 'requests'), where('lpo_id', '==', lpo.id));
           const reqSnapshot = await getDocs(reqQ);
           setRequests(reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+
+          const schedQ = query(collection(db, 'scheduled_jobs'), where('lpo_id', '==', lpo.id));
+          const schedSnapshot = await getDocs(schedQ);
+          setScheduledJobs(schedSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         } finally {
           setLoading(false);
         }
@@ -106,10 +119,43 @@ const Dashboard: React.FC = () => {
 
   const today = formatDateForInput(new Date());
 
+  const getProjectedUpcomingJobs = (templates: any[], maxDays: number = 14) => {
+    const projected: any[] = [];
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    for (let i = 1; i <= maxDays; i++) {
+      const projectedDate = new Date(todayDate);
+      projectedDate.setDate(todayDate.getDate() + i);
+      const dateStr = formatDateForInput(projectedDate);
+      const dayName = days[projectedDate.getDay()];
+
+      templates.forEach(t => {
+        if (t.recurrenceStatus === 'stopped') return;
+        if (t.skippedDates?.includes(dateStr)) return;
+        if (t.date > dateStr) return; // hasn't started
+        
+        if (t.frequency?.includes(dayName)) {
+          projected.push({
+            ...t,
+            id: `${t.id}-projected-${dateStr}`,
+            date: dateStr,
+            status: 'scheduled',
+            isProjected: true
+          });
+        }
+      });
+    }
+    return projected;
+  };
+
+  const projectedJobs = activeTab === 'upcoming' ? getProjectedUpcomingJobs(scheduledJobs) : [];
+
   // Define source based on tab
   const source = (activeTab === 'pending' || activeTab === 'declined') 
     ? requests 
-    : (activeTab === 'history' ? [...jobs, ...requests] : jobs);
+    : (activeTab === 'history' ? [...jobs, ...requests] : (activeTab === 'upcoming' ? [...jobs, ...projectedJobs] : jobs));
 
   const filteredJobs = source.filter(j => {
     const matchesSearch = j.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -117,30 +163,25 @@ const Dashboard: React.FC = () => {
                          j.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesService = serviceFilter === 'all' || j.service === serviceFilter;
     
-    const todayDayName = getDayName(new Date());
-    
     // Tab Filtering
-    let matchesTab = false;
     const isOneOff = j.jobType === 'one-off';
-    const isScheduled = j.jobType === 'scheduled' && j.recurrenceStatus !== 'stopped';
 
-    if (activeTab === 'pending') {
-      // Only show pending requests that are for today or future
-      matchesTab = j.status === 'pending' && (!isOneOff || j.date >= today); 
-    } else if (activeTab === 'in-progress') {
-      const matchesOneOff = isOneOff && j.date === today;
-      const matchesRecurring = isScheduled && j.frequency.includes(todayDayName) && today >= j.date && !(j.skippedDates || []).includes(today);
-      matchesTab = matchesOneOff || matchesRecurring;
-    } else if (activeTab === 'upcoming') {
-      const matchesOneOff = isOneOff && j.date > today;
-      const matchesRecurring = isScheduled && j.date > today && !(j.skippedDates || []).includes(j.date);
-      matchesTab = matchesOneOff || matchesRecurring;
-    } else if (activeTab === 'history') {
-      // Show both completed jobs AND one-off requests that were never accepted
-      matchesTab = isOneOff && j.date < today;
-    } else if (activeTab === 'declined') {
-      matchesTab = j.status === 'rejected';
+    const checkTab = (tab: string) => {
+      if (tab === 'pending') {
+        return j.status === 'pending' && (!isOneOff || j.date >= today); 
+      } else if (tab === 'in-progress') {
+        return j.date === today;
+      } else if (tab === 'upcoming') {
+        return j.date > today;
+      } else if (tab === 'history') {
+        return j.date < today;
+      } else if (tab === 'declined') {
+        return j.status === 'rejected';
+      }
+      return false;
     }
+
+    const matchesTab = checkTab(activeTab);
 
     // Date selection filter
     const matchesDate = !dateFilter || j.date === dateFilter;

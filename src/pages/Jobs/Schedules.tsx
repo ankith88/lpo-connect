@@ -31,9 +31,8 @@ const Schedules: React.FC = () => {
         setLoading(true);
         try {
           const q = query(
-            collection(db, 'jobs'), 
+            collection(db, 'scheduled_jobs'), 
             where('lpo_id', '==', lpo.id),
-            where('jobType', '==', 'scheduled'),
             orderBy('createdAt', 'desc')
           );
           const snapshot = await getDocs(q);
@@ -42,9 +41,8 @@ const Schedules: React.FC = () => {
           console.error("Error fetching schedules:", error);
           // Fallback if index isn't ready
           const q = query(
-            collection(db, 'jobs'), 
-            where('lpo_id', '==', lpo.id),
-            where('jobType', '==', 'scheduled')
+            collection(db, 'scheduled_jobs'), 
+            where('lpo_id', '==', lpo.id)
           );
           const snapshot = await getDocs(q);
           setSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -68,7 +66,7 @@ const Schedules: React.FC = () => {
 
   const handleSkipDate = async (jobId: string, date: string) => {
     try {
-      await updateDoc(doc(db, 'jobs', jobId), {
+      await updateDoc(doc(db, 'scheduled_jobs', jobId), {
         skippedDates: arrayUnion(date)
       });
       const updated = schedules.map(s => s.id === jobId ? { ...s, skippedDates: [...(s.skippedDates || []), date] } : s);
@@ -83,7 +81,7 @@ const Schedules: React.FC = () => {
 
   const handleUnskipDate = async (jobId: string, date: string) => {
     try {
-      await updateDoc(doc(db, 'jobs', jobId), {
+      await updateDoc(doc(db, 'scheduled_jobs', jobId), {
         skippedDates: arrayRemove(date)
       });
       const updated = schedules.map(s => s.id === jobId ? { ...s, skippedDates: (s.skippedDates || []).filter((d: string) => d !== date) } : s);
@@ -99,7 +97,7 @@ const Schedules: React.FC = () => {
   const handleStopSeries = async (jobId: string) => {
     if (!window.confirm("Are you sure you want to stop this recurring schedule? This will prevent all future visits.")) return;
     try {
-      await updateDoc(doc(db, 'jobs', jobId), {
+      await updateDoc(doc(db, 'scheduled_jobs', jobId), {
         recurrenceStatus: 'stopped'
       });
       setSchedules(schedules.map(s => s.id === jobId ? { ...s, recurrenceStatus: 'stopped' } : s));
@@ -118,7 +116,7 @@ const Schedules: React.FC = () => {
       : [...currentFreq, day];
 
     try {
-      await updateDoc(doc(db, 'jobs', jobId), {
+      await updateDoc(doc(db, 'scheduled_jobs', jobId), {
         frequency: newFreq
       });
       const updated = schedules.map(s => s.id === jobId ? { ...s, frequency: newFreq } : s);

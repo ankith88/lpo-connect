@@ -25,12 +25,12 @@ import {
 import LoadingScreen from '../../components/LoadingScreen';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
-import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
+import { formatDateForInput, parseLocalDate, getDayName } from '../../utils/scheduling';
 import { requestNotificationPermission, saveTokenToFirestore, onForegroundMessage } from '../../utils/notifications';
 
 const RequestPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { lpo } = useLpo();
+  const { lpo, loading: lpoLoading } = useLpo();
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -124,17 +124,48 @@ const RequestPage: React.FC = () => {
 
     if (window.confirm("Accept this job request?")) {
       try {
-        // 1. Create Job
-        const jobDocRef = await addDoc(collection(db, 'jobs'), {
-          ...request,
-          lpo_id: lpo.id,
-          status: 'accepted',
-          createdAt: new Date(),
-          originalRequestId: request.id
-        });
+        // 1. Create Job or Scheduled Template
+        let jobDocRef;
+        const today = formatDateForInput(new Date());
+        
+        if (request.jobType === 'scheduled') {
+          // Save template
+          const templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
+            ...request,
+            lpo_id: lpo.id,
+            status: 'accepted',
+            createdAt: new Date(),
+            originalRequestId: request.id
+          });
+          
+          // Check if today matches frequency to immediately generate first instance
+          const todayDayName = getDayName(new Date());
+          if (request.date <= today && request.frequency?.includes(todayDayName)) {
+            jobDocRef = await addDoc(collection(db, 'jobs'), {
+              ...request,
+              lpo_id: lpo.id,
+              status: 'accepted',
+              createdAt: new Date(),
+              jobType: 'scheduled_instance',
+              scheduledJobId: templateRef.id,
+              date: today,
+              originalRequestId: request.id
+            });
+          } else {
+            jobDocRef = templateRef; // For NetSuite check below (though it won't match today)
+          }
+        } else {
+          // Normal one-off job
+          jobDocRef = await addDoc(collection(db, 'jobs'), {
+            ...request,
+            lpo_id: lpo.id,
+            status: 'accepted',
+            createdAt: new Date(),
+            originalRequestId: request.id
+          });
+        }
 
         // 1.5 Sync with NetSuite if same-day job
-        const today = formatDateForInput(new Date());
         if (request.date === today) {
           const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
           
@@ -183,12 +214,20 @@ const RequestPage: React.FC = () => {
     }
 
     try {
+      const sysMessage = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `Request Declined. Reason: ${rejectReason}. Notes: ${rejectNotes.trim()}`,
+        timestamp: new Date().toISOString()
+      };
+
       await updateDoc(doc(db, 'requests', request.id), {
         status: 'rejected',
         rejectionReason: rejectReason,
         rejectionNotes: rejectNotes.trim(),
         rejectedAt: new Date().toISOString(),
-        rejectedBy: lpo?.id || 'unknown'
+        rejectedBy: lpo?.id || 'unknown',
+        chat: arrayUnion(sysMessage)
       });
 
       // NetSuite Integration for Rejection Alert
@@ -226,11 +265,20 @@ const RequestPage: React.FC = () => {
     }
 
     try {
+      const timeMsg = newTime ? ` and time: ${newTime}` : '';
+      const sysMessage = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `Request reprocessed with new date: ${newDate}${timeMsg}`,
+        timestamp: new Date().toISOString()
+      };
+
       await updateDoc(doc(db, 'requests', id), {
         status: 'pending',
         date: newDate,
         preferredTime: newTime || request.preferredTime,
-        reprocessedAt: new Date().toISOString()
+        reprocessedAt: new Date().toISOString(),
+        chat: arrayUnion(sysMessage)
       });
       setNewDate('');
       setNewTime('');
@@ -240,7 +288,7 @@ const RequestPage: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (loading || lpoLoading) {
     return <LoadingScreen message="Coordinating Request" />;
   }
 
@@ -282,9 +330,17 @@ const RequestPage: React.FC = () => {
               <div className="status-pill pending">Coordination Phase</div>
               <h1>Job Request Coordination</h1>
               <p>Reference: #{request.id.slice(0, 8).toUpperCase()}</p>
+              {request.status === 'awaiting-activation' && (
+                <div className="tc-banner fade-in">
+                  <div className="tc-icon"><Clock size={16} /></div>
+                  <div className="tc-text">
+                    <strong>Awaiting T&C:</strong> The system is still waiting for the customer to accept the Terms & Conditions.
+                  </div>
+                </div>
+              )}
            </div>
            
-           {isOperator && request.status !== 'rejected' && (
+           {request.status !== 'rejected' && (
              <div className="operator-actions desktop-only">
                <button className="btn-reject" onClick={handleReject}>
                  <XCircle size={18} /> DECLINE
@@ -451,15 +507,30 @@ const RequestPage: React.FC = () => {
                        <span className="hint">Questions about timing, access, or billing can be discussed here.</span>
                     </div>
                  ) : (
-                    request.chat.map((msg: any, idx: number) => (
-                       <div key={idx} className={`message-bubble ${msg.sender}`}>
-                          <div className="sender-label">{msg.sender === 'operator' ? 'MailPlus Operator' : 'Customer'}</div>
-                          <div className="message-content">{msg.text}</div>
-                          <div className="message-time">
-                             {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    request.chat.map((msg: any, idx: number) => {
+                       if (msg.sender === 'system') {
+                          return (
+                             <div key={idx} className="system-message">
+                                <div className="system-message-content">
+                                   <span className="system-icon"><Clock size={14} /></span>
+                                   {msg.text}
+                                </div>
+                                <div className="message-time">
+                                   {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </div>
+                             </div>
+                          );
+                       }
+                       return (
+                          <div key={idx} className={`message-bubble ${msg.sender}`}>
+                             <div className="sender-label">{msg.sender === 'operator' ? 'MailPlus Operator' : 'Customer'}</div>
+                             <div className="message-content">{msg.text}</div>
+                             <div className="message-time">
+                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                             </div>
                           </div>
-                       </div>
-                    ))
+                       );
+                    })
                  )}
                  <div ref={chatEndRef} />
               </div>
@@ -481,7 +552,7 @@ const RequestPage: React.FC = () => {
         </div>
       </div>
 
-      {isOperator && request.status !== 'rejected' && (
+      {request.status !== 'rejected' && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
             <button className="btn-reject" onClick={handleReject}>
@@ -553,6 +624,8 @@ const RequestPage: React.FC = () => {
         .header-main p { font-weight: 500; color: var(--ink-soft); font-family: var(--font-ui); font-size: 0.75rem; letter-spacing: 0.05em; }
         .status-pill { display: inline-block; padding: 4px 12px; borderRadius: 20px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; }
         .status-pill.pending { background: var(--cream-warm); color: var(--gold); }
+        .tc-banner { margin-top: 12px; display: inline-flex; align-items: center; gap: 10px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); padding: 10px 16px; border-radius: 12px; color: #b38600; font-family: var(--font-ui); font-size: 0.8rem; }
+        .tc-icon { display: flex; align-items: center; }
 
         .operator-actions { display: flex; gap: 12px; }
         .btn-reject { background: white; color: #ff4757; border: 1px solid #ffdada; padding: 12px 24px; border-radius: 14px; font-weight: 800; display: flex; align-items: center; gap: 10px; cursor: pointer; }
@@ -646,9 +719,12 @@ const RequestPage: React.FC = () => {
         .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .send-btn:hover { transform: scale(1.05); }
 
-        .empty-chat { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--ink-soft); opacity: 0.6; padding: 40px; }
-        .empty-chat p { font-weight: 800; color: var(--ink); margin: 16px 0 8px; }
-        .empty-chat .hint { font-size: 0.8rem; font-weight: 500; }
+         .empty-chat { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink-soft); gap: 12px; }
+         .empty-chat p { font-weight: 600; margin: 0; color: var(--ink); }
+         .empty-chat .hint { font-size: 0.8rem; }
+         
+         .system-message { display: flex; flex-direction: column; align-items: center; margin: 16px 0; }
+         .system-message-content { background: var(--cream-warm); color: var(--ink-soft); font-size: 0.8rem; padding: 6px 12px; border-radius: 12px; display: flex; align-items: center; gap: 6px; font-weight: 500; }
 
         .request-page-loading { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--ink-soft); opacity: 0.6; }
 

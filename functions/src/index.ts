@@ -2,6 +2,7 @@ import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 
 // Initialize admin once
 if (admin.apps.length === 0) {
@@ -225,4 +226,99 @@ export const updateJobStatus = onCall(async (request) => {
     status: updatedData.status || jobData.status,
     stopsUpdated
   };
+});
+
+// Logic: generateDailyScheduledJobs
+export const generateDailyScheduledJobs = onSchedule({
+  schedule: "5 0 * * *", // 12:05 AM every day
+  timeZone: "Australia/Sydney", // Adjust to LPO timezone
+}, async (event) => {
+  const db = getDB();
+  
+  // Use Australia/Sydney timezone for date calculations
+  const sydneyTimeFormatter = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short'
+  });
+  
+  // parts will look like: [ { type: 'weekday', value: 'Wed' }, ... ]
+  const parts = sydneyTimeFormatter.formatToParts(new Date());
+  
+  let year = '';
+  let month = '';
+  let day = '';
+  let todayDayName = '';
+  
+  for (const part of parts) {
+    if (part.type === 'year') year = part.value;
+    if (part.type === 'month') month = part.value;
+    if (part.type === 'day') day = part.value;
+    if (part.type === 'weekday') todayDayName = part.value;
+  }
+  
+  // Sometimes 'short' weekday returns "Wed." or "Wed", we just need the first 3 chars
+  todayDayName = todayDayName.substring(0, 3);
+  
+  const todayStr = `${year}-${month}-${day}`;
+  
+  const scheduledJobsRef = db.collection('scheduled_jobs');
+  const jobsRef = db.collection('jobs');
+  
+  const snapshot = await scheduledJobsRef.where('status', '==', 'accepted').get();
+  let generatedCount = 0;
+
+  const batch = db.batch();
+  let operationsInBatch = 0;
+
+  for (const doc of snapshot.docs) {
+    const template = doc.data();
+    
+    // Check if job is stopped or skipped today
+    if (template.recurrenceStatus === 'stopped') continue;
+    if (template.skippedDates && template.skippedDates.includes(todayStr)) continue;
+    
+    // Check if the template has started
+    if (template.date > todayStr) continue;
+    
+    // Check if today matches the frequency
+    if (template.frequency && Array.isArray(template.frequency) && template.frequency.includes(todayDayName)) {
+      
+      // Avoid duplicate generation for this exact template + date
+      const existingInstances = await jobsRef
+        .where('scheduledJobId', '==', doc.id)
+        .where('date', '==', todayStr)
+        .get();
+        
+      if (existingInstances.empty) {
+        // Create new instance
+        const newJobRef = jobsRef.doc();
+        batch.set(newJobRef, {
+          ...template, // Copies all fields including stops
+          jobType: 'scheduled_instance',
+          scheduledJobId: doc.id,
+          date: todayStr,
+          status: 'accepted',
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        
+        generatedCount++;
+        operationsInBatch++;
+        
+        // Firestore batch limit is 500
+        if (operationsInBatch >= 450) {
+          await batch.commit();
+          operationsInBatch = 0;
+        }
+      }
+    }
+  }
+
+  if (operationsInBatch > 0) {
+    await batch.commit();
+  }
+
+  console.log(`Generated ${generatedCount} daily scheduled jobs for ${todayStr}`);
 });
