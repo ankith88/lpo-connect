@@ -36,6 +36,15 @@ const RequestPage: React.FC = () => {
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Rejection Modal State
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectNotes, setRejectNotes] = useState('');
+
+  // Reprocess State
+  const [newDate, setNewDate] = useState('');
+  const [newTime, setNewTime] = useState('');
 
   // Identity: If lpo exists, person is the Operator. 
   // Otherwise, they are the Requester/User.
@@ -50,9 +59,8 @@ const RequestPage: React.FC = () => {
         const data = docSnap.data();
         if (data.status === 'accepted') {
           setError("This request has already been accepted and is now an active job.");
-        } else if (data.status === 'rejected') {
-           setError("This request has been declined.");
         } else {
+          // We load the request even if rejected, so we can show the details
           setRequest({ id: docSnap.id, ...data });
         }
       } else {
@@ -163,17 +171,72 @@ const RequestPage: React.FC = () => {
     }
   };
 
-  const handleReject = async () => {
-    if (!request || !isOperator) return;
+  const handleReject = () => {
+    setIsRejectModalOpen(true);
+  };
 
-    if (window.confirm("Decline this job request?")) {
-      try {
-        await updateDoc(doc(db, 'requests', request.id), {
-          status: 'rejected'
-        });
-      } catch (err) {
-        console.error("Error rejecting job:", err);
-      }
+  const submitReject = async () => {
+    if (!request || !isOperator) return;
+    if (!rejectReason || !rejectNotes.trim()) {
+      alert("Please select a reason and provide notes.");
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'requests', request.id), {
+        status: 'rejected',
+        rejectionReason: rejectReason,
+        rejectionNotes: rejectNotes.trim(),
+        rejectedAt: new Date().toISOString(),
+        rejectedBy: lpo?.id || 'unknown'
+      });
+
+      // NetSuite Integration for Rejection Alert
+      const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2532&deploy=1&compid=1048144&ns-at=AAEJ7tMQboW4e_4uOdEOkAJSDSB2d-67rLJ9FX2eFCl6Rfo5vSY";
+      
+      const params = new URLSearchParams({
+        action: 'reject',
+        request_id: request.id,
+        customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+        lpo_id: lpo?.id || "",
+        reason: rejectReason,
+        notes: rejectNotes.trim()
+      });
+
+      fetch(`${NETSUITE_API}&${params.toString()}`)
+        .then(res => res.json())
+        .then(data => console.log("NetSuite Reject Sync:", data))
+        .catch(err => console.error("NetSuite Reject Error:", err));
+
+      setIsRejectModalOpen(false);
+      setRejectReason('');
+      setRejectNotes('');
+    } catch (err) {
+      console.error("Error rejecting job:", err);
+      alert("Failed to reject job.");
+    }
+  };
+
+  const handleReprocess = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!request || !id) return;
+    if (!newDate) {
+      alert("Please select a new date.");
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, 'requests', id), {
+        status: 'pending',
+        date: newDate,
+        preferredTime: newTime || request.preferredTime,
+        reprocessedAt: new Date().toISOString()
+      });
+      setNewDate('');
+      setNewTime('');
+    } catch (err) {
+      console.error("Error reprocessing job:", err);
+      alert("Failed to reprocess request.");
     }
   };
 
@@ -221,7 +284,7 @@ const RequestPage: React.FC = () => {
               <p>Reference: #{request.id.slice(0, 8).toUpperCase()}</p>
            </div>
            
-           {isOperator && (
+           {isOperator && request.status !== 'rejected' && (
              <div className="operator-actions desktop-only">
                <button className="btn-reject" onClick={handleReject}>
                  <XCircle size={18} /> DECLINE
@@ -319,15 +382,68 @@ const RequestPage: React.FC = () => {
               )}
            </aside>
 
-           {/* Right: Chat Coordination */}
+           {/* Right: Chat Coordination OR Rejection State */}
            <main className="chat-interface glass-card">
-              <div className="chat-header">
-                 <MessageSquare size={20} />
-                 <h2>Coordination Chat</h2>
-                 <span className="live-indicator">LIVE</span>
-              </div>
+             {request.status === 'rejected' ? (
+                <div className="rejection-view">
+                   <div className="rejection-header">
+                      <XCircle size={48} color="#ff4757" />
+                      <h2>Request Declined</h2>
+                      <p>This request has been declined by the operator.</p>
+                   </div>
+                   
+                   <div className="rejection-details">
+                      <div className="rejection-item">
+                         <label>Reason for decline</label>
+                         <p className="reason-pill">{request.rejectionReason || 'Other'}</p>
+                      </div>
+                      <div className="rejection-item">
+                         <label>Operator Notes</label>
+                         <div className="notes-box">{request.rejectionNotes || 'No additional notes provided.'}</div>
+                      </div>
+                   </div>
 
-              <div className="chat-messages">
+                   {!isOperator && (
+                      <div className="reprocess-section">
+                         <h3>Submit a new proposed time</h3>
+                         <p>If you'd like the operator to review this again, pick a new date and time.</p>
+                         <form className="reprocess-form" onSubmit={handleReprocess}>
+                            <div className="form-row">
+                               <div className="input-group">
+                                  <label>New Date</label>
+                                  <input 
+                                     type="date" 
+                                     value={newDate}
+                                     onChange={(e) => setNewDate(e.target.value)}
+                                     required
+                                     min={formatDateForInput(new Date())}
+                                  />
+                               </div>
+                               <div className="input-group">
+                                  <label>Preferred Time</label>
+                                  <input 
+                                     type="time" 
+                                     value={newTime}
+                                     onChange={(e) => setNewTime(e.target.value)}
+                                  />
+                               </div>
+                            </div>
+                            <button type="submit" className="btn-reprocess">
+                               RESUBMIT REQUEST
+                            </button>
+                         </form>
+                      </div>
+                   )}
+                </div>
+             ) : (
+                <>
+                  <div className="chat-header">
+                     <MessageSquare size={20} />
+                     <h2>Coordination Chat</h2>
+                     <span className="live-indicator">LIVE</span>
+                  </div>
+
+                  <div className="chat-messages">
                  {(!request.chat || request.chat.length === 0) ? (
                     <div className="empty-chat">
                        <MessageSquare size={48} />
@@ -359,11 +475,13 @@ const RequestPage: React.FC = () => {
                     <Send size={18} />
                  </button>
               </form>
+              </>
+             )}
            </main>
         </div>
       </div>
 
-      {isOperator && (
+      {isOperator && request.status !== 'rejected' && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
             <button className="btn-reject" onClick={handleReject}>
@@ -379,6 +497,44 @@ const RequestPage: React.FC = () => {
               )}
             </button>
           </div>
+        </div>
+      )}
+
+      {isRejectModalOpen && (
+        <div className="modal-overlay">
+           <div className="modal-content">
+              <div className="modal-header">
+                 <h3>Decline Job Request</h3>
+                 <button className="close-btn" onClick={() => setIsRejectModalOpen(false)}>
+                    <XCircle size={24} />
+                 </button>
+              </div>
+              <div className="modal-body">
+                 <div className="input-group">
+                    <label>Reason for declining <span style={{color: '#ff4757'}}>*</span></label>
+                    <select value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}>
+                       <option value="">-- Select a reason --</option>
+                       <option value="No Capacity Today">No Capacity Today</option>
+                       <option value="Outside Territory">Outside Territory</option>
+                       <option value="Vehicle Breakdown">Vehicle Breakdown</option>
+                       <option value="Service Not Offered">Service Not Offered</option>
+                       <option value="Other">Other</option>
+                    </select>
+                 </div>
+                 <div className="input-group">
+                    <label>Additional Notes <span style={{color: '#ff4757'}}>*</span></label>
+                    <textarea 
+                       placeholder="Please provide details for the customer and dispatch team..."
+                       value={rejectNotes}
+                       onChange={(e) => setRejectNotes(e.target.value)}
+                    />
+                 </div>
+              </div>
+              <div className="modal-actions">
+                 <button className="btn-cancel" onClick={() => setIsRejectModalOpen(false)}>CANCEL</button>
+                 <button className="btn-confirm-reject" onClick={submitReject}>CONFIRM DECLINE</button>
+              </div>
+           </div>
         </div>
       )}
 
@@ -498,6 +654,42 @@ const RequestPage: React.FC = () => {
 
         .mobile-only { display: none; }
         .desktop-only { display: flex; }
+
+        /* Rejection View Styles */
+        .rejection-view { padding: 20px; display: flex; flex-direction: column; gap: 24px; height: 100%; overflow-y: auto; }
+        .rejection-header { text-align: center; margin-bottom: 10px; }
+        .rejection-header h2 { color: var(--ink); margin: 16px 0 8px; font-size: 1.5rem; }
+        .rejection-header p { color: var(--ink-soft); font-weight: 500; font-size: 0.9rem; }
+        .rejection-details { display: flex; flex-direction: column; gap: 16px; background: var(--cream-warm); padding: 20px; border-radius: 20px; }
+        .rejection-item label { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); letter-spacing: 0.1em; display: block; margin-bottom: 8px; }
+        .reason-pill { display: inline-block; background: #ff4757; color: white; padding: 6px 16px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; }
+        .notes-box { background: white; padding: 16px; border-radius: 12px; color: var(--ink); font-weight: 500; font-size: 0.95rem; border: 1px solid rgba(0,0,0,0.05); }
+        .reprocess-section { margin-top: 10px; padding-top: 24px; border-top: 1px dashed rgba(0,0,0,0.1); }
+        .reprocess-section h3 { color: var(--ink); font-size: 1.1rem; margin-bottom: 6px; }
+        .reprocess-section p { color: var(--ink-soft); font-size: 0.85rem; font-weight: 500; margin-bottom: 16px; }
+        .reprocess-form { display: flex; flex-direction: column; gap: 16px; }
+        .form-row { display: flex; gap: 16px; }
+        .input-group { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+        .input-group label { font-size: 0.75rem; font-weight: 700; color: var(--ink); text-transform: uppercase; }
+        .input-group input, .input-group select, .input-group textarea { padding: 12px; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; background: white; font-family: var(--font-ui); font-size: 0.9rem; }
+        .btn-reprocess { background: var(--gold); color: white; border: none; padding: 14px; border-radius: 14px; font-weight: 800; font-size: 0.9rem; cursor: pointer; display: flex; justify-content: center; transition: all 0.2s; }
+        .btn-reprocess:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(168, 118, 58, 0.3); }
+
+        /* Modal Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .modal-content { background: white; width: 100%; max-width: 500px; border-radius: 24px; padding: 32px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .modal-header h3 { font-family: var(--font-headings); font-size: 1.5rem; color: var(--ink); margin: 0; }
+        .close-btn { background: transparent; border: none; cursor: pointer; color: var(--ink-soft); padding: 4px; display: flex; }
+        .modal-body { display: flex; flex-direction: column; gap: 20px; margin-bottom: 32px; }
+        .modal-body select, .modal-body textarea { width: 100%; padding: 14px; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; font-family: var(--font-ui); font-size: 0.95rem; background: var(--offwhite); }
+        .modal-body select:focus, .modal-body textarea:focus { outline: none; border-color: var(--ink); }
+        .modal-body textarea { min-height: 100px; resize: vertical; }
+        .modal-actions { display: flex; gap: 12px; }
+        .modal-actions button { flex: 1; padding: 14px; border-radius: 14px; font-weight: 800; font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
+        .btn-cancel { background: transparent; border: 1px solid rgba(0,0,0,0.1); color: var(--ink); }
+        .btn-confirm-reject { background: #ff4757; border: none; color: white; }
+        .btn-confirm-reject:hover { background: #ff2a3f; }
 
         @media (max-width: 900px) {
            .request-page-premium { padding: 24px 16px 120px; }

@@ -2,7 +2,6 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   ClipboardList,
-  PlusCircle, 
   MapPin, 
   Share2,
   Users, 
@@ -18,7 +17,6 @@ import { auth } from '../firebase/config';
 const Sidebar: React.FC = () => {
   const navItems = [
     { name: 'Job Manager', icon: ClipboardList, path: '/dashboard' },
-    { name: 'New Job', icon: PlusCircle, path: '/new-job' },
     { name: 'Recurring Schedules', icon: RotateCcw, path: '/schedules' },
     { name: 'Service Area', icon: MapPin, path: '/service-area' },
     { name: 'Share Booking Link', icon: Share2, path: '/share' },

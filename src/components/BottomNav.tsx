@@ -3,8 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   Users, 
   LayoutDashboard, 
-  PlusCircle, 
-  FileText, 
+  RotateCcw, 
   LogOut 
 } from 'lucide-react';
 import { auth } from '../firebase/config';
@@ -14,8 +13,7 @@ const BottomNav: React.FC = () => {
   const navItems = [
     { name: 'Customers', icon: Users, path: '/customers' },
     { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
-    { name: 'New Job', icon: PlusCircle, path: '/new-job' },
-    { name: 'Invoices', icon: FileText, path: '/invoices' },
+    { name: 'Schedules', icon: RotateCcw, path: '/schedules' },
   ];
 
   const handleLogout = async () => {

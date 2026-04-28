@@ -16,6 +16,7 @@ import {
   MessageSquare,
   Download,
   X,
+  XCircle,
   ChevronDown,
   ChevronUp,
   MoreHorizontal,
@@ -34,7 +35,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<'pending' | 'awaiting-activation' | 'upcoming' | 'in-progress' | 'history'>('pending');
+  const [activeTab, setActiveTab] = useState<'pending' | 'awaiting-activation' | 'upcoming' | 'in-progress' | 'history' | 'declined'>('in-progress');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
 
@@ -106,7 +107,7 @@ const Dashboard: React.FC = () => {
   const today = formatDateForInput(new Date());
 
   // Define source based on tab
-  const source = (activeTab === 'pending' || activeTab === 'awaiting-activation') 
+  const source = (activeTab === 'pending' || activeTab === 'awaiting-activation' || activeTab === 'declined') 
     ? requests 
     : (activeTab === 'history' ? [...jobs, ...requests] : jobs);
 
@@ -139,6 +140,8 @@ const Dashboard: React.FC = () => {
     } else if (activeTab === 'history') {
       // Show both completed jobs AND one-off requests that were never accepted
       matchesTab = isOneOff && j.date < today;
+    } else if (activeTab === 'declined') {
+      matchesTab = j.status === 'rejected';
     }
 
     // Date selection filter
@@ -255,6 +258,21 @@ const Dashboard: React.FC = () => {
     return <ArrowLeft size={16} />;
   };
 
+  const getTabCount = (tabId: string) => {
+    if (tabId === 'pending') return requests.filter(r => r.status === 'pending').length;
+    if (tabId === 'awaiting-activation') return requests.filter(r => r.status === 'awaiting-activation').length;
+    if (tabId === 'declined') return requests.filter(r => r.status === 'rejected').length;
+    return jobs.filter(j => {
+      const todayDayName = getDayName(new Date());
+      if (tabId === 'in-progress') {
+        return (j.jobType === 'one-off' && j.date === today) || 
+               (j.jobType === 'scheduled' && j.frequency?.includes(todayDayName) && today >= j.date && !(j.skippedDates || []).includes(today));
+      }
+      if (tabId === 'upcoming') return j.date > today;
+      return j.date < today;
+    }).length;
+  };
+
   return (
     <div className="job-manager-premium">
       {/* Mesh Background */}
@@ -304,10 +322,12 @@ const Dashboard: React.FC = () => {
 
             {/* Controls Row */}
             <div className="controls-row">
-              <div className="tabs-glass">
+              {/* Desktop Tabs */}
+              <div className="tabs-glass desktop-tabs">
                 {[
                   { id: 'pending', label: 'Pending Requests', icon: Clock },
                   { id: 'awaiting-activation', label: 'Awaiting T&C', icon: Clock },
+                  { id: 'declined', label: 'Declined', icon: XCircle },
                   { id: 'upcoming', label: 'Upcoming', icon: Calendar },
                   { id: 'in-progress', label: 'Active Today', icon: Clock },
                   { id: 'history', label: 'History', icon: RotateCcw }
@@ -320,20 +340,32 @@ const Dashboard: React.FC = () => {
                     <tab.icon size={16} />
                     <span>{tab.label}</span>
                     <span className="count-badge">
-                      {tab.id === 'pending' ? requests.filter(r => r.status === 'pending').length : 
-                       tab.id === 'awaiting-activation' ? requests.filter(r => r.status === 'awaiting-activation').length :
-                       jobs.filter(j => {
-                        const todayDayName = getDayName(new Date());
-                        if (tab.id === 'in-progress') {
-                          return (j.jobType === 'one-off' && j.date === today) || 
-                                 (j.jobType === 'scheduled' && j.frequency?.includes(todayDayName) && today >= j.date && !(j.skippedDates || []).includes(today));
-                        }
-                        if (tab.id === 'upcoming') return j.date > today;
-                        return j.date < today;
-                      }).length}
+                      {getTabCount(tab.id)}
                     </span>
                   </button>
                 ))}
+              </div>
+
+              {/* Mobile Tabs Dropdown */}
+              <div className="mobile-tabs-dropdown">
+                <select 
+                  value={activeTab} 
+                  onChange={(e) => setActiveTab(e.target.value as any)}
+                  className="mobile-tab-select"
+                >
+                  {[
+                    { id: 'pending', label: 'Pending Requests' },
+                    { id: 'awaiting-activation', label: 'Awaiting T&C' },
+                    { id: 'declined', label: 'Declined' },
+                    { id: 'upcoming', label: 'Upcoming' },
+                    { id: 'in-progress', label: 'Active Today' },
+                    { id: 'history', label: 'History' }
+                  ].map(tab => (
+                    <option key={tab.id} value={tab.id}>
+                      {tab.label} ({getTabCount(tab.id)})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="action-pill-group">
@@ -491,7 +523,7 @@ const Dashboard: React.FC = () => {
                                 </div>
 
                                  <div className="card-actions">
-                                     {activeTab === 'pending' || activeTab === 'awaiting-activation' ? (
+                                     {activeTab === 'pending' || activeTab === 'awaiting-activation' || activeTab === 'declined' ? (
                                       <div className="messaging-group">
                                         <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
                                            <MessageSquare size={16} />
@@ -515,7 +547,7 @@ const Dashboard: React.FC = () => {
                                        <div className="menu-trigger">
                                           <MoreHorizontal size={18} />
                                           <div className="menu-dropdown glass">
-                                             {activeTab === 'pending' || activeTab === 'awaiting-activation' ? (
+                                             {activeTab === 'pending' || activeTab === 'awaiting-activation' || activeTab === 'declined' ? (
                                                <>
                                                  <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
                                                  <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
@@ -734,11 +766,21 @@ const Dashboard: React.FC = () => {
           .timeline-rail { left: 18px; }
           .timeline-node { left: -54px; }
           .node-inner { width: 36px; height: 36px; border-radius: 10px; }
+          .timeline-content-card { padding: 16px; border-radius: 16px; }
+          .card-header { margin-bottom: 12px; }
           .company-name { font-size: 1rem; }
           .date-badge { font-size: 0.7rem; padding: 6px 16px; }
-          .card-meta { flex-wrap: wrap; gap: 10px; }
+          .card-meta { flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
           .job-ref { width: 100%; margin: 0; }
+          .page-header { flex-direction: column; gap: 16px; align-items: stretch; }
+          .header-right .btn-premium-action { width: 100%; justify-content: center; }
+          .card-actions { flex-direction: row; justify-content: space-between; align-items: center; padding-top: 12px; }
+          .messaging-group { flex-direction: row; width: auto; gap: 8px; }
+          .mini-action span, .mini-chat span { display: none; }
+          .mini-action, .mini-chat { width: 36px; height: 36px; justify-content: center; padding: 0; }
+          .overflow-menu { position: relative; top: auto; right: auto; }
         }
+
 
         .loading-state { padding: 100px; text-align: center; color: var(--ink-soft); opacity: 0.6; font-weight: 600; }
 
@@ -748,10 +790,19 @@ const Dashboard: React.FC = () => {
         .tabs-glass { 
           display: flex; gap: 4px; background: rgba(26, 61, 51, 0.05); padding: 5px; border-radius: 16px; 
           border: 1px solid rgba(255,255,255,0.4);
+          flex-wrap: wrap; justify-content: center;
+        }
+        .mobile-tabs-dropdown { display: none; width: 100%; }
+        .mobile-tab-select { 
+          width: 100%; padding: 16px; font-family: var(--font-headings); font-weight: 700; font-size: 1rem;
+          color: var(--ink); background: white; border: 2px solid var(--cream-warm); border-radius: 16px; 
+          appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23095c7b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+          background-repeat: no-repeat; background-position: right 16px center; background-size: 16px;
         }
         .tab-btn {
-          padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; gap: 8px;
+          padding: 8px 16px; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;
           color: var(--ink-soft); font-weight: 700; font-size: 0.85rem; transition: all 0.2s;
+          flex: 1 1 calc(33.333% - 8px); min-width: 130px; text-align: center;
         }
         .tab-btn.active { background: white; color: var(--ink); box-shadow: 0 4px 12px rgba(26, 61, 51, 0.05); }
         .count-badge {
@@ -779,10 +830,23 @@ const Dashboard: React.FC = () => {
         .clear-date:hover { background: #ff4757; color: white; }
 
         @media (max-width: 900px) {
+          .desktop-tabs { display: none !important; }
+          .mobile-tabs-dropdown { display: block; }
           .cards-wrapper { grid-template-columns: 1fr; }
-          .stats-row { grid-template-columns: 1fr; }
+          .stats-row { grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
+          .stat-card { padding: 16px 8px; flex-direction: column; gap: 8px; text-align: center; border-radius: 16px; align-items: center; justify-content: center; }
+          .stat-card::before { top: 0; left: 0; width: 100%; height: 4px; }
+          .stat-icon { width: 36px; height: 36px; border-radius: 12px; }
+          .stat-icon svg { width: 18px !important; height: 18px !important; }
+          .stat-data { align-items: center; }
+          .stat-label { font-size: 0.55rem; letter-spacing: 0; line-height: 1.2; margin-bottom: 4px; }
+          .stat-value { font-size: 1.5rem; }
           .controls-row { flex-direction: column; align-items: stretch; }
           .page-header h1 { font-size: 1.8rem; }
+          .filter-bar { flex-direction: column; gap: 16px; align-items: stretch; }
+          .search-pill { max-width: 100%; }
+          .filter-actions { flex-wrap: wrap; justify-content: flex-start; }
+          .date-picker-glass, .select-glass { flex: 1; min-width: 120px; }
         }
 
         .header-meta-group { display: flex; align-items: center; gap: 12px; }
