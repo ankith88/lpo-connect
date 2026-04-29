@@ -129,14 +129,45 @@ const RequestPage: React.FC = () => {
         const today = formatDateForInput(new Date());
         
         if (request.jobType === 'scheduled') {
+          // 1.1 Fetch Service Metadata from Customer Record
+          let serviceInternalId = '';
+          let serviceRate = '';
+          
+          try {
+            const custQ = query(
+              collection(db, `lpo/${lpo.id}/customers`),
+              where('companyName', '==', request.customer.company)
+            );
+            const custSnap = await getDocs(custQ);
+            if (!custSnap.empty) {
+              const c = custSnap.docs[0].data();
+              if (request.service === 'lpo-to-site') {
+                serviceInternalId = c.lpoServiceAMPOInternalID || '';
+                serviceRate = c.lpoServiceAMPORate || '';
+              } else if (request.service === 'site-to-lpo') {
+                serviceInternalId = c.lpoServicePMPOInternalID || '';
+                serviceRate = c.lpoServicePMPORate || '';
+              } else if (request.service === 'round-trip') {
+                serviceInternalId = c.lpoServiceAMPOPMPOInternalID || '';
+                serviceRate = c.lpoServiceAMPOPMPORate || '';
+              }
+            }
+          } catch (err) {
+            console.error("Error fetching customer service metadata:", err);
+          }
+
           // Save template
           const templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
             ...request,
             lpo_id: lpo.id,
             status: 'scheduled',
+            serviceInternalId,
+            serviceRate,
             createdAt: new Date(),
             originalRequestId: request.id
           });
+          
+          console.log("Created scheduled_jobs template:", templateRef.id);
           
           // Check if today matches frequency to immediately generate first instance
           const todayDayName = getDayName(new Date());
@@ -145,24 +176,57 @@ const RequestPage: React.FC = () => {
               ...request,
               lpo_id: lpo.id,
               status: 'scheduled',
+              serviceInternalId,
+              serviceRate,
               createdAt: new Date(),
               jobType: 'scheduled_instance',
               scheduledJobId: templateRef.id,
               date: today,
               originalRequestId: request.id
             });
+            console.log("Created immediate job instance:", jobDocRef.id);
           } else {
-            jobDocRef = templateRef; // For NetSuite check below (though it won't match today)
+            jobDocRef = templateRef; 
           }
         } else {
           // Normal one-off job
+          // 1.2 Fetch Service Metadata for one-off job
+          let serviceInternalId = '';
+          let serviceRate = '';
+          
+          try {
+            const custQ = query(
+              collection(db, `lpo/${lpo.id}/customers`),
+              where('companyName', '==', request.customer.company)
+            );
+            const custSnap = await getDocs(custQ);
+            if (!custSnap.empty) {
+              const c = custSnap.docs[0].data();
+              if (request.service === 'lpo-to-site') {
+                serviceInternalId = c.lpoServiceAMPOInternalID || '';
+                serviceRate = c.lpoServiceAMPORate || '';
+              } else if (request.service === 'site-to-lpo') {
+                serviceInternalId = c.lpoServicePMPOInternalID || '';
+                serviceRate = c.lpoServicePMPORate || '';
+              } else if (request.service === 'round-trip') {
+                serviceInternalId = c.lpoServiceAMPOPMPOInternalID || '';
+                serviceRate = c.lpoServiceAMPOPMPORate || '';
+              }
+            }
+          } catch (err) {
+            console.error("Error fetching one-off service metadata:", err);
+          }
+
           jobDocRef = await addDoc(collection(db, 'jobs'), {
             ...request,
             lpo_id: lpo.id,
             status: 'scheduled',
+            serviceInternalId,
+            serviceRate,
             createdAt: new Date(),
             originalRequestId: request.id
           });
+          console.log("Created one-off job:", jobDocRef.id);
         }
 
         // 1.5 Sync with NetSuite if same-day job
