@@ -10,7 +10,11 @@ import {
   Trash2,
   ChevronDown,
   ChevronUp,
-  Layers
+  Layers,
+  ChevronLeft,
+  ChevronRight,
+  Grid,
+  List
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, orderBy, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../../firebase/config';
@@ -24,6 +28,8 @@ const Schedules: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSchedule, setSelectedSchedule] = useState<any | null>(null);
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
     if (lpo) {
@@ -136,7 +142,52 @@ const Schedules: React.FC = () => {
     return matchesSearch && isActive;
   });
 
+  // Calendar Logic Helpers
+  const getDaysInMonth = (date: Date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDay = new Date(year, month, 1).getDay(); // 0 = Sun
+    
+    const days = [];
+    // Padding for first week
+    for (let i = 0; i < firstDay; i++) {
+      days.push({ type: 'padding' });
+    }
+    // Actual days
+    for (let i = 1; i <= daysInMonth; i++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+      days.push({ type: 'day', date: dateStr, dayNum: i });
+    }
+    return days;
+  };
 
+  const monthProjections = React.useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    const results: any[] = [];
+    filteredSchedules.forEach(s => {
+      for (let d = 1; d <= lastDay; d++) {
+        const checkDate = new Date(year, month, d);
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const dayName = dayNames[checkDate.getDay()];
+        
+        if (s.date <= dateStr && s.frequency?.includes(dayName)) {
+          results.push({ ...s, date: dateStr });
+        }
+      }
+    });
+    return results;
+  }, [filteredSchedules, currentMonth]);
+
+  const navigateMonth = (direction: number) => {
+    const newMonth = new Date(currentMonth);
+    newMonth.setMonth(currentMonth.getMonth() + direction);
+    setCurrentMonth(newMonth);
+  };
   return (
     <div className="schedules-premium">
       {/* Mesh Background */}
@@ -165,96 +216,158 @@ const Schedules: React.FC = () => {
         </header>
 
         <div className="schedules-view-layout">
-           <div className="glass-card filter-bar">
-              <div className="search-pill">
-                <Plus size={18} style={{ transform: 'rotate(45deg)', color: '#8fa6a0' }} />
-                <input 
-                  type="text" 
-                  placeholder="Search customer name or address..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+            <div className="glass-card filter-bar">
+               <div className="search-pill">
+                 <Plus size={18} style={{ transform: 'rotate(45deg)', color: '#8fa6a0' }} />
+                 <input 
+                   type="text" 
+                   placeholder="Search schedules..." 
+                   value={searchTerm}
+                   onChange={(e) => setSearchTerm(e.target.value)}
+                 />
+               </div>
+               
+               <div className="view-toggle-pills">
+                 <button 
+                   className={viewMode === 'calendar' ? 'active' : ''} 
+                   onClick={() => setViewMode('calendar')}
+                 >
+                   <Grid size={16} />
+                   <span>CALENDAR</span>
+                 </button>
+                 <button 
+                   className={viewMode === 'list' ? 'active' : ''} 
+                   onClick={() => setViewMode('list')}
+                 >
+                   <List size={16} />
+                   <span>LIST</span>
+                 </button>
+               </div>
+
+               <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
+            </div>
+
+            {loading ? (
+              <div className="loading-state">
+                <RefreshCw className="spinner" />
+                <p>Fetching Schedules...</p>
               </div>
-              <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
-           </div>
+            ) : viewMode === 'calendar' ? (
+              <div className="calendar-view-container fade-in">
+                <div className="calendar-header-nav">
+                   <button onClick={() => navigateMonth(-1)}><ChevronLeft size={20} /></button>
+                   <h2>{currentMonth.toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })}</h2>
+                   <button onClick={() => navigateMonth(1)}><ChevronRight size={20} /></button>
+                </div>
 
-           {loading ? (
-             <div className="loading-state">
-               <RefreshCw className="spinner" />
-               <p>Fetching Schedules...</p>
-             </div>
-           ) : filteredSchedules.length === 0 ? (
-             <div className="glass-card empty-state">
-               <div className="empty-icon"><Layers size={48} /></div>
-               <h3>No Recurring Schedules Found</h3>
-               <p>Active logistics contracts will appear here for management.</p>
-             </div>
-           ) : (
-             <div className="schedules-grid">
-               {filteredSchedules.map(schedule => (
-                 <div key={schedule.id} className="schedule-card-wrapper">
-                    <div className="timeline-content-card glass-card">
-                       <div className="card-header" onClick={() => toggleExpand(schedule.id)} style={{ cursor: 'pointer' }}>
-                          <div className="customer-block">
-                             <h3 className="company-name">{schedule.customer.company}</h3>
-                             <div className="location-info">
-                                <MapPin size={12} />
-                                <span>{schedule.customer.suburb}, {schedule.customer.state}</span>
-                             </div>
-                          </div>
-                          <div className="header-meta-group">
-                            <div className="status-tag status-scheduled">
-                               {schedule.frequency?.join(', ')}
-                            </div>
-                            <div className="expand-icon">
-                              {expandedJobIds.has(schedule.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                            </div>
-                          </div>
-                       </div>
+                <div className="calendar-grid-wrapper glass-card">
+                  <div className="calendar-weekday-header">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d}>{d}</div>)}
+                  </div>
+                  <div className="calendar-days-grid">
+                    {getDaysInMonth(currentMonth).map((day, idx) => {
+                      if (day.type === 'padding') return <div key={idx} className="day-cell padding"></div>;
+                      
+                      const dayJobs = monthProjections.filter(p => p.date === day.date);
+                      const isToday = day.date === new Date().toISOString().split('T')[0];
 
-                       {expandedJobIds.has(schedule.id) && (
-                         <div className="job-stops-container fade-in">
-                            <div className="stops-visual-line"></div>
-                            {(schedule.stops || []).map((stop: any, sIdx: number) => (
-                              <div key={sIdx} className="stop-entry">
-                                <div className={`stop-node ${stop.type}`}></div>
-                                <div className="stop-details">
-                                  <div className="stop-type-header">
-                                    <span className="type-pill">{stop.label || stop.type.toUpperCase()}</span>
-                                    <span className="stop-seq">STOP {stop.sequence}</span>
-                                  </div>
-                                  <div className="stop-loc-name">{stop.locationName}</div>
-                                  <div className="stop-addr">{stop.address}, {stop.suburb}</div>
+                      return (
+                        <div key={day.date} className={`day-cell ${isToday ? 'is-today' : ''}`}>
+                          <div className="day-number">{day.dayNum}</div>
+                          <div className="day-jobs-list">
+                            {dayJobs.map(job => {
+                              const isSkipped = (job.skippedDates || []).includes(job.date);
+                              return (
+                                <div 
+                                  key={job.id} 
+                                  className={`job-dot-pill ${isSkipped ? 'skipped' : ''}`}
+                                  onClick={() => setSelectedSchedule(job)}
+                                  title={`${job.customer.company} - ${job.service}`}
+                                >
+                                  <div className="dot"></div>
+                                  <span className="truncate">{job.customer.company}</span>
                                 </div>
-                                <div className="stop-status">{stop.status}</div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ) : filteredSchedules.length === 0 ? (
+              <div className="glass-card empty-state">
+                <div className="empty-icon"><Layers size={48} /></div>
+                <h3>No Recurring Schedules Found</h3>
+                <p>Active logistics contracts will appear here for management.</p>
+              </div>
+            ) : (
+              <div className="schedules-grid">
+                {filteredSchedules.map(schedule => (
+                  <div key={schedule.id} className="schedule-card-wrapper">
+                     <div className="timeline-content-card glass-card">
+                        <div className="card-header" onClick={() => toggleExpand(schedule.id)} style={{ cursor: 'pointer' }}>
+                           <div className="customer-block">
+                              <h3 className="company-name">{schedule.customer.company}</h3>
+                              <div className="location-info">
+                                 <MapPin size={12} />
+                                 <span>{schedule.customer.suburb}, {schedule.customer.state}</span>
                               </div>
-                            ))}
-                         </div>
-                       )}
+                           </div>
+                           <div className="header-meta-group">
+                             <div className="status-tag status-scheduled">
+                                {schedule.frequency?.join(', ')}
+                             </div>
+                             <div className="expand-icon">
+                               {expandedJobIds.has(schedule.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                             </div>
+                           </div>
+                        </div>
 
-                      <div className="card-meta">
-                         <div className="meta-pill">
-                            <Clock size={12} />
-                            <span>{schedule.service.replace(/-/g, ' ')}</span>
-                         </div>
-                         <div className="meta-pill">
-                            <RotateCcw size={12} />
-                            <span>{schedule.billing}</span>
-                         </div>
-                         <div className="job-ref">REF: {schedule.id}</div>
-                      </div>
+                        {expandedJobIds.has(schedule.id) && (
+                          <div className="job-stops-container fade-in">
+                             <div className="stops-visual-line"></div>
+                             {(schedule.stops || []).map((stop: any, sIdx: number) => (
+                               <div key={sIdx} className="stop-entry">
+                                 <div className={`stop-node ${stop.type}`}></div>
+                                 <div className="stop-details">
+                                   <div className="stop-type-header">
+                                     <span className="type-pill">{stop.label || stop.type.toUpperCase()}</span>
+                                     <span className="stop-seq">STOP {stop.sequence}</span>
+                                   </div>
+                                   <div className="stop-loc-name">{stop.locationName}</div>
+                                   <div className="stop-addr">{stop.address}, {stop.suburb}</div>
+                                 </div>
+                                 <div className="stop-status">{stop.status}</div>
+                               </div>
+                             ))}
+                          </div>
+                        )}
 
-                       <div className="card-actions">
-                           <button className="btn-primary-glass manage-schedule" onClick={() => setSelectedSchedule(schedule)}>
-                              <RefreshCw size={16} />
-                              <span>MANAGE SCHEDULE</span>
-                           </button>
+                       <div className="card-meta">
+                          <div className="meta-pill">
+                             <Clock size={12} />
+                             <span>{schedule.service.replace(/-/g, ' ')}</span>
+                          </div>
+                          <div className="meta-pill">
+                             <RotateCcw size={12} />
+                             <span>{schedule.billing}</span>
+                          </div>
+                          <div className="job-ref">REF: {schedule.id}</div>
                        </div>
-                    </div>
-                 </div>
-               ))}
-             </div>
-           )}
+
+                        <div className="card-actions">
+                            <button className="btn-primary-glass manage-schedule" onClick={() => setSelectedSchedule(schedule)}>
+                               <RefreshCw size={16} />
+                               <span>MANAGE SCHEDULE</span>
+                            </button>
+                        </div>
+                     </div>
+                  </div>
+                ))}
+              </div>
+            )}
         </div>
       </div>
 
@@ -374,9 +487,11 @@ const Schedules: React.FC = () => {
         .filter-bar {
           display: flex;
           justify-content: space-between;
+          align-items: center;
           padding: 12px;
           margin-bottom: 32px;
           border-radius: 20px;
+          gap: 16px;
         }
         .search-pill {
           flex: 1;
@@ -386,10 +501,91 @@ const Schedules: React.FC = () => {
           background: rgba(255, 255, 255, 0.8);
           padding: 0 20px;
           border-radius: 14px;
-          max-width: 400px;
         }
         .search-pill input { border: none; background: transparent; padding: 14px 0; width: 100%; font-weight: 500; font-size: 0.95rem; outline: none; }
         
+        .view-toggle-pills {
+          display: flex;
+          background: rgba(255, 255, 255, 0.5);
+          padding: 4px;
+          border-radius: 14px;
+          border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .view-toggle-pills button {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          border: none;
+          background: transparent;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 0.75rem;
+          color: var(--ink-soft);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .view-toggle-pills button.active {
+          background: var(--ink);
+          color: white;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .calendar-header-nav {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 24px;
+        }
+        .calendar-header-nav h2 { font-size: 1.5rem; font-weight: 800; color: var(--ink); margin: 0; }
+        .calendar-header-nav button {
+          background: white; border: 1px solid var(--cream-warm); width: 44px; height: 44px; border-radius: 14px;
+          display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--ink);
+        }
+
+        .calendar-grid-wrapper { padding: 24px; border-radius: 24px; }
+        .calendar-weekday-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; margin-bottom: 16px; }
+        .calendar-weekday-header div { font-size: 0.75rem; font-weight: 800; color: var(--ink-soft); opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; }
+
+        .calendar-days-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 12px; }
+        .day-cell {
+          min-height: 120px;
+          background: rgba(255,255,255,0.4);
+          border: 1px solid rgba(255,255,255,0.2);
+          border-radius: 16px;
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          transition: all 0.2s;
+        }
+        .day-cell.padding { background: transparent; border: none; }
+        .day-cell:not(.padding):hover { background: rgba(255,255,255,0.8); transform: translateY(-2px); }
+        .day-cell.is-today { border: 2px solid var(--ink); background: rgba(255,255,255,0.9); }
+        .day-number { font-size: 0.9rem; font-weight: 800; color: var(--ink-soft); }
+        .is-today .day-number { color: var(--ink); }
+
+        .day-jobs-list { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+        .job-dot-pill {
+          background: var(--ink);
+          color: white;
+          padding: 4px 8px;
+          border-radius: 6px;
+          font-size: 0.65rem;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s;
+          white-space: nowrap;
+          overflow: hidden;
+        }
+        .job-dot-pill.skipped { background: var(--cream-warm); color: var(--ink-soft); opacity: 0.6; text-decoration: line-through; }
+        .job-dot-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
+        .job-dot-pill.skipped .dot { background: var(--danger); }
+        .truncate { overflow: hidden; text-overflow: ellipsis; }
+
         .btn-secondary-glass {
           background: rgba(255, 255, 255, 0.8);
           border: 1px solid rgba(255, 255, 255, 0.5);
