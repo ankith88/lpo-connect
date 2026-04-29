@@ -6,7 +6,10 @@ import {
   addDoc, 
   collection, 
   onSnapshot,
-  arrayUnion
+  arrayUnion,
+  query,
+  where,
+  getDocs
 } from 'firebase/firestore';
 import { 
   CheckCircle2, 
