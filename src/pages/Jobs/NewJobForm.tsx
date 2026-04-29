@@ -524,8 +524,26 @@ const NewJobForm: React.FC = () => {
         throw new Error("LPO ID is missing. Cannot save request.");
       }
       
+      // 2.1 Refetch customer status for existing customers to avoid stale T&C state
+      let currentCustomerStatus = customerStatus;
+      if (isExistingCustomer) {
+        try {
+          const custQ = query(
+            collection(db, `lpo/${lpo.id}/customers`), 
+            where('companyName', '==', formData.customer.company)
+          );
+          const custSnap = await getDocs(custQ);
+          if (!custSnap.empty) {
+            currentCustomerStatus = custSnap.docs[0].data().status || "Active";
+            setCustomerStatus(currentCustomerStatus);
+          }
+        } catch (e) {
+          console.error("Failed to refetch customer status during submission", e);
+        }
+      }
+
       let finalRequestId = requestId;
-      const isActuallyActive = (isExistingCustomer && customerStatus === 'Active') || 
+      const isActuallyActive = (isExistingCustomer && currentCustomerStatus === 'Active') || 
                                (!isExistingCustomer && formData.billing === 'lpo');
       
       const initialRequestStatus = isActuallyActive ? 'pending' : 'awaiting-activation';
@@ -626,9 +644,13 @@ const NewJobForm: React.FC = () => {
         setCustomerStatus(c.status || "Active");
         if (c.status === "Active") {
           setIsAwaitingTC(false);
-          // If we already created a request, just show success. 
-          // Otherwise, submit now that they are active.
+          // If we already created a request, update its status in the database.
           if (createdRequestId) {
+            await updateDoc(doc(db, 'requests', createdRequestId), {
+              status: 'pending',
+              activatedAt: serverTimestamp(),
+              activationReason: "Manual verification"
+            });
             setSuccess(true);
           } else {
             handleSubmit();

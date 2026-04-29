@@ -16,7 +16,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
-import { collection, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 
@@ -74,6 +74,45 @@ const AwaitingTCPage: React.FC = () => {
   const handleEditRequest = (request: any) => {
     localStorage.setItem('edit_request_draft', JSON.stringify(request));
     window.location.href = `/new-job?edit=true&id=${request.id}`;
+  };
+
+  const handleVerifyStatus = async (request: any) => {
+    if (!lpo || !request.customer.company) return;
+    
+    setLoading(true);
+    try {
+      // Check the customer's current status in Firestore
+      const q = query(
+        collection(db, `lpo/${lpo.id}/customers`), 
+        where('companyName', '==', request.customer.company)
+      );
+      const snap = await getDocs(q);
+      
+      if (!snap.empty) {
+        const c = snap.docs[0].data();
+        if (c.status === "Active") {
+          // Update the request status to pending
+          await updateDoc(doc(db, 'requests', request.id), {
+            status: 'pending',
+            activatedAt: serverTimestamp(),
+            activationReason: "Manual verification from Awaiting T&C page"
+          });
+          
+          // Remove from local state
+          setRequests(requests.filter(r => r.id !== request.id));
+          alert(`Success! ${request.customer.company} is now Active. The request has been moved to Pending.`);
+        } else {
+          alert(`Status for ${request.customer.company} is still "${c.status || 'Pending'}".`);
+        }
+      } else {
+        alert("Could not find customer profile to verify status.");
+      }
+    } catch (e) {
+      console.error("Failed to verify status", e);
+      alert("Error verifying status. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getServiceIcon = (type: string) => {
@@ -193,12 +232,16 @@ const AwaitingTCPage: React.FC = () => {
                               </div>
 
                                <div className="card-actions">
-                                  <div className="messaging-group">
-                                    <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
-                                       <MessageSquare size={16} />
-                                       <span>CHAT & MANAGE</span>
-                                    </button>
-                                  </div>
+                                   <div className="messaging-group">
+                                     <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
+                                        <MessageSquare size={16} />
+                                        <span>CHAT & MANAGE</span>
+                                     </button>
+                                     <button className="btn-secondary-glass mini-chat" onClick={() => handleVerifyStatus(job)}>
+                                        <RefreshCw size={16} />
+                                        <span>VERIFY STATUS</span>
+                                     </button>
+                                   </div>
                                   
                                   <div className="overflow-menu">
                                      <div className="menu-trigger">

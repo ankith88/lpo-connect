@@ -33,26 +33,52 @@ export const onCustomerActive = onDocumentUpdated({
 
     const firestore = getDB();
     const requestsRef = firestore.collection("requests");
-    let query;
+    const docsToUpdate: admin.firestore.QueryDocumentSnapshot[] = [];
 
+    // 1. Match by NetSuite ID
     if (netsuiteId) {
-      query = requestsRef.where("netsuiteCustomerId", "==", netsuiteId);
-    } else {
-      query = requestsRef.where("customer.company", "==", companyName);
+      const snap = await requestsRef
+        .where("netsuiteCustomerId", "==", netsuiteId)
+        .where("status", "==", "awaiting-activation")
+        .get();
+      snap.docs.forEach((d) => docsToUpdate.push(d as admin.firestore.QueryDocumentSnapshot));
     }
 
-    const snapshot = await query
-      .where("status", "==", "awaiting-activation")
-      .get();
+    // 2. Match by Company Name
+    if (companyName) {
+      const snap = await requestsRef
+        .where("customer.company", "==", companyName)
+        .where("status", "==", "awaiting-activation")
+        .get();
+      snap.docs.forEach((d) => {
+        if (!docsToUpdate.find((existing) => existing.id === d.id)) {
+          docsToUpdate.push(d as admin.firestore.QueryDocumentSnapshot);
+        }
+      });
+    }
 
-    if (snapshot.empty) {
-      console.log(`No queued requests found for customer: ${companyName}`);
+    // 3. Match by Email (Fallback)
+    const email = newData.email || newData.companyEmail;
+    if (email) {
+      const snap = await requestsRef
+        .where("customer.email", "==", email)
+        .where("status", "==", "awaiting-activation")
+        .get();
+      snap.docs.forEach((d) => {
+        if (!docsToUpdate.find((existing) => existing.id === d.id)) {
+          docsToUpdate.push(d as admin.firestore.QueryDocumentSnapshot);
+        }
+      });
+    }
+
+    if (docsToUpdate.length === 0) {
+      console.log(`No queued requests found for customer: ${companyName} (${netsuiteId})`);
       return;
     }
 
-    console.log(`Activating ${snapshot.size} requests for ${companyName}`);
+    console.log(`Activating ${docsToUpdate.length} requests for ${companyName}`);
     const batch = firestore.batch();
-    snapshot.docs.forEach((doc) => {
+    docsToUpdate.forEach((doc) => {
       batch.update(doc.ref, {
         status: "pending",
         activatedAt: admin.firestore.FieldValue.serverTimestamp(),
