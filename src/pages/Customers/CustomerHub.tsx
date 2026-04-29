@@ -31,13 +31,13 @@ const CustomerHub: React.FC = () => {
             orderBy('companyName', 'asc')
           );
           const snapshot = await getDocs(q);
-          setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setCustomers(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
         } catch (error) {
           console.error("Error fetching customers:", error);
           // Fallback if index isn't ready
           const q = query(collection(db, `lpo/${lpo.id}/customers`));
           const snapshot = await getDocs(q);
-          setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setCustomers(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
         } finally {
           setLoading(false);
         }

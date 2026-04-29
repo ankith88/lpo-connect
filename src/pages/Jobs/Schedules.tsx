@@ -42,7 +42,7 @@ const Schedules: React.FC = () => {
             orderBy('createdAt', 'desc')
           );
           const snapshot = await getDocs(q);
-          setSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setSchedules(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
         } catch (error) {
           console.error("Error fetching schedules:", error);
           // Fallback if index isn't ready
@@ -51,7 +51,7 @@ const Schedules: React.FC = () => {
             where('lpo_id', '==', lpo.id)
           );
           const snapshot = await getDocs(q);
-          setSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setSchedules(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
         } finally {
           setLoading(false);
         }

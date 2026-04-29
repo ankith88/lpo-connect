@@ -44,7 +44,7 @@ const AwaitingTCPage: React.FC = () => {
         try {
           const reqQ = query(collection(db, 'requests'), where('lpo_id', '==', lpo.id));
           const reqSnapshot = await getDocs(reqQ);
-          const allReqs = reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+          const allReqs = reqSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
           // Only show awaiting-activation
           setRequests(allReqs.filter((r: any) => r.status === 'awaiting-activation'));
         } catch (error) {
@@ -390,14 +390,23 @@ const AwaitingTCPage: React.FC = () => {
         .menu-trigger { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--ink-soft); cursor: pointer; }
         .menu-trigger:hover { background: rgba(26, 61, 51, 0.05); color: var(--ink); }
         .menu-dropdown {
-          position: absolute; bottom: 100%; right: 0;
+          position: absolute; bottom: calc(100% + 8px); right: 0;
           min-width: 160px; border-radius: 16px; padding: 6px; z-index: 100;
           display: none; flex-direction: column; gap: 2px;
           background: rgba(255, 255, 255, 0.9);
           backdrop-filter: blur(15px);
           box-shadow: 0 10px 40px rgba(26, 61, 51, 0.15); 
           border: 1px solid rgba(26, 61, 51, 0.05);
-          transform: translateY(-4px);
+        }
+        /* Bridge the gap for hover */
+        .menu-dropdown::after {
+          content: '';
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          height: 12px;
+          background: transparent;
         }
         .menu-trigger:hover .menu-dropdown, .menu-dropdown:hover { display: flex; }
         .menu-dropdown button {

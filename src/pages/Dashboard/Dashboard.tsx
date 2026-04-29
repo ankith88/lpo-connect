@@ -61,7 +61,7 @@ const Dashboard: React.FC = () => {
             orderBy('createdAt', 'desc')
           );
           const jobsSnapshot = await getDocs(jobsQ);
-          setJobs(jobsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setJobs(jobsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
 
           // Fetch Requests (Both pending and awaiting-activation)
           const reqQ = query(
@@ -70,7 +70,7 @@ const Dashboard: React.FC = () => {
             orderBy('createdAt', 'desc')
           );
           const reqSnapshot = await getDocs(reqQ);
-          const allReqs = reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const allReqs = reqSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
           setRequests(allReqs);
 
         } catch (error) {
@@ -78,11 +78,11 @@ const Dashboard: React.FC = () => {
           // Fallback if index isn't ready
           const jobsQ = query(collection(db, 'jobs'), where('lpo_id', '==', lpo.id));
           const jobsSnapshot = await getDocs(jobsQ);
-          setJobs(jobsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setJobs(jobsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
           
           const reqQ = query(collection(db, 'requests'), where('lpo_id', '==', lpo.id));
           const reqSnapshot = await getDocs(reqQ);
-          setRequests(reqSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          setRequests(reqSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
         } finally {
           setLoading(false);
         }
@@ -191,7 +191,29 @@ const Dashboard: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    const job = jobs.find(j => j.id === id);
+    if (job && (job.status === 'accepted' || job.status === 'in-progress' || job.status === 'completed')) {
+      alert("This job has already been accepted and cannot be cancelled.");
+      return;
+    }
+
     if (window.confirm('Are you sure you want to cancel this job?')) {
+      if (job) {
+        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
+        
+        const params = new URLSearchParams({
+          job_id: id,
+          request_id: job.originalRequestId || "",
+          customer_id: job.netsuiteCustomerId || job.customer?.netsuiteId || "",
+          lpo_id: job.lpo_id || ""
+        });
+
+        fetch(`${NETSUITE_API}&${params.toString()}`)
+          .then(res => res.json())
+          .then(data => console.log("NetSuite Job Cancellation Sync:", data))
+          .catch(err => console.error("NetSuite Job Cancellation Error:", err));
+      }
+      
       await deleteDoc(doc(db, 'jobs', id));
       setJobs(jobs.filter(j => j.id !== id));
     }
@@ -548,7 +570,7 @@ const Dashboard: React.FC = () => {
                                              ) : (
                                                <>
                                                  <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
-                                                 {job.status !== 'scheduled' && job.status !== 'accepted' && job.status !== 'rejected' && (
+                                                 {job.status !== 'accepted' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed' && (
                                                    <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> Cancel</button>
                                                  )}
                                                </>
@@ -835,14 +857,23 @@ const Dashboard: React.FC = () => {
         .menu-trigger { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--ink-soft); cursor: pointer; }
         .menu-trigger:hover { background: rgba(26, 61, 51, 0.05); color: var(--ink); }
         .menu-dropdown {
-          position: absolute; bottom: 100%; right: 0;
+          position: absolute; bottom: calc(100% + 8px); right: 0;
           min-width: 160px; border-radius: 16px; padding: 6px; z-index: 100;
           display: none; flex-direction: column; gap: 2px;
           background: rgba(255, 255, 255, 0.9);
           backdrop-filter: blur(15px);
           box-shadow: 0 10px 40px rgba(26, 61, 51, 0.15); 
           border: 1px solid rgba(26, 61, 51, 0.05);
-          transform: translateY(-4px);
+        }
+        /* Bridge the gap for hover */
+        .menu-dropdown::after {
+          content: '';
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          height: 12px;
+          background: transparent;
         }
         .menu-trigger:hover .menu-dropdown, .menu-dropdown:hover { display: flex; }
         .menu-dropdown button {

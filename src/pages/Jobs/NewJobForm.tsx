@@ -232,7 +232,7 @@ const NewJobForm: React.FC = () => {
         try {
           const q = query(collection(db, `lpo/${lpo.id}/customers`));
           const snapshot = await getDocs(q);
-          const customers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const customers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
           setAllCustomers(customers);
 
           // Handle pre-fill from URL params (e.g. from Customer Hub)

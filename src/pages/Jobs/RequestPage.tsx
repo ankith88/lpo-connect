@@ -4,6 +4,7 @@ import {
   doc, 
   updateDoc, 
   addDoc, 
+  deleteDoc,
   collection, 
   onSnapshot,
   arrayUnion,
@@ -60,10 +61,10 @@ const RequestPage: React.FC = () => {
     const unsubscribe = onSnapshot(doc(db, 'requests', id), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.status === 'scheduled' || data.status === 'accepted') {
-          setError("This request has already been accepted and is now an active job.");
+        if (data.status === 'accepted') {
+          setError("This job has already been accepted and is being performed. It can no longer be cancelled via this coordination link.");
         } else {
-          // We load the request even if rejected, so we can show the details
+          // We load the request even if scheduled or rejected, so we can show the details
           setRequest({ id: docSnap.id, ...data });
         }
       } else {
@@ -122,6 +123,63 @@ const RequestPage: React.FC = () => {
     }
   };
 
+  const handleCancelRequest = async () => {
+    if (!request || !id) return;
+
+    if (window.confirm("Are you sure you want to cancel this job request? This will remove all scheduled visits associated with it.")) {
+      setLoading(true);
+      try {
+        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
+        
+        // 1. Find and cancel all related jobs (instances)
+        const jobsQ = query(collection(db, 'jobs'), where('originalRequestId', '==', id));
+        const jobsSnap = await getDocs(jobsQ);
+        
+        for (const jobDoc of jobsSnap.docs) {
+          const params = new URLSearchParams({
+            job_id: jobDoc.id,
+            request_id: id,
+            customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+            lpo_id: request.lpo_id || ""
+          });
+
+          await fetch(`${NETSUITE_API}&${params.toString()}`).catch(e => console.error("NetSuite Instance Cancel Error:", e));
+          await deleteDoc(doc(db, 'jobs', jobDoc.id));
+        }
+
+        // 2. Find and cancel related scheduled_jobs (templates)
+        const schedQ = query(collection(db, 'scheduled_jobs'), where('originalRequestId', '==', id));
+        const schedSnap = await getDocs(schedQ);
+        
+        for (const schedDoc of schedSnap.docs) {
+          await deleteDoc(doc(db, 'scheduled_jobs', schedDoc.id));
+        }
+
+        // 3. Update the request document
+        const sysMessage = {
+          id: Date.now().toString(),
+          sender: 'system',
+          text: `Job cancelled by ${isOperator ? 'operator' : 'customer'}.`,
+          timestamp: new Date().toISOString()
+        };
+
+        await updateDoc(doc(db, 'requests', id), {
+          status: 'cancelled',
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: isOperator ? 'operator' : 'customer',
+          chat: arrayUnion(sysMessage)
+        });
+
+        alert("Job cancelled successfully.");
+      } catch (err) {
+        console.error("Error cancelling job:", err);
+        alert("Failed to cancel job. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   const handleAccept = async () => {
     if (!request || !isOperator || !lpo) return;
 
@@ -160,8 +218,9 @@ const RequestPage: React.FC = () => {
           }
 
           // Save template
+          const { id: _, ...requestData } = request;
           const templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
-            ...request,
+            ...requestData,
             lpo_id: lpo.id,
             status: 'scheduled',
             serviceInternalId,
@@ -176,7 +235,7 @@ const RequestPage: React.FC = () => {
           const todayDayName = getDayName(new Date());
           if (request.date <= today && request.frequency?.includes(todayDayName)) {
             jobDocRef = await addDoc(collection(db, 'jobs'), {
-              ...request,
+              ...requestData,
               lpo_id: lpo.id,
               status: 'scheduled',
               serviceInternalId,
@@ -188,8 +247,6 @@ const RequestPage: React.FC = () => {
               originalRequestId: request.id
             });
             console.log("Created immediate job instance:", jobDocRef.id);
-          } else {
-            jobDocRef = templateRef; 
           }
         } else {
           // Normal one-off job
@@ -220,8 +277,9 @@ const RequestPage: React.FC = () => {
             console.error("Error fetching one-off service metadata:", err);
           }
 
+          const { id: _, ...requestData } = request;
           jobDocRef = await addDoc(collection(db, 'jobs'), {
-            ...request,
+            ...requestData,
             lpo_id: lpo.id,
             status: 'scheduled',
             serviceInternalId,
@@ -232,8 +290,8 @@ const RequestPage: React.FC = () => {
           console.log("Created one-off job:", jobDocRef.id);
         }
 
-        // 1.5 Sync with NetSuite if same-day job
-        if (request.date === today) {
+        // 1.5 Sync with NetSuite if same-day job instance was created
+        if (request.date === today && jobDocRef) {
           const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
           
           const params = new URLSearchParams({
@@ -394,7 +452,12 @@ const RequestPage: React.FC = () => {
               <span>Back</span>
            </button>
            <div className="header-main">
-              <div className="status-pill pending">Coordination Phase</div>
+              <div className={`status-pill ${request.status}`}>
+                {request.status === 'scheduled' ? 'Job Scheduled' : 
+                 request.status === 'awaiting-activation' ? 'Awaiting Activation' : 
+                 request.status === 'cancelled' ? 'Cancelled' :
+                 'Coordination Phase'}
+              </div>
               <h1>Job Request Coordination</h1>
               <p>Reference: #{request.id.slice(0, 8).toUpperCase()}</p>
               {request.status === 'awaiting-activation' && (
@@ -407,20 +470,28 @@ const RequestPage: React.FC = () => {
               )}
            </div>
            
-           {request.status !== 'rejected' && (
+           {request.status !== 'rejected' && request.status !== 'cancelled' && (
              <div className="operator-actions desktop-only">
-               <button className="btn-reject" onClick={handleReject}>
-                 <XCircle size={18} /> DECLINE
-               </button>
-                <button className="btn-accept shadow-teal" onClick={handleAccept}>
-                  <div className="accept-content">
-                    <CheckCircle2 size={18} /> 
-                    <span>ACCEPT JOB</span>
-                  </div>
-                  {request.preferredTime && (
-                    <div className="btn-badge">Time Priority</div>
-                  )}
-                </button>
+               {isOperator ? (
+                 <>
+                   <button className="btn-reject" onClick={handleReject}>
+                     <XCircle size={18} /> DECLINE
+                   </button>
+                   <button className="btn-accept shadow-teal" onClick={handleAccept}>
+                     <div className="accept-content">
+                       <CheckCircle2 size={18} /> 
+                       <span>ACCEPT JOB</span>
+                     </div>
+                     {request.preferredTime && (
+                       <div className="btn-badge">Time Priority</div>
+                     )}
+                   </button>
+                 </>
+               ) : (
+                 <button className="btn-reject" onClick={handleCancelRequest}>
+                   <XCircle size={18} /> CANCEL REQUEST
+                 </button>
+               )}
              </div>
            )}
         </header>
@@ -619,21 +690,29 @@ const RequestPage: React.FC = () => {
         </div>
       </div>
 
-      {request.status !== 'rejected' && (
+      {request.status !== 'rejected' && request.status !== 'cancelled' && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
-            <button className="btn-reject" onClick={handleReject}>
-              <XCircle size={18} /> DECLINE
-            </button>
-            <button className="btn-accept shadow-teal" onClick={handleAccept}>
-              <div className="accept-content">
-                <CheckCircle2 size={18} /> 
-                <span>ACCEPT JOB</span>
-              </div>
-              {request.preferredTime && (
-                <div className="btn-badge">Time Priority</div>
-              )}
-            </button>
+            {isOperator ? (
+              <>
+                <button className="btn-reject" onClick={handleReject}>
+                  <XCircle size={18} /> DECLINE
+                </button>
+                <button className="btn-accept shadow-teal" onClick={handleAccept}>
+                  <div className="accept-content">
+                    <CheckCircle2 size={18} /> 
+                    <span>ACCEPT JOB</span>
+                  </div>
+                  {request.preferredTime && (
+                    <div className="btn-badge">Time Priority</div>
+                  )}
+                </button>
+              </>
+            ) : (
+              <button className="btn-reject" style={{ width: '100%' }} onClick={handleCancelRequest}>
+                <XCircle size={18} /> CANCEL REQUEST
+              </button>
+            )}
           </div>
         </div>
       )}
