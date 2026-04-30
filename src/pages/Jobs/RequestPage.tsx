@@ -61,7 +61,7 @@ const RequestPage: React.FC = () => {
     const unsubscribe = onSnapshot(doc(db, 'requests', id), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.status === 'accepted') {
+        if (data.status === 'accepted' || data.status === 'scheduled') {
           setError("This job has already been accepted and is being performed. It can no longer be cancelled via this coordination link.");
         } else {
           // We load the request even if scheduled or rejected, so we can show the details

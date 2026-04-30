@@ -26,7 +26,7 @@ import LoadingScreen from '../../components/LoadingScreen';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
-import { getDayName, formatDateForInput, parseLocalDate } from '../../utils/scheduling';
+import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
 
 const Dashboard: React.FC = () => {
   const { lpo } = useLpo();
@@ -192,7 +192,7 @@ const Dashboard: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     const job = jobs.find(j => j.id === id);
-    if (job && (job.status === 'accepted' || job.status === 'in-progress' || job.status === 'completed')) {
+    if (job && (job.status === 'accepted' || job.status === 'scheduled' || job.status === 'in-progress' || job.status === 'completed')) {
       alert("This job has already been accepted and cannot be cancelled.");
       return;
     }
@@ -279,14 +279,12 @@ const Dashboard: React.FC = () => {
   const getTabCount = (tabId: string) => {
     if (tabId === 'pending') return requests.filter(r => r.status === 'pending').length;
     if (tabId === 'declined') return requests.filter(r => r.status === 'rejected').length;
+    
     return jobs.filter(j => {
-      const todayDayName = getDayName(new Date());
-      if (tabId === 'in-progress') {
-        return (j.jobType === 'one-off' && j.date === today) || 
-               (j.jobType === 'scheduled' && j.frequency?.includes(todayDayName) && today >= j.date && !(j.skippedDates || []).includes(today));
-      }
+      if (tabId === 'in-progress') return j.date === today;
       if (tabId === 'upcoming') return j.date > today;
-      return j.date < today;
+      if (tabId === 'history') return j.date < today;
+      return false;
     }).length;
   };
 
@@ -525,6 +523,21 @@ const Dashboard: React.FC = () => {
                                    </div>
                                  )}
 
+                                 {activeTab === 'declined' && (
+                                   <div className="decline-details-card fade-in">
+                                      <div className="decline-reason-badge">
+                                         <XCircle size={12} />
+                                         <span>{job.rejectionReason || 'Other Reason'}</span>
+                                      </div>
+                                      {job.rejectionNotes && (
+                                        <div className="decline-notes-content">
+                                          <MessageSquare size={12} className="notes-icon" />
+                                          <p>{job.rejectionNotes}</p>
+                                        </div>
+                                      )}
+                                   </div>
+                                 )}
+
                                 <div className="card-meta">
                                    <div className="meta-pill">
                                       <Clock size={12} />
@@ -570,7 +583,7 @@ const Dashboard: React.FC = () => {
                                              ) : (
                                                <>
                                                  <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
-                                                 {job.status !== 'accepted' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed' && (
+                                                 {job.status !== 'accepted' && job.status !== 'scheduled' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed' && (
                                                    <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> Cancel</button>
                                                  )}
                                                </>
@@ -838,6 +851,48 @@ const Dashboard: React.FC = () => {
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); opacity: 0.6; text-transform: capitalize; }
         .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.65rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
+
+        .decline-details-card {
+          margin: 16px 0;
+          padding: 16px;
+          background: rgba(255, 71, 87, 0.04);
+          border: 1px solid rgba(255, 71, 87, 0.1);
+          border-radius: 16px;
+        }
+        .decline-reason-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 12px;
+          background: #ff4757;
+          color: white;
+          border-radius: 10px;
+          font-family: var(--font-ui);
+          font-size: 0.65rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin-bottom: 12px;
+          box-shadow: 0 4px 12px rgba(255, 71, 87, 0.2);
+        }
+        .decline-notes-content {
+          display: flex;
+          gap: 10px;
+          align-items: flex-start;
+          color: var(--ink);
+          font-size: 0.85rem;
+          line-height: 1.5;
+        }
+        .notes-icon {
+          margin-top: 3px;
+          color: #ff4757;
+          opacity: 0.6;
+          flex-shrink: 0;
+        }
+        .decline-notes-content p {
+          margin: 0;
+          font-weight: 500;
+        }
 
         .card-actions {
           display: flex; justify-content: space-between; align-items: center;

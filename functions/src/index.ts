@@ -293,7 +293,7 @@ export const generateDailyScheduledJobs = onSchedule({
   const scheduledJobsRef = db.collection('scheduled_jobs');
   const jobsRef = db.collection('jobs');
   
-  const snapshot = await scheduledJobsRef.where('status', '==', 'accepted').get();
+  const snapshot = await scheduledJobsRef.where('status', 'in', ['accepted', 'scheduled']).get();
   let generatedCount = 0;
 
   const batch = db.batch();
@@ -327,6 +327,7 @@ export const generateDailyScheduledJobs = onSchedule({
           scheduledJobId: doc.id,
           date: todayStr,
           status: 'scheduled',
+          syncedWithNetSuite: false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
         
