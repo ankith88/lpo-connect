@@ -361,8 +361,25 @@ const CustomerHub: React.FC = () => {
         .empty-hub h3 { color: var(--ink); margin-bottom: 8px; }
 
         @media (max-width: 768px) {
-           .hub-controls { flex-direction: column; align-items: stretch; }
-           .pill { flex: 1; justify-content: center; }
+           .customer-hub-premium { padding: 24px 16px 120px; }
+           .page-header { flex-direction: column; gap: 24px; margin-bottom: 32px; }
+           .page-header h1 { font-size: 1.75rem; }
+           .header-right { width: 100%; }
+           .btn-premium-action { width: 100%; justify-content: center; }
+           
+           .hub-controls { flex-direction: column; align-items: stretch; gap: 16px; }
+           .search-bar-glass { max-width: none; padding: 0 16px; }
+           .filter-pills { flex-wrap: wrap; }
+           .pill { flex: 1; min-width: calc(50% - 5px); justify-content: center; font-size: 0.75rem; padding: 8px 12px; }
+
+           .customer-grid { grid-template-columns: 1fr; }
+           .customer-card { padding: 16px; border-radius: 24px; }
+           .card-top { align-items: flex-start; }
+           .status-badge-premium { position: absolute; top: 0; right: 0; }
+           .main-info h3 { padding-right: 80px; }
+
+           .service-details-premium, .services-setup-premium { padding: 0 0 16px; }
+           .detail-tag { flex: 1; }
         }
       `}</style>
     </div>

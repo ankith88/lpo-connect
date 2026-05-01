@@ -14,8 +14,9 @@
   --font-ui: 'JetBrains Mono', monospace;
   --font-main: var(--font-body);
   --sidebar-width: 260px;
+  --sidebar-collapsed-width: 80px;
   --header-height: 64px;
-  --bottom-nav-height: 70px;
+  --bottom-nav-height: 56px;
 }
 
 * {
@@ -120,6 +121,11 @@ h3 {
   padding: 20px;
   margin-left: 0; /* Default for mobile */
   margin-bottom: var(--bottom-nav-height); /* Space for mobile nav */
+  transition: margin-left 0.3s ease;
+}
+
+.app-container.sidebar-unpinned .main-content {
+  margin-left: 0;
 }
 
 @media (min-width: 768px) {
@@ -127,5 +133,9 @@ h3 {
     margin-left: var(--sidebar-width);
     margin-bottom: 0;
     padding: 40px;
+  }
+  
+  .app-container.sidebar-unpinned .main-content {
+    margin-left: var(--sidebar-collapsed-width);
   }
 }

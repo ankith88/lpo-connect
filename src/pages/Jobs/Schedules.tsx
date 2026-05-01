@@ -706,6 +706,133 @@ const Schedules: React.FC = () => {
 
         .fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+          .content-container {
+            padding: 24px 16px 120px;
+          }
+
+          .page-header {
+            flex-direction: column;
+            gap: 24px;
+            margin-bottom: 32px;
+          }
+
+          .page-header h1 {
+            font-size: 1.75rem;
+          }
+
+          .header-right {
+            width: 100%;
+          }
+
+          .btn-premium-action {
+            width: 100%;
+            justify-content: center;
+          }
+
+          .filter-bar {
+            flex-direction: column;
+            align-items: stretch;
+            padding: 16px;
+          }
+
+          .view-toggle-pills {
+            width: 100%;
+          }
+
+          .view-toggle-pills button {
+            flex: 1;
+            justify-content: center;
+          }
+
+          .calendar-grid-wrapper {
+            padding: 12px;
+            margin: 0 -8px;
+            width: calc(100% + 16px);
+            border-radius: 16px;
+          }
+
+          .calendar-weekday-header div {
+            font-size: 0.6rem;
+            letter-spacing: 0;
+          }
+
+          .calendar-days-grid {
+            gap: 4px;
+          }
+
+          .day-cell {
+            min-height: 50px;
+            padding: 4px;
+            border-radius: 8px;
+          }
+
+          .day-number {
+            font-size: 0.7rem;
+            text-align: center;
+          }
+
+          .day-jobs-list {
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 2px;
+          }
+
+          .job-dot-pill {
+            padding: 0;
+            width: 6px;
+            height: 6px;
+            min-width: 6px;
+            border-radius: 50%;
+            background: var(--ink);
+          }
+
+          .job-dot-pill span, .job-dot-pill .dot {
+            display: none;
+          }
+
+          .job-dot-pill.skipped {
+            background: var(--danger);
+            opacity: 0.5;
+          }
+
+          .timeline-content-card {
+            padding: 16px;
+          }
+
+          .card-header {
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .header-meta-group {
+            width: 100%;
+            justify-content: space-between;
+          }
+
+          .card-meta {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 12px;
+          }
+
+          .job-ref {
+            margin-left: 0;
+          }
+
+          .modal-content {
+            padding: 24px 16px;
+            max-height: 90vh;
+            overflow-y: auto;
+          }
+
+          .m-frequency-grid {
+            grid-template-columns: repeat(3, 1fr);
+          }
+        }
       `}</style>
     </div>
   );

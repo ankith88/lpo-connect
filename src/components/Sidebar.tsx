@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   ClipboardList,
@@ -10,11 +10,20 @@ import {
   HelpCircle, 
   LogOut,
   BarChart3,
-  Clock
+  Clock,
+  Pin,
+  PinOff
 } from 'lucide-react';
 import { auth } from '../firebase/config';
+import { useLpo } from '../context/LpoContext';
 
 const Sidebar: React.FC = () => {
+  const { isSidebarPinned, setIsSidebarPinned, lpo } = useLpo();
+  const [isHovered, setIsHovered] = useState(false);
+
+  // The sidebar is visually expanded if it's either pinned OR being hovered over
+  const isExpanded = isSidebarPinned || isHovered;
+
   const navItems = [
     { name: 'Job Manager', icon: ClipboardList, path: '/dashboard' },
     { name: 'Awaiting T&C', icon: Clock, path: '/awaiting-tc' },
@@ -35,73 +44,104 @@ const Sidebar: React.FC = () => {
     }
   };
 
+  const togglePin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsSidebarPinned(!isSidebarPinned);
+  };
+
   return (
-    <aside className="sidebar-premium">
-      {/* Background decoration removed for clean dark look */}
-      <div className="sidebar-mesh">
-      </div>
+    <aside 
+      className={`sidebar-premium ${!isExpanded ? 'collapsed' : ''} ${isSidebarPinned ? 'pinned' : 'unpinned'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <div className="sidebar-mesh"></div>
 
       <div className="sidebar-content">
         <div className="sidebar-header">
           <div className="brand-redesign">
             <div className="logo-text">
-              <span className="logo-lpo">lpo</span><span className="logo-plus">.plus</span>
+              {!isExpanded ? (
+                <><span className="logo-lpo">L</span><span className="logo-plus">+</span></>
+              ) : (
+                <><span className="logo-lpo">lpo</span><span className="logo-plus">.plus</span></>
+              )}
             </div>
-            <div className="logo-platform">
-              A MAILPLUS PLATFORM
-            </div>
+            {isExpanded && (
+              <div className="logo-platform">
+                A MAILPLUS PLATFORM
+              </div>
+            )}
           </div>
           
           <div className="user-profile-glass">
             <div className="avatar-ring">
-              <div className="avatar-placeholder">CK</div>
+              <div className="avatar-placeholder">
+                {lpo?.name?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'CK'}
+              </div>
             </div>
-            <div className="user-info">
-              <p className="user-name">Clarke Kent</p>
-              <p className="lpo-name">Rouse Hill LPO</p>
-            </div>
+            {isExpanded && (
+              <div className="user-info">
+                <p className="user-name">Clarke Kent</p>
+                <p className="lpo-name">{lpo?.name || 'Rouse Hill LPO'}</p>
+              </div>
+            )}
           </div>
         </div>
         
         <nav className="sidebar-nav">
           <div className="nav-group">
-            <p className="group-title">Logistics Management</p>
+            {isExpanded && <p className="group-title">Logistics Management</p>}
             {navItems.slice(0, 4).map((item) => (
               <NavLink 
                 key={item.path} 
                 to={item.path}
+                title={!isExpanded ? item.name : ''}
                 className={({ isActive }) => `nav-item-glass ${isActive ? 'active' : ''}`}
               >
                 <item.icon size={20} className="nav-icon" />
-                <span>{item.name}</span>
+                {isExpanded && <span>{item.name}</span>}
               </NavLink>
             ))}
           </div>
 
           <div className="nav-group">
-            <p className="group-title">Administration</p>
+            {isExpanded && <p className="group-title">Administration</p>}
             {navItems.slice(4).map((item) => (
               <NavLink 
                 key={item.path} 
                 to={item.path}
+                title={!isExpanded ? item.name : ''}
                 className={({ isActive }) => `nav-item-glass ${isActive ? 'active' : ''}`}
               >
                 <item.icon size={20} className="nav-icon" />
-                <span>{item.name}</span>
+                {isExpanded && <span>{item.name}</span>}
               </NavLink>
             ))}
           </div>
         </nav>
 
         <div className="sidebar-footer">
-          <NavLink to="/help" className="nav-item-glass footer-item">
+          <NavLink to="/help" className="nav-item-glass footer-item" title={!isExpanded ? "Support Center" : ""}>
             <HelpCircle size={20} />
-            <span>Support Center</span>
+            {isExpanded && <span>Support Center</span>}
           </NavLink>
-          <button className="nav-item-glass logout-btn" onClick={handleLogout}>
+          <button className="nav-item-glass logout-btn" onClick={handleLogout} title={!isExpanded ? "Sign Out" : ""}>
             <LogOut size={20} />
-            <span>Sign Out</span>
+            {isExpanded && <span>Sign Out</span>}
           </button>
+        </div>
+      </div>
+
+      {/* Option 1: The Edge Handle Toggle */}
+      <div 
+        className={`edge-handle ${isHovered ? 'visible' : ''}`} 
+        onClick={togglePin}
+        title={isSidebarPinned ? "Unpin Sidebar" : "Pin Sidebar"}
+      >
+        <div className="handle-glow"></div>
+        <div className="handle-icon">
+          {isSidebarPinned ? <PinOff size={14} /> : <Pin size={14} />}
         </div>
       </div>
 
@@ -116,6 +156,19 @@ const Sidebar: React.FC = () => {
           background: var(--sidebar-bg);
           border-right: 1px solid rgba(255, 255, 255, 0.1);
           overflow: hidden;
+          transition: width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1);
+          box-shadow: 10px 0 30px rgba(0,0,0,0.1);
+        }
+
+        .sidebar-premium.collapsed {
+          width: var(--sidebar-collapsed-width);
+          box-shadow: none;
+        }
+
+        .sidebar-premium.unpinned:not(.collapsed) {
+          z-index: 1100; /* Float over content when expanded via hover but not pinned */
+          border-right: 1px solid rgba(255, 255, 255, 0.2);
+          box-shadow: 20px 0 50px rgba(0,0,0,0.3);
         }
 
         .sidebar-mesh {
@@ -124,23 +177,6 @@ const Sidebar: React.FC = () => {
           z-index: 0;
           filter: blur(40px);
           opacity: 0.4;
-        }
-
-        .mesh-blob {
-          position: absolute;
-          border-radius: 50%;
-        }
-        .blob-1 {
-          width: 200px; height: 200px;
-          background: var(--gold);
-          top: -50px; left: -50px;
-          opacity: 0.1;
-        }
-        .blob-2 {
-          width: 150px; height: 150px;
-          background: var(--gold);
-          bottom: 10%; right: -20px;
-          opacity: 0.1;
         }
 
         .sidebar-content {
@@ -153,6 +189,70 @@ const Sidebar: React.FC = () => {
 
         .sidebar-header {
           padding: 32px 24px;
+          transition: padding 0.4s;
+        }
+
+        .collapsed .sidebar-header {
+          padding: 32px 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        /* Edge Handle Styling */
+        .edge-handle {
+          position: absolute;
+          right: 0;
+          top: 0;
+          width: 30px;
+          height: 100%;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1200;
+          opacity: 0;
+          transition: opacity 0.3s;
+        }
+
+        .edge-handle.visible {
+          opacity: 1;
+        }
+
+        .handle-glow {
+          position: absolute;
+          right: 0;
+          width: 4px;
+          height: 60px;
+          background: var(--gold);
+          border-radius: 4px 0 0 4px;
+          filter: blur(4px);
+          opacity: 0.6;
+          transition: height 0.3s, opacity 0.3s;
+        }
+
+        .edge-handle:hover .handle-glow {
+          height: 120px;
+          opacity: 1;
+          filter: blur(6px);
+        }
+
+        .handle-icon {
+          background: var(--gold);
+          color: white;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transform: translateX(12px);
+          transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .edge-handle:hover .handle-icon {
+          transform: translateX(0);
         }
 
         .brand-redesign {
@@ -161,6 +261,13 @@ const Sidebar: React.FC = () => {
           gap: 6px;
           margin-bottom: 40px;
           padding-left: 4px;
+          transition: all 0.3s;
+        }
+
+        .collapsed .brand-redesign {
+          padding-left: 0;
+          margin-bottom: 32px;
+          align-items: center;
         }
         
         .logo-text {
@@ -172,6 +279,10 @@ const Sidebar: React.FC = () => {
           align-items: baseline;
           letter-spacing: -0.025em;
           line-height: 1;
+        }
+
+        .collapsed .logo-text {
+          font-size: 2rem;
         }
         
         .logo-plus {
@@ -199,12 +310,19 @@ const Sidebar: React.FC = () => {
           display: flex;
           align-items: center;
           gap: 12px;
+          transition: all 0.3s;
+        }
+
+        .collapsed .user-profile-glass {
+          padding: 8px;
+          border-radius: 50%;
         }
 
         .avatar-ring {
           padding: 3px;
           background: linear-gradient(45deg, var(--gold), #ffffff);
           border-radius: 50%;
+          flex-shrink: 0;
         }
         .avatar-placeholder {
           width: 36px; height: 36px;
@@ -213,13 +331,18 @@ const Sidebar: React.FC = () => {
           font-weight: 900; font-size: 0.75rem; color: var(--ink);
         }
 
-        .user-name { font-weight: 800; font-size: 0.85rem; color: #ffffff; margin: 0; }
-        .lpo-name { font-size: 0.65rem; font-weight: 600; color: rgba(255, 255, 255, 0.5); margin: 0; }
+        .user-name { font-weight: 800; font-size: 0.85rem; color: #ffffff; margin: 0; white-space: nowrap; }
+        .lpo-name { font-size: 0.65rem; font-weight: 600; color: rgba(255, 255, 255, 0.5); margin: 0; white-space: nowrap; }
 
         .sidebar-nav {
           flex: 1;
           padding: 0 16px;
           overflow-y: auto;
+          overflow-x: hidden;
+        }
+
+        .collapsed .sidebar-nav {
+          padding: 0 12px;
         }
 
         .nav-group {
@@ -242,12 +365,22 @@ const Sidebar: React.FC = () => {
           margin-bottom: 4px;
           transition: all 0.2s;
           border: 1px solid transparent;
+          white-space: nowrap;
+        }
+
+        .collapsed .nav-item-glass {
+          justify-content: center;
+          padding: 12px;
         }
 
         .nav-item-glass:hover {
           background: rgba(255, 255, 255, 0.1);
           color: #ffffff;
           transform: translateX(4px);
+        }
+
+        .collapsed .nav-item-glass:hover {
+          transform: scale(1.1);
         }
 
         .nav-item-glass.active {
@@ -258,12 +391,30 @@ const Sidebar: React.FC = () => {
           margin-left: -16px;
           padding-left: 28px;
         }
+
+        .collapsed .nav-item-glass.active {
+          margin-left: 0;
+          padding-left: 12px;
+          border-left: none;
+          background: rgba(168, 118, 58, 0.2);
+          border: 1px solid var(--gold);
+          border-radius: 14px;
+        }
+
         .nav-item-glass.active .nav-icon { color: var(--gold); }
 
         .sidebar-footer {
           padding: 16px;
           border-top: 1px solid rgba(255, 255, 255, 0.1);
           background: rgba(0, 0, 0, 0.1);
+        }
+
+        .collapsed .sidebar-footer {
+          padding: 12px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
         }
 
         .logout-btn {

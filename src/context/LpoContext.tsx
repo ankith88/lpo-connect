@@ -16,18 +16,23 @@ interface LpoContextType {
   user: User | null;
   lpo: LpoMetadata | null;
   loading: boolean;
+  isSidebarPinned: boolean;
+  setIsSidebarPinned: (pinned: boolean) => void;
 }
 
 const LpoContext = createContext<LpoContextType>({
   user: null,
   lpo: null,
   loading: true,
+  isSidebarPinned: false,
+  setIsSidebarPinned: () => {},
 });
 
 export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [lpo, setLpo] = useState<LpoMetadata | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSidebarPinned, setIsSidebarPinned] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -70,7 +75,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   return (
-    <LpoContext.Provider value={{ user, lpo, loading }}>
+    <LpoContext.Provider value={{ user, lpo, loading, isSidebarPinned, setIsSidebarPinned }}>
       {children}
     </LpoContext.Provider>
   );
