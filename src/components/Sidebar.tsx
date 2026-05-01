@@ -7,7 +7,6 @@ import {
   Users, 
   RotateCcw, 
   FileText, 
-  TrendingUp, 
   HelpCircle, 
   LogOut,
   BarChart3,
@@ -24,7 +23,6 @@ const Sidebar: React.FC = () => {
     { name: 'Share Booking Link', icon: Share2, path: '/share' },
     { name: 'Customer Hub', icon: Users, path: '/customers' },
     { name: 'Weekly Invoices', icon: FileText, path: '/invoices' },
-    { name: 'Growth Leads', icon: TrendingUp, path: '/leads' },
     { name: 'Operational Insights', icon: BarChart3, path: '/reports' },
   ];
 

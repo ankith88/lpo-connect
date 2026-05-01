@@ -12,7 +12,7 @@ import {
   Rocket
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
-import { collection, query, getDocs, orderBy } from 'firebase/firestore';
+import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 
@@ -21,19 +21,70 @@ const CustomerHub: React.FC = () => {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
 
   useEffect(() => {
     if (lpo) {
       const fetchCustomers = async () => {
         try {
+          // 1. Fetch Customers
           const q = query(
             collection(db, `lpo/${lpo.id}/customers`),
             orderBy('companyName', 'asc')
           );
           const snapshot = await getDocs(q);
-          setCustomers(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
+          const customersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+
+          // 2. Fetch Requests for this LPO to calculate stats
+          const requestsQ = query(
+            collection(db, 'requests'),
+            where('lpo_id', '==', lpo.id.toString())
+          );
+          const requestsSnap = await getDocs(requestsQ);
+          const requests = requestsSnap.docs.map(doc => doc.data());
+
+          // 3. Aggregate Stats
+          const statsMap: Record<string, { totalJobs: number, lastJobDate: string | null }> = {};
+          
+          requests.forEach(req => {
+            const custId = req.netsuiteCustomerId?.toString() || req.customer?.netsuiteId?.toString();
+            const company = req.customer?.company;
+            
+            // Link requests to customers by ID or Company Name
+            const key = custId || company;
+            if (!key) return;
+
+            if (!statsMap[key]) {
+              statsMap[key] = { totalJobs: 0, lastJobDate: null };
+            }
+            
+            statsMap[key].totalJobs += 1;
+            
+            if (req.date) {
+              if (!statsMap[key].lastJobDate || req.date > statsMap[key].lastJobDate) {
+                statsMap[key].lastJobDate = req.date;
+              }
+            }
+          });
+
+          // 4. Merge stats into customers
+          const enrichedCustomers = customersData.map((c: any) => {
+            const custId = (c.companyId || c.customerInternalId || '').toString();
+            const company = c.companyName || c.company_name || '';
+            
+            // Match by ID first, then by company name
+            const stats = (custId && statsMap[custId]) ? statsMap[custId] : (company ? statsMap[company] : null);
+            
+            return {
+              ...c,
+              totalJobs: stats?.totalJobs || 0,
+              lastJobDate: stats?.lastJobDate || c.lastJobDate || null
+            };
+          });
+
+          setCustomers(enrichedCustomers);
         } catch (error) {
-          console.error("Error fetching customers:", error);
+          console.error("Error fetching customers/stats:", error);
           // Fallback if index isn't ready
           const q = query(collection(db, `lpo/${lpo.id}/customers`));
           const snapshot = await getDocs(q);
@@ -47,11 +98,31 @@ const CustomerHub: React.FC = () => {
   }, [lpo]);
 
   const filteredCustomers = customers.filter(c => {
+    // 1. Search Filter
     const searchStr = searchTerm.toLowerCase();
     const name = (c.companyName || c.company_name || '').toLowerCase();
     const city = (c.city || c.address?.suburb || '').toLowerCase();
     const franchisee = (c.franchiseeText || '').toLowerCase();
-    return name.includes(searchStr) || city.includes(searchStr) || franchisee.includes(searchStr);
+    const matchesSearch = name.includes(searchStr) || city.includes(searchStr) || franchisee.includes(searchStr);
+
+    if (!matchesSearch) return false;
+
+    // 2. Tab Filter
+    if (activeFilter === 'all') return true;
+    
+    if (activeFilter === 'recent') {
+      if (!c.lastJobDate) return false;
+      const lastDate = new Date(c.lastJobDate);
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      return lastDate >= thirtyDaysAgo;
+    }
+
+    if (activeFilter === 'frequent') {
+      return (c.totalJobs || 0) >= 3;
+    }
+
+    return true;
   });
 
   return (
@@ -91,9 +162,24 @@ const CustomerHub: React.FC = () => {
               />
            </div>
            <div className="filter-pills">
-              <button className="pill active"><Filter size={14} /> All Clients</button>
-              <button className="pill">Recent Acquisitions</button>
-              <button className="pill">Frequent Service</button>
+              <button 
+                className={`pill ${activeFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setActiveFilter('all')}
+              >
+                <Filter size={14} /> All Clients
+              </button>
+              <button 
+                className={`pill ${activeFilter === 'recent' ? 'active' : ''}`}
+                onClick={() => setActiveFilter('recent')}
+              >
+                Recent Acquisitions
+              </button>
+              <button 
+                className={`pill ${activeFilter === 'frequent' ? 'active' : ''}`}
+                onClick={() => setActiveFilter('frequent')}
+              >
+                Frequent Service
+              </button>
            </div>
         </div>
 
@@ -173,12 +259,12 @@ const CustomerHub: React.FC = () => {
                       <div className="card-footer">
                          <div className="stats">
                             <div className="stat-item">
-                               <label>Total Jobs</label>
-                               <span>--</span>
-                            </div>
-                            <div className="stat-item">
-                               <label>Last Service</label>
-                               <span>{customer.lastJobDate ? new Date(customer.lastJobDate).toLocaleDateString() : 'N/A'}</span>
+                             <label>Total Jobs</label>
+                             <span>{customer.totalJobs || 0}</span>
+                          </div>
+                          <div className="stat-item">
+                             <label>Last Service</label>
+                             <span>{customer.lastJobDate ? (customer.lastJobDate.includes('-') ? customer.lastJobDate.split('-').reverse().join('/') : new Date(customer.lastJobDate).toLocaleDateString()) : 'N/A'}</span>
                             </div>
                          </div>
                          <button className="view-details" onClick={() => window.location.href = `/new-job?rebook=true&customerId=${customer.id}`}>

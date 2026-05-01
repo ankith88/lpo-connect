@@ -6,10 +6,10 @@ import {
   DollarSign, 
   Calendar,
   Filter,
-  ArrowUpRight,
-  ArrowDownRight,
   PieChart,
-  Activity
+  Activity,
+  Award,
+  Map
 } from 'lucide-react';
 import { collection, query, getDocs, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
@@ -23,6 +23,15 @@ const Reports: React.FC = () => {
     completedJobs: 0,
     activeCustomers: 0,
     estimatedRevenue: 0,
+    revenueForecast: 0,
+    averageJobValue: 0,
+    statusBreakdown: {
+      scheduled: 0,
+      completed: 0,
+      cancelled: 0
+    },
+    topCustomers: [] as { name: string, revenue: number }[],
+    geographicData: [] as { suburb: string, count: number }[],
     serviceSplit: {
       'lpo-to-site': 0,
       'site-to-lpo': 0,
@@ -39,18 +48,60 @@ const Reports: React.FC = () => {
           
           let completed = 0;
           let revenue = 0;
+          let forecast = 0;
+          const statusCount = { scheduled: 0, completed: 0, cancelled: 0 };
+          const customerRevenue: Record<string, number> = {};
+          const suburbs: Record<string, number> = {};
           const split = { 'lpo-to-site': 0, 'site-to-lpo': 0, 'round-trip': 0 };
           
+          const today = new Date();
+          const nextWeek = new Date();
+          nextWeek.setDate(today.getDate() + 7);
+
           snapshot.docs.forEach(doc => {
             const data = doc.data();
-            if (data.status === 'completed') completed++;
-            
             const rate = parseFloat(data.serviceRate || '0');
-            revenue += rate;
+            const status = data.status as keyof typeof statusCount;
+            const customerName = data.customer?.company || 'Unknown';
+            const suburb = data.customer?.suburb || 'N/A';
             
+            // Status counts
+            if (statusCount[status] !== undefined) statusCount[status]++;
+            if (status === 'completed') {
+              completed++;
+              revenue += rate;
+              
+              // Top customers revenue
+              customerRevenue[customerName] = (customerRevenue[customerName] || 0) + rate;
+            }
+            
+            // Forecast logic (scheduled jobs in the next 7 days)
+            if (status === 'scheduled' && data.date) {
+              const jobDate = new Date(data.date);
+              if (jobDate >= today && jobDate <= nextWeek) {
+                forecast += rate;
+              }
+            }
+
+            // Geographic data
+            suburbs[suburb] = (suburbs[suburb] || 0) + 1;
+            
+            // Service split
             const type = data.service as keyof typeof split;
             if (split[type] !== undefined) split[type]++;
           });
+
+          // Process top customers
+          const topCustomers = Object.entries(customerRevenue)
+            .map(([name, rev]) => ({ name, revenue: rev }))
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 5);
+
+          // Process geographic data
+          const geographicData = Object.entries(suburbs)
+            .map(([suburb, count]) => ({ suburb, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5);
 
           // Fetch customers count
           const custQ = query(collection(db, `lpo/${lpo.id}/customers`));
@@ -61,6 +112,11 @@ const Reports: React.FC = () => {
             completedJobs: completed,
             activeCustomers: custSnapshot.size,
             estimatedRevenue: revenue,
+            revenueForecast: forecast,
+            averageJobValue: completed > 0 ? revenue / completed : 0,
+            statusBreakdown: statusCount,
+            topCustomers,
+            geographicData,
             serviceSplit: split
           });
         } catch (err) {
@@ -112,31 +168,25 @@ const Reports: React.FC = () => {
           <>
             <div className="stats-grid">
               <div className="stat-card glass-card">
-                <div className="stat-icon-wrapper blue">
-                  <Activity size={24} />
+                <div className="stat-icon-wrapper green">
+                  <DollarSign size={24} />
                 </div>
                 <div className="stat-content">
-                  <label>Total Bookings</label>
+                  <label>Revenue (Completed)</label>
                   <div className="stat-value-row">
-                    <h3>{stats.totalJobs}</h3>
-                    <span className="trend up">
-                      <ArrowUpRight size={14} /> 12%
-                    </span>
+                    <h3>${stats.estimatedRevenue.toFixed(2)}</h3>
                   </div>
                 </div>
               </div>
 
               <div className="stat-card glass-card">
-                <div className="stat-icon-wrapper green">
-                  <DollarSign size={24} />
+                <div className="stat-icon-wrapper blue">
+                  <TrendingUp size={24} />
                 </div>
                 <div className="stat-content">
-                  <label>Est. Revenue</label>
+                  <label>Revenue Forecast (7d)</label>
                   <div className="stat-value-row">
-                    <h3>${stats.estimatedRevenue.toFixed(2)}</h3>
-                    <span className="trend up">
-                      <ArrowUpRight size={14} /> 8.4%
-                    </span>
+                    <h3>${stats.revenueForecast.toFixed(2)}</h3>
                   </div>
                 </div>
               </div>
@@ -149,79 +199,86 @@ const Reports: React.FC = () => {
                   <label>Active Clients</label>
                   <div className="stat-value-row">
                     <h3>{stats.activeCustomers}</h3>
-                    <span className="trend down">
-                      <ArrowDownRight size={14} /> 2%
-                    </span>
                   </div>
                 </div>
               </div>
 
               <div className="stat-card glass-card">
                 <div className="stat-icon-wrapper orange">
-                  <TrendingUp size={24} />
+                  <Award size={24} />
+                </div>
+                <div className="stat-content">
+                  <label>Avg. Job Value</label>
+                  <div className="stat-value-row">
+                    <h3>${stats.averageJobValue.toFixed(2)}</h3>
+                  </div>
+                </div>
+              </div>
+
+              <div className="stat-card glass-card">
+                <div className="stat-icon-wrapper blue">
+                  <Activity size={24} />
                 </div>
                 <div className="stat-content">
                   <label>Completion Rate</label>
                   <div className="stat-value-row">
                     <h3>{stats.totalJobs > 0 ? Math.round((stats.completedJobs / stats.totalJobs) * 100) : 0}%</h3>
-                    <span className="trend up">
-                      <ArrowUpRight size={14} /> 5%
-                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div className="charts-row">
-              <div className="chart-container glass-card large">
-                <div className="chart-header">
-                  <h3>Volume Trend</h3>
-                  <div className="chart-legend">
-                    <span className="dot jobs"></span> Jobs Booked
-                  </div>
+            <div className="insights-row">
+              <div className="insight-card glass-card">
+                <div className="insight-header">
+                  <Award size={20} />
+                  <h3>Top Customers (by Revenue)</h3>
                 </div>
-                <div className="viz-placeholder">
-                  {/* Custom SVG Chart */}
-                  <svg viewBox="0 0 800 200" className="trend-viz">
-                    <defs>
-                      <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="var(--ink)" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="var(--ink)" stopOpacity="0" />
-                      </linearGradient>
-                    </defs>
-                    <path 
-                      d="M0,150 Q100,140 200,160 T400,120 T600,100 T800,80" 
-                      fill="none" 
-                      stroke="var(--ink)" 
-                      strokeWidth="4"
-                      strokeLinecap="round"
-                    />
-                    <path 
-                      d="M0,150 Q100,140 200,160 T400,120 T600,100 T800,80 L800,200 L0,200 Z" 
-                      fill="url(#chartGradient)"
-                    />
-                    {[0, 1, 2, 3, 4, 5, 6, 7].map(i => (
-                      <circle key={i} cx={i * 114} cy={150 - (i * 10)} r="5" fill="white" stroke="var(--ink)" strokeWidth="2" />
-                    ))}
-                  </svg>
-                  <div className="x-axis">
-                    <span>1 Apr</span>
-                    <span>7 Apr</span>
-                    <span>14 Apr</span>
-                    <span>21 Apr</span>
-                    <span>Today</span>
-                  </div>
+                <div className="insight-list">
+                  {stats.topCustomers.map((cust, i) => (
+                    <div key={i} className="insight-item">
+                      <div className="item-rank">{i + 1}</div>
+                      <div className="item-info">
+                        <span className="item-name">{cust.name}</span>
+                        <span className="item-sub">Completed Jobs</span>
+                      </div>
+                      <div className="item-value">${cust.revenue.toFixed(2)}</div>
+                    </div>
+                  ))}
+                  {stats.topCustomers.length === 0 && <p className="empty-msg">No completed jobs yet.</p>}
                 </div>
               </div>
 
-              <div className="chart-container glass-card small">
+              <div className="insight-card glass-card">
+                <div className="insight-header">
+                  <Map size={20} />
+                  <h3>Geographic Insights (by Volume)</h3>
+                </div>
+                <div className="insight-list">
+                  {stats.geographicData.map((geo, i) => (
+                    <div key={i} className="insight-item">
+                      <div className="item-rank">{i + 1}</div>
+                      <div className="item-info">
+                        <span className="item-name">{geo.suburb}</span>
+                        <span className="item-sub">Suburb Territory</span>
+                      </div>
+                      <div className="item-value">{geo.count} Jobs</div>
+                    </div>
+                  ))}
+                  {stats.geographicData.length === 0 && <p className="empty-msg">No location data available.</p>}
+                </div>
+              </div>
+            </div>
+
+            <div className="charts-row">
+              <div className="chart-container glass-card">
                 <div className="chart-header">
                   <h3>Service Mix</h3>
                 </div>
                 <div className="viz-placeholder pie">
                   <div className="pie-wrapper">
                     <svg viewBox="0 0 100 100" className="pie-chart-viz">
-                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#e0e0e0" strokeWidth="20" />
+                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#f0f0f0" strokeWidth="20" />
                       <circle 
                         cx="50" cy="50" r="40" 
                         fill="transparent" 
@@ -243,6 +300,47 @@ const Reports: React.FC = () => {
                         <span className="value">{value}</span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="chart-container glass-card">
+                <div className="chart-header">
+                  <h3>Status Distribution</h3>
+                </div>
+                <div className="viz-placeholder pie">
+                  <div className="pie-wrapper">
+                    <svg viewBox="0 0 100 100" className="pie-chart-viz">
+                      <circle cx="50" cy="50" r="40" fill="transparent" stroke="#f0f0f0" strokeWidth="20" />
+                      <circle 
+                        cx="50" cy="50" r="40" 
+                        fill="transparent" 
+                        stroke="#27ae60" 
+                        strokeWidth="20" 
+                        strokeDasharray={`${(stats.completedJobs / (stats.totalJobs || 1)) * 251} 251`}
+                        transform="rotate(-90 50 50)"
+                      />
+                    </svg>
+                    <div className="pie-center">
+                      <Activity size={20} color="#27ae60" />
+                    </div>
+                  </div>
+                  <div className="pie-legend">
+                    <div className="legend-item">
+                      <span className="dot" style={{ background: '#27ae60' }}></span>
+                      <span className="label">Completed</span>
+                      <span className="value">{stats.completedJobs}</span>
+                    </div>
+                    <div className="legend-item">
+                      <span className="dot" style={{ background: 'var(--gold)' }}></span>
+                      <span className="label">Scheduled</span>
+                      <span className="value">{stats.statusBreakdown.scheduled}</span>
+                    </div>
+                    <div className="legend-item">
+                      <span className="dot" style={{ background: '#ff4757' }}></span>
+                      <span className="label">Cancelled</span>
+                      <span className="value">{stats.statusBreakdown.cancelled}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -273,7 +371,7 @@ const Reports: React.FC = () => {
           font-weight: 700; font-size: 0.9rem; cursor: pointer;
         }
 
-        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 32px; }
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 24px; padding: 24px; }
         
         .stat-card { display: flex; align-items: center; gap: 20px; transition: transform 0.3s; }
@@ -292,7 +390,20 @@ const Reports: React.FC = () => {
         .trend.up { background: #e2f9ec; color: #27ae60; }
         .trend.down { background: #fff1f1; color: #ff4757; }
 
-        .charts-row { display: grid; grid-template-columns: 1fr 350px; gap: 24px; }
+        .insights-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 32px; }
+        .insight-card { padding: 24px; }
+        .insight-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; color: var(--ink); }
+        .insight-header h3 { margin: 0; font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; }
+        .insight-list { display: flex; flex-direction: column; gap: 16px; }
+        .insight-item { display: flex; align-items: center; gap: 16px; }
+        .item-rank { width: 32px; height: 32px; background: var(--offwhite); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.8rem; color: var(--ink-soft); }
+        .item-info { flex: 1; display: flex; flex-direction: column; }
+        .item-name { font-weight: 700; color: var(--ink); font-size: 0.95rem; }
+        .item-sub { font-size: 0.75rem; color: var(--ink-soft); }
+        .item-value { font-weight: 800; color: var(--ink); font-size: 1rem; }
+        .empty-msg { text-align: center; color: var(--ink-soft); font-style: italic; padding: 20px; }
+
+        .charts-row { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 32px; }
         .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .chart-header h3 { margin: 0; font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--ink); }
         
@@ -321,6 +432,7 @@ const Reports: React.FC = () => {
 
         @media (max-width: 1024px) {
           .stats-grid { grid-template-columns: repeat(2, 1fr); }
+          .insights-row { grid-template-columns: 1fr; }
           .charts-row { grid-template-columns: 1fr; }
         }
       `}</style>
