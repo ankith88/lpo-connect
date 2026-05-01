@@ -166,7 +166,7 @@ export const onChatMessageSent = onDocumentUpdated({
       }
     } else if (sender === 'operator') {
       const tokens = afterData.customerTokens || [];
-      
+
       if (tokens.length > 0) {
         const payload = {
           notification: {
@@ -246,9 +246,9 @@ export const updateJobStatus = onCall(async (request) => {
 
   await docRef.update(updatedData);
 
-  return { 
-    success: true, 
-    jobId, 
+  return {
+    success: true,
+    jobId,
     status: updatedData.status || jobData.status,
     stopsUpdated
   };
@@ -256,11 +256,11 @@ export const updateJobStatus = onCall(async (request) => {
 
 // Logic: generateDailyScheduledJobs
 export const generateDailyScheduledJobs = onSchedule({
-  schedule: "5 0 * * *", // 12:05 AM every day
+  schedule: "5 5 * * *", // 5:05 AM every day
   timeZone: "Australia/Sydney", // Adjust to LPO timezone
 }, async (event) => {
   const db = getDB();
-  
+
   // Use Australia/Sydney timezone for date calculations
   const sydneyTimeFormatter = new Intl.DateTimeFormat('en-AU', {
     timeZone: 'Australia/Sydney',
@@ -269,30 +269,36 @@ export const generateDailyScheduledJobs = onSchedule({
     day: '2-digit',
     weekday: 'short'
   });
-  
+
   // parts will look like: [ { type: 'weekday', value: 'Wed' }, ... ]
   const parts = sydneyTimeFormatter.formatToParts(new Date());
-  
+
+  // Log parts as a string to see the internal structure in logs
+  console.log("Time parts:", JSON.stringify(parts));
+
   let year = '';
   let month = '';
   let day = '';
   let todayDayName = '';
-  
+
   for (const part of parts) {
     if (part.type === 'year') year = part.value;
     if (part.type === 'month') month = part.value;
     if (part.type === 'day') day = part.value;
     if (part.type === 'weekday') todayDayName = part.value;
   }
-  
+
   // Sometimes 'short' weekday returns "Wed." or "Wed", we just need the first 3 chars
   todayDayName = todayDayName.substring(0, 3);
-  
+
   const todayStr = `${year}-${month}-${day}`;
-  
+
+  // Log the final calculated date and day name
+  console.log(`Target Date: ${todayStr}, Day Name: ${todayDayName}`);
+
   const scheduledJobsRef = db.collection('scheduled_jobs');
   const jobsRef = db.collection('jobs');
-  
+
   const snapshot = await scheduledJobsRef.where('status', 'in', ['accepted', 'scheduled']).get();
   let generatedCount = 0;
 
@@ -301,23 +307,23 @@ export const generateDailyScheduledJobs = onSchedule({
 
   for (const doc of snapshot.docs) {
     const template = doc.data();
-    
+
     // Check if job is stopped or skipped today
     if (template.recurrenceStatus === 'stopped') continue;
     if (template.skippedDates && template.skippedDates.includes(todayStr)) continue;
-    
+
     // Check if the template has started
     if (template.date > todayStr) continue;
-    
+
     // Check if today matches the frequency
     if (template.frequency && Array.isArray(template.frequency) && template.frequency.includes(todayDayName)) {
-      
+
       // Avoid duplicate generation for this exact template + date
       const existingInstances = await jobsRef
         .where('scheduledJobId', '==', doc.id)
         .where('date', '==', todayStr)
         .get();
-        
+
       if (existingInstances.empty) {
         // Create new instance
         const newJobRef = jobsRef.doc();
@@ -330,10 +336,10 @@ export const generateDailyScheduledJobs = onSchedule({
           syncedWithNetSuite: false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-        
+
         generatedCount++;
         operationsInBatch++;
-        
+
         // Firestore batch limit is 500
         if (operationsInBatch >= 450) {
           await batch.commit();

@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { sortStops } from '../../utils/stops';
+
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 
@@ -203,19 +205,19 @@ const AwaitingTCPage: React.FC = () => {
                                {expandedJobIds.has(job.id) && (
                                  <div className="job-stops-container fade-in">
                                     <div className="stops-visual-line"></div>
-                                    {(job.stops || []).map((stop: any, sIdx: number) => (
-                                      <div key={sIdx} className="stop-entry">
-                                        <div className={`stop-node ${stop.type}`}></div>
-                                        <div className="stop-details">
-                                          <div className="stop-type-header">
-                                            <span className="type-pill">{stop.label || stop.type.toUpperCase()}</span>
-                                            <span className="stop-seq">STOP {stop.sequence}</span>
-                                          </div>
-                                          <div className="stop-loc-name">{stop.locationName}</div>
-                                          <div className="stop-addr">{stop.address}, {stop.suburb}</div>
-                                        </div>
-                                      </div>
-                                    ))}
+                                     {sortStops(job.stops).map((stop: any, sIdx: number) => (
+                                       <div key={sIdx} className="stop-entry">
+                                         <div className={`stop-node ${stop.type}`}></div>
+                                         <div className="stop-details">
+                                           <div className="stop-type-header">
+                                             <span className="type-pill">{stop.label || stop.type.toUpperCase()}</span>
+                                             <span className="stop-seq">STOP {stop.sequence}</span>
+                                           </div>
+                                           <div className="stop-loc-name">{stop.locationName}</div>
+                                           <div className="stop-addr">{stop.address}, {stop.suburb}</div>
+                                         </div>
+                                       </div>
+                                     ))}
                                  </div>
                                )}
 

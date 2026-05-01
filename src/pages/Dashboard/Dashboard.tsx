@@ -12,7 +12,6 @@ import {
   RefreshCw,
   Clock,
   MapPin,
-  Mail,
   MessageSquare,
   Download,
   X,
@@ -27,6 +26,8 @@ import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy }
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
+import { sortStops } from '../../utils/stops';
+
 
 const Dashboard: React.FC = () => {
   const { lpo } = useLpo();
@@ -38,6 +39,12 @@ const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'in-progress' | 'history' | 'declined'>('in-progress');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+  
+  // Communication Modal State
+  const [isCommModalOpen, setIsCommModalOpen] = useState(false);
+  const [selectedJobForComm, setSelectedJobForComm] = useState<any>(null);
+  const [commMessage, setCommMessage] = useState('');
+  const [isSending, setIsSending] = useState(false);
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -91,17 +98,44 @@ const Dashboard: React.FC = () => {
     }
   }, [lpo]);
 
-  const handleSendMessage = (job: any, type: 'sms' | 'email') => {
-    // NetSuite API integration point
-    // TODO: In the future, this will hit a NetSuite endpoint to trigger the message
-    const contact = job.customer.phone; 
-    
-    if (type === 'sms') {
-      window.location.href = `sms:${contact}?body=Hi, update regarding job #${job.id.slice(0,6)} for ${job.customer.company}`;
-    } else {
-      window.location.href = `mailto:operator@mailplus.com.au?subject=Job Update #${job.id.slice(0,6)}&body=Follow up on job for ${job.customer.company}`;
+  const handleCommunication = (job: any) => {
+    setSelectedJobForComm(job);
+    setIsCommModalOpen(true);
+    setCommMessage('');
+  };
+
+  const submitCommunication = async () => {
+    if (!commMessage.trim()) {
+      alert("Please enter a message.");
+      return;
     }
-    console.log(`Triggering NetSuite-ready ${type} for job ${job.id}`);
+
+    setIsSending(true);
+    const job = selectedJobForComm;
+    const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2535&deploy=1&compid=1048144&ns-at=AAEJ7tMQeYW40giJlU7O2McXMAA-MKOcrvoW29VOHNRcMiaQ7AM";
+    
+    const params = new URLSearchParams({
+      document_id: job.id,
+      appJobGroupId: job.appJobGroupId || "",
+      lpo_id: job.lpo_id || "",
+      netsuiteCustomerId: job.netsuiteCustomerId || "",
+      message: commMessage
+    });
+
+    try {
+      console.log(`Triggering NetSuite Communication for job ${job.id} with message: ${commMessage}`);
+      const response = await fetch(`${NETSUITE_API}&${params.toString()}`);
+      const data = await response.json();
+      console.log("NetSuite Communication Response:", data);
+      alert("Message sent to operator successfully.");
+      setIsCommModalOpen(false);
+      setCommMessage('');
+    } catch (err) {
+      console.error("NetSuite Communication Error:", err);
+      alert("Failed to send message. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const today = formatDateForInput(new Date());
@@ -490,7 +524,7 @@ const Dashboard: React.FC = () => {
                                  {expandedJobIds.has(job.id) && (
                                    <div className="job-stops-container fade-in">
                                       <div className="stops-visual-line"></div>
-                                      {(job.stops || []).map((stop: any, sIdx: number) => (
+                                      {sortStops(job.stops).map((stop: any, sIdx: number) => (
                                         <div key={sIdx} className="stop-entry">
                                           <div className={`stop-node ${stop.type}`}></div>
                                           <div className="stop-details">
@@ -506,7 +540,7 @@ const Dashboard: React.FC = () => {
                                             {stop.status !== 'completed' && (activeTab !== 'pending') && (
                                               <button 
                                                 className="btn-complete-stop"
-                                                onClick={() => handleUpdateStopStatus(job.id, sIdx, 'completed')}
+                                                onClick={() => handleUpdateStopStatus(job.id, stop.originalIndex, 'completed')}
                                                 title="Mark Stop Completed"
                                               >
                                                 <CheckCircle2 size={16} />
@@ -560,13 +594,9 @@ const Dashboard: React.FC = () => {
                                       </div>
                                     ) : (
                                       <div className="messaging-group">
-                                        <button className="mini-action sms" onClick={() => handleSendMessage(job, 'sms')}>
+                                        <button className="btn-primary-glass mini-chat" onClick={() => handleCommunication(job)}>
                                            <MessageSquare size={16} />
-                                           <span>SMS</span>
-                                        </button>
-                                        <button className="mini-action email" onClick={() => handleSendMessage(job, 'email')}>
-                                           <Mail size={16} />
-                                           <span>EMAIL</span>
+                                           <span>CONTACT OPERATOR</span>
                                         </button>
                                       </div>
                                     )}
@@ -600,6 +630,62 @@ const Dashboard: React.FC = () => {
                  </div>
                )}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Communication Modal */}
+      <div className={`modal-overlay ${isCommModalOpen ? 'active' : ''}`}>
+        <div className="modal-content card glass fade-in">
+          <div className="modal-header">
+            <div className="header-title">
+              <MessageSquare size={20} />
+              <h2>Contact Operator</h2>
+            </div>
+            <button className="close-btn" onClick={() => setIsCommModalOpen(false)}>
+              <X size={20} />
+            </button>
+          </div>
+
+          {selectedJobForComm && (
+            <div className="schedule-info-summary">
+              <div className="m-company">{selectedJobForComm.customer.company}</div>
+              <div className="m-address">
+                <MapPin size={14} />
+                <span>{selectedJobForComm.customer.address}, {selectedJobForComm.customer.suburb}</span>
+              </div>
+            </div>
+          )}
+
+          <div className="mgmt-section">
+            <label className="m-label">Your Message</label>
+            <p className="m-hint">This message will be sent to the operator via Email and SMS.</p>
+            <textarea 
+              className="comm-textarea"
+              placeholder="Type your message here..."
+              value={commMessage}
+              onChange={(e) => setCommMessage(e.target.value)}
+              rows={5}
+              disabled={isSending}
+            />
+          </div>
+
+          <div className="modal-actions">
+            <button 
+              className="btn-secondary-glass" 
+              onClick={() => setIsCommModalOpen(false)}
+              disabled={isSending}
+            >
+              Cancel
+            </button>
+            <button 
+              className="btn-primary-glass" 
+              onClick={submitCommunication}
+              disabled={isSending || !commMessage.trim()}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px' }}
+            >
+              {isSending ? <RefreshCw size={18} className="spin" /> : 'Send Message'}
+            </button>
           </div>
         </div>
       </div>
@@ -1142,6 +1228,37 @@ const Dashboard: React.FC = () => {
 
         .manage-schedule { width: 100%; margin-bottom: 8px; border: 1px solid rgba(26, 61, 51, 0.1) !important; background: white !important; color: var(--ink) !important; }
         .manage-schedule:hover { background: var(--offwhite) !important; border-color: var(--ink) !important; }
+
+        /* Communication Modal Specific */
+        .comm-textarea {
+          width: 100%;
+          padding: 16px;
+          border-radius: 16px;
+          border: 1px solid rgba(26, 61, 51, 0.1);
+          background: white;
+          font-family: var(--font-body);
+          font-size: 0.9rem;
+          resize: none;
+          margin-bottom: 24px;
+          transition: all 0.2s;
+        }
+        .comm-textarea:focus {
+          border-color: var(--ink);
+          box-shadow: 0 0 0 3px rgba(26, 61, 51, 0.05);
+          outline: none;
+        }
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+        }
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
       `}</style>
     </div>
   );

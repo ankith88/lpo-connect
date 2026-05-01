@@ -61,10 +61,10 @@ const RequestPage: React.FC = () => {
     const unsubscribe = onSnapshot(doc(db, 'requests', id), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (data.status === 'accepted' || data.status === 'scheduled') {
+        // Only set error for customers if job is already accepted/scheduled
+        if (!lpo && (data.status === 'accepted' || data.status === 'scheduled')) {
           setError("This job has already been accepted and is being performed. It can no longer be cancelled via this coordination link.");
         } else {
-          // We load the request even if scheduled or rejected, so we can show the details
           setRequest({ id: docSnap.id, ...data });
         }
       } else {
@@ -78,7 +78,7 @@ const RequestPage: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, [id]);
+  }, [id, lpo]);
 
   useEffect(() => {
     // Request notification permission and save token
@@ -182,6 +182,11 @@ const RequestPage: React.FC = () => {
 
   const handleAccept = async () => {
     if (!request || !isOperator || !lpo) return;
+
+    if (request.status === 'awaiting-activation') {
+      alert("This customer is still awaiting T&C activation. You cannot accept the job until they are Active.");
+      return;
+    }
 
     if (window.confirm("Accept this job request?")) {
       try {
@@ -470,14 +475,18 @@ const RequestPage: React.FC = () => {
               )}
            </div>
            
-           {request.status !== 'rejected' && request.status !== 'cancelled' && (
+           {(request.status === 'pending' || request.status === 'awaiting-activation') && (
              <div className="operator-actions desktop-only">
                {isOperator ? (
                  <>
                    <button className="btn-reject" onClick={handleReject}>
                      <XCircle size={18} /> DECLINE
                    </button>
-                   <button className="btn-accept shadow-teal" onClick={handleAccept}>
+                   <button 
+                     className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
+                     onClick={handleAccept}
+                     title={request.status === 'awaiting-activation' ? "Awaiting Customer T&C Activation" : ""}
+                   >
                      <div className="accept-content">
                        <CheckCircle2 size={18} /> 
                        <span>ACCEPT JOB</span>
@@ -690,7 +699,7 @@ const RequestPage: React.FC = () => {
         </div>
       </div>
 
-      {request.status !== 'rejected' && request.status !== 'cancelled' && (
+      {(request.status === 'pending' || request.status === 'awaiting-activation') && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
             {isOperator ? (
@@ -698,7 +707,10 @@ const RequestPage: React.FC = () => {
                 <button className="btn-reject" onClick={handleReject}>
                   <XCircle size={18} /> DECLINE
                 </button>
-                <button className="btn-accept shadow-teal" onClick={handleAccept}>
+                <button 
+                  className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
+                  onClick={handleAccept}
+                >
                   <div className="accept-content">
                     <CheckCircle2 size={18} /> 
                     <span>ACCEPT JOB</span>
@@ -824,6 +836,7 @@ const RequestPage: React.FC = () => {
          .time-text-area label { font-family: var(--font-ui); font-size: 0.6rem; font-weight: 900; color: var(--gold); letter-spacing: 0.5px; }
          .time-value { font-size: 1.3rem; font-weight: 900; color: var(--ink); letter-spacing: -0.5px; }
 
+         .btn-accept.disabled { opacity: 0.5; cursor: not-allowed; filter: grayscale(1); }
          .btn-accept { position: relative; overflow: visible; display: flex; flex-direction: column; align-items: center; padding: 12px 24px; min-width: 160px; background: var(--ink); color: white; border: none; border-radius: 14px; font-weight: 800; cursor: pointer; transition: all 0.2s; }
          .accept-content { display: flex; align-items: center; gap: 8px; }
           .btn-badge { 

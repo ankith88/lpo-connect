@@ -17,6 +17,8 @@ import {
   List
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, orderBy, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { sortStops } from '../../utils/stops';
+
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { getNextOccurrences, parseLocalDate } from '../../utils/scheduling';
@@ -328,7 +330,7 @@ const Schedules: React.FC = () => {
                         {expandedJobIds.has(schedule.id) && (
                           <div className="job-stops-container fade-in">
                              <div className="stops-visual-line"></div>
-                             {(schedule.stops || []).map((stop: any, sIdx: number) => (
+                             {sortStops(schedule.stops).map((stop: any, sIdx: number) => (
                                <div key={sIdx} className="stop-entry">
                                  <div className={`stop-node ${stop.type}`}></div>
                                  <div className="stop-details">
