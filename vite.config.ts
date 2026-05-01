@@ -1,33 +1,29 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-// import { VitePWA } from 'vite-plugin-pwa'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
-    /*
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
         name: 'LPO.PLUS',
         short_name: 'LPOPLUS',
         description: 'LPO Courier Logistics Management',
-        theme_color: '#004141',
+        theme_color: '#095c7b',
+        background_color: '#095c7b',
+        display: 'standalone',
         icons: [
           {
-            src: 'favicon.svg',
-            sizes: '192x192',
-            type: 'image/svg+xml'
-          },
-          {
-            src: 'favicon.svg',
-            sizes: '512x512',
-            type: 'image/svg+xml'
+            src: 'pwa-icon.png',
+            sizes: '1024x1024',
+            type: 'image/png',
+            purpose: 'any maskable'
           }
         ]
       }
     })
-    */
   ],
 })
