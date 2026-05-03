@@ -9,6 +9,8 @@ interface LpoMetadata {
   name: string;
   location: string;
   address: string;
+  latitude?: number;
+  longitude?: number;
   franchiseeTerritoryJSON?: string | string[];
 }
 

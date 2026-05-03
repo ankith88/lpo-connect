@@ -709,129 +709,51 @@ const Schedules: React.FC = () => {
 
         /* Responsive Adjustments */
         @media (max-width: 768px) {
-          .content-container {
-            padding: 24px 16px 120px;
-          }
+          .content-container { padding: 16px 12px 100px; }
+          .page-header { flex-direction: column; gap: 16px; margin-bottom: 24px; }
+          .page-header h1 { font-size: 1.5rem; }
+          .page-header p { font-size: 0.85rem; }
+          .header-icon { width: 32px; height: 32px; }
+          .header-right { width: 100%; }
+          .btn-premium-action { width: 100%; justify-content: center; padding: 12px 20px; font-size: 0.85rem; }
 
-          .page-header {
-            flex-direction: column;
-            gap: 24px;
-            margin-bottom: 32px;
-          }
+          .filter-bar { flex-direction: column; align-items: stretch; padding: 12px; gap: 12px; margin-bottom: 20px; }
+          .view-toggle-pills { width: 100%; }
+          .view-toggle-pills button { flex: 1; justify-content: center; padding: 6px 12px; }
 
-          .page-header h1 {
-            font-size: 1.75rem;
-          }
+          .calendar-grid-wrapper { padding: 12px 8px; margin: 0 -4px; width: calc(100% + 8px); border-radius: 16px; }
+          .calendar-weekday-header div { font-size: 0.6rem; letter-spacing: 0; }
+          .calendar-days-grid { gap: 4px; }
+          .day-cell { min-height: 44px; padding: 4px; border-radius: 8px; }
+          .day-number { font-size: 0.65rem; text-align: center; }
+          .day-jobs-list { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 2px; }
 
-          .header-right {
-            width: 100%;
-          }
+          .job-dot-pill { padding: 0; width: 5px; height: 5px; min-width: 5px; border-radius: 50%; background: var(--ink); }
+          .job-dot-pill span, .job-dot-pill .dot { display: none; }
+          .job-dot-pill.skipped { background: var(--danger); opacity: 0.5; }
 
-          .btn-premium-action {
-            width: 100%;
-            justify-content: center;
-          }
+          .timeline-content-card { padding: 14px; border-radius: 20px; }
+          .card-header { flex-direction: column; gap: 8px; margin-bottom: 12px; }
+          .company-name { font-size: 1.1rem; }
+          .location-info { font-size: 0.75rem; margin-top: 2px; }
+          .header-meta-group { width: 100%; justify-content: space-between; }
+          .status-tag { padding: 4px 10px; font-size: 0.55rem; }
 
-          .filter-bar {
-            flex-direction: column;
-            align-items: stretch;
-            padding: 16px;
-          }
+          .card-meta { flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 0; margin-top: 12px; }
+          .meta-pill { font-size: 0.7rem; }
+          .job-ref { margin-left: 0; font-size: 0.6rem; }
+          .btn-primary-glass { padding: 10px; font-size: 0.8rem; }
 
-          .view-toggle-pills {
-            width: 100%;
-          }
-
-          .view-toggle-pills button {
-            flex: 1;
-            justify-content: center;
-          }
-
-          .calendar-grid-wrapper {
-            padding: 12px;
-            margin: 0 -8px;
-            width: calc(100% + 16px);
-            border-radius: 16px;
-          }
-
-          .calendar-weekday-header div {
-            font-size: 0.6rem;
-            letter-spacing: 0;
-          }
-
-          .calendar-days-grid {
-            gap: 4px;
-          }
-
-          .day-cell {
-            min-height: 50px;
-            padding: 4px;
-            border-radius: 8px;
-          }
-
-          .day-number {
-            font-size: 0.7rem;
-            text-align: center;
-          }
-
-          .day-jobs-list {
-            flex-direction: row;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 2px;
-          }
-
-          .job-dot-pill {
-            padding: 0;
-            width: 6px;
-            height: 6px;
-            min-width: 6px;
-            border-radius: 50%;
-            background: var(--ink);
-          }
-
-          .job-dot-pill span, .job-dot-pill .dot {
-            display: none;
-          }
-
-          .job-dot-pill.skipped {
-            background: var(--danger);
-            opacity: 0.5;
-          }
-
-          .timeline-content-card {
-            padding: 16px;
-          }
-
-          .card-header {
-            flex-direction: column;
-            gap: 12px;
-          }
-
-          .header-meta-group {
-            width: 100%;
-            justify-content: space-between;
-          }
-
-          .card-meta {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 12px;
-          }
-
-          .job-ref {
-            margin-left: 0;
-          }
-
-          .modal-content {
-            padding: 24px 16px;
-            max-height: 90vh;
-            overflow-y: auto;
-          }
-
-          .m-frequency-grid {
-            grid-template-columns: repeat(3, 1fr);
-          }
+          .modal-content { padding: 20px 14px; max-height: 85vh; overflow-y: auto; border-radius: 24px; }
+          .modal-header { margin-bottom: 16px; }
+          .header-title h2 { font-size: 1.1rem; }
+          .schedule-info-summary { padding: 12px; margin-bottom: 20px; }
+          .m-company { font-size: 1rem; }
+          .mgmt-section { margin-bottom: 20px; }
+          .m-frequency-grid { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+          .m-freq-pill { padding: 8px; font-size: 0.7rem; border-radius: 8px; }
+          .occ-row { padding: 8px 12px; font-size: 0.8rem; }
+          .skip-toggle { padding: 4px 10px; font-size: 0.6rem; }
         }
       `}</style>
     </div>

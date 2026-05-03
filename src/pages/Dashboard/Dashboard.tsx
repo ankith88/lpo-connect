@@ -19,7 +19,10 @@ import {
   ChevronDown,
   ChevronUp,
   MoreHorizontal,
-  CheckCircle2
+  CheckCircle2,
+  User,
+  Mail,
+  Phone
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
@@ -500,6 +503,34 @@ const Dashboard: React.FC = () => {
                                  <div className="card-header" onClick={() => toggleExpand(job.id)} style={{ cursor: 'pointer' }}>
                                     <div className="customer-block">
                                        <h3 className="company-name">{job.customer.company}</h3>
+                                       <div className="contact-details">
+                                          {(job.customer.firstName || job.customer.lastName) && (
+                                            <div className="contact-row" title="Contact Person">
+                                              <User size={12} />
+                                              <span>{job.customer.firstName || ''} {job.customer.lastName || ''}</span>
+                                            </div>
+                                          )}
+                                          {job.customer.email && (
+                                            <div className="contact-row" title="Email">
+                                              <Mail size={12} />
+                                              <span>{job.customer.email}</span>
+                                            </div>
+                                          )}
+                                          {job.customer.phone && (
+                                            <div className="contact-row phone-interactive" title="Phone">
+                                              <Phone size={12} />
+                                              <span>{job.customer.phone}</span>
+                                              <div className="phone-actions">
+                                                <a href={`tel:${job.customer.phone}`} className="action-link call" onClick={(e) => e.stopPropagation()} title="Call Customer">
+                                                  <Phone size={12} />
+                                                </a>
+                                                <a href={`sms:${job.customer.phone}`} className="action-link sms" onClick={(e) => e.stopPropagation()} title="Text Customer">
+                                                  <MessageSquare size={12} />
+                                                </a>
+                                              </div>
+                                            </div>
+                                          )}
+                                       </div>
                                        <div className="location-info">
                                           <MapPin size={12} />
                                           <span>{job.customer.suburb}, {job.customer.state}</span>
@@ -920,6 +951,20 @@ const Dashboard: React.FC = () => {
 
         .card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
         .company-name { font-family: var(--font-headings); font-size: 1.1rem; font-weight: 500; color: var(--ink); margin: 0; }
+        .contact-details { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; margin-bottom: 8px; }
+        .contact-row { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 0.75rem; font-weight: 600; }
+        .contact-row svg { opacity: 0.6; flex-shrink: 0; }
+        
+        .phone-interactive { position: relative; }
+        .phone-actions { display: inline-flex; gap: 6px; margin-left: 10px; vertical-align: middle; }
+        .action-link {
+          width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+          background: rgba(26, 61, 51, 0.05); color: var(--ink); transition: all 0.2s; text-decoration: none;
+        }
+        .action-link:hover { transform: scale(1.15); color: white; }
+        .action-link.call:hover { background: #2ecc71; }
+        .action-link.sms:hover { background: #3498db; }
+
         .location-info { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); opacity: 0.6; font-size: 0.75rem; font-weight: 600; margin-top: 4px; }
         
         .status-tag {
@@ -1098,19 +1143,42 @@ const Dashboard: React.FC = () => {
           .mobile-tabs-dropdown { display: block; }
           .cards-wrapper { grid-template-columns: 1fr; }
           .stats-row { grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 24px; }
-          .stat-card { padding: 16px 8px; flex-direction: column; gap: 8px; text-align: center; border-radius: 16px; align-items: center; justify-content: center; }
-          .stat-card::before { top: 0; left: 0; width: 100%; height: 4px; }
-          .stat-icon { width: 36px; height: 36px; border-radius: 12px; }
-          .stat-icon svg { width: 18px !important; height: 18px !important; }
+          .stat-card { padding: 12px 6px; flex-direction: column; gap: 4px; text-align: center; border-radius: 12px; align-items: center; justify-content: center; }
+          .stat-card::before { top: 0; left: 0; width: 100%; height: 3px; }
+          .stat-icon { width: 32px; height: 32px; border-radius: 10px; }
+          .stat-icon svg { width: 16px !important; height: 16px !important; }
           .stat-data { align-items: center; }
-          .stat-label { font-size: 0.55rem; letter-spacing: 0; line-height: 1.2; margin-bottom: 4px; }
-          .stat-value { font-size: 1.5rem; }
-          .controls-row { flex-direction: column; align-items: stretch; }
-          .page-header h1 { font-size: 1.8rem; }
-          .filter-bar { flex-direction: column; gap: 16px; align-items: stretch; }
-          .search-pill { max-width: 100%; }
-          .filter-actions { flex-wrap: wrap; justify-content: flex-start; }
-          .date-picker-glass, .select-glass { flex: 1; min-width: 120px; }
+          .stat-label { font-size: 0.5rem; letter-spacing: 0; line-height: 1.1; margin-bottom: 2px; }
+          .stat-value { font-size: 1.2rem; }
+          .controls-row { flex-direction: column; align-items: stretch; gap: 12px; }
+          .page-header h1 { font-size: 1.5rem; }
+          .page-header p { font-size: 0.85rem; }
+          .filter-bar { flex-direction: column; gap: 12px; align-items: stretch; padding: 16px; margin-bottom: 20px; }
+          .search-pill { max-width: 100%; padding: 0 12px; }
+          .filter-actions { flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+          .date-picker-glass, .select-glass { flex: 1; min-width: 110px; padding: 6px 10px; font-size: 0.8rem; }
+        }
+
+        @media (max-width: 700px) {
+          .content-container { padding: 16px 12px 100px; }
+          .timeline-manifest { padding-left: 40px; }
+          .timeline-rail { left: 14px; }
+          .timeline-node { left: -48px; }
+          .node-inner { width: 32px; height: 32px; border-radius: 8px; }
+          .timeline-content-card { padding: 14px; border-radius: 20px; }
+          .card-header { margin-bottom: 10px; gap: 8px; }
+          .company-name { font-size: 1rem; }
+          .contact-details { gap: 4px; margin-bottom: 8px; }
+          .contact-row { font-size: 0.7rem; }
+          .location-info { font-size: 0.75rem; margin-top: 2px; }
+          .date-badge { font-size: 0.65rem; padding: 4px 12px; }
+          .card-meta { flex-wrap: wrap; gap: 8px; padding: 12px 0; margin-top: 12px; margin-bottom: 8px; }
+          .meta-pill { font-size: 0.7rem; gap: 4px; }
+          .job-ref { width: 100%; margin: 0; font-size: 0.6rem; }
+          .card-actions { padding-top: 12px; border-top: 1px solid rgba(26,61,51,0.03); }
+          .mini-chat { padding: 8px 12px; font-size: 0.75rem; }
+          .mini-action span, .mini-chat span { display: none; }
+          .mini-action, .mini-chat { width: 32px; height: 32px; justify-content: center; padding: 0; border-radius: 10px; }
         }
 
         .header-meta-group { display: flex; align-items: center; gap: 12px; }

@@ -20,7 +20,7 @@ import {
   Database,
   Sparkles
 } from 'lucide-react';
-import { Autocomplete, useJsApiLoader } from '@react-google-maps/api';
+import { useJsApiLoader } from '@react-google-maps/api';
 import { getDefaultBookingDate, formatDateForInput } from '../../utils/scheduling';
 import { useLpo } from '../../context/LpoContext';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
@@ -68,7 +68,6 @@ const NewJobForm: React.FC = () => {
   const [isAwaitingTC, setIsAwaitingTC] = useState(false);
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -98,8 +97,13 @@ const NewJobForm: React.FC = () => {
   });
 
   const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [addressPredictions, setAddressPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [, setIsSearchingAddress] = useState(false);
   const [allCustomers, setAllCustomers] = useState<any[]>([]);
   const [availableServices, setAvailableServices] = useState<{id: ServiceType, internalId: string, rate: string}[]>([]);
+
+  const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
 
   useEffect(() => {
     const draft = localStorage.getItem('rebook_draft');
@@ -360,51 +364,100 @@ const NewJobForm: React.FC = () => {
     changeStep(step - 1);
   };
 
-  const onAutocompleteLoad = (autocomplete: google.maps.places.Autocomplete) => {
-    autocompleteRef.current = autocomplete;
-  };
-
-  const onPlaceChanged = () => {
-    if (autocompleteRef.current !== null) {
-      const place = autocompleteRef.current.getPlace();
-      if (!place.address_components) return;
-
-      let streetNumber = '';
-      let route = '';
-      let suburb = '';
-      let state = '';
-      let postcode = '';
-
-      place.address_components.forEach(component => {
-        const types = component.types;
-        if (types.includes('street_number')) streetNumber = component.long_name;
-        if (types.includes('route')) route = component.long_name;
-        if (types.includes('locality')) suburb = component.long_name;
-        if (types.includes('administrative_area_level_1')) state = component.short_name;
-        if (types.includes('postal_code')) postcode = component.long_name;
-      });
-
-      const fullStreet = `${streetNumber} ${route}`.trim();
-
-      const location = place.geometry?.location;
-      const coordinates = location ? {
-        lat: location.lat(),
-        lng: location.lng()
-      } : undefined;
-
-      setFormData(prev => ({
-        ...prev,
-        customer: {
-          ...prev.customer,
-          address: fullStreet,
-          suburb: suburb,
-          state: state,
-          postcode: postcode,
-          coordinates
-        }
-      }));
+  const fetchAddressPredictions = async (input: string) => {
+    if (!input || input.length < 3 || !isLoaded) {
+      setAddressPredictions([]);
+      return;
     }
+
+    if (!autocompleteServiceRef.current) {
+      autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
+    }
+
+    const request: google.maps.places.AutocompletionRequest = {
+      input,
+      componentRestrictions: { country: 'AU' },
+      types: ['address']
+    };
+
+    // Add location bias if LPO coordinates are available
+    if (lpo?.latitude && lpo?.longitude) {
+      const lat = typeof lpo.latitude === 'string' ? parseFloat(lpo.latitude) : lpo.latitude;
+      const lng = typeof lpo.longitude === 'string' ? parseFloat(lpo.longitude) : lpo.longitude;
+      
+      if (!isNaN(lat) && !isNaN(lng)) {
+        request.locationBias = {
+          radius: 50000, // 50km
+          center: { lat, lng }
+        };
+      }
+    }
+
+    setIsSearchingAddress(true);
+    
+    autocompleteServiceRef.current.getPlacePredictions(request, (predictions, status) => {
+      setIsSearchingAddress(false);
+      
+      if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
+        setAddressPredictions(predictions);
+      } else {
+        setAddressPredictions([]);
+      }
+    });
   };
+
+  const handleAddressSelect = (prediction: google.maps.places.AutocompletePrediction) => {
+    if (!isLoaded) return;
+
+    if (!placesServiceRef.current) {
+      // Need a dummy div for PlacesService if not already created
+      const dummyDiv = document.createElement('div');
+      placesServiceRef.current = new google.maps.places.PlacesService(dummyDiv);
+    }
+
+    placesServiceRef.current.getDetails({
+      placeId: prediction.place_id,
+      fields: ['address_components', 'geometry']
+    }, (place, status) => {
+      if (status === google.maps.places.PlacesServiceStatus.OK && place) {
+        let streetNumber = '';
+        let route = '';
+        let suburb = '';
+        let state = '';
+        let postcode = '';
+
+        place.address_components?.forEach(component => {
+          const types = component.types;
+          if (types.includes('street_number')) streetNumber = component.long_name;
+          if (types.includes('route')) route = component.long_name;
+          if (types.includes('locality')) suburb = component.long_name;
+          if (types.includes('administrative_area_level_1')) state = component.short_name;
+          if (types.includes('postal_code')) postcode = component.long_name;
+        });
+
+        const fullStreet = `${streetNumber} ${route}`.trim();
+        const location = place.geometry?.location;
+        const coordinates = location ? {
+          lat: location.lat(),
+          lng: location.lng()
+        } : undefined;
+
+        setFormData(prev => ({
+          ...prev,
+          customer: {
+            ...prev.customer,
+            address: fullStreet,
+            suburb: suburb,
+            state: state,
+            postcode: postcode,
+            coordinates
+          }
+        }));
+        setAddressPredictions([]);
+      }
+    });
+  };
+
 
   const generateStops = (data: JobData, lpoData: any) => {
     const stops = [];
@@ -833,30 +886,40 @@ const NewJobForm: React.FC = () => {
                       />
                     </div>
 
-                    <div className="input-pill full">
+                    <div className="input-pill full has-suggestions">
                       <MapPin size={18} />
-                      {isLoaded ? (
-                        <Autocomplete
-                          onLoad={onAutocompleteLoad}
-                          onPlaceChanged={onPlaceChanged}
-                          options={{
-                            types: ['address'],
-                            componentRestrictions: { country: 'AU' }
-                          }}
-                          className="autocomplete-wrapper"
-                        >
-                          <input 
-                            type="text" 
-                            placeholder="Start typing address..."
-                            value={formData.customer.address}
-                            onChange={(e) => setFormData(prev => ({
-                              ...prev,
-                              customer: { ...prev.customer, address: e.target.value }
-                            }))}
-                          />
-                        </Autocomplete>
-                      ) : (
-                        <input type="text" placeholder="Loading address search..." disabled />
+                      <input 
+                        type="text" 
+                        placeholder="Start typing address..."
+                        value={formData.customer.address}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData(prev => ({
+                            ...prev,
+                            customer: { ...prev.customer, address: val }
+                          }));
+                          fetchAddressPredictions(val);
+                        }}
+                      />
+                      {addressPredictions.length > 0 && (
+                        <div className="search-dropdown glass floating-dropdown address-suggestions">
+                          <div className="dropdown-header">
+                            <MapPin size={12} />
+                            <span>ADDRESS SUGGESTIONS</span>
+                          </div>
+                          {addressPredictions.map(p => (
+                            <div key={p.place_id} className="search-item-premium address-item" onClick={() => handleAddressSelect(p)}>
+                              <div className="item-info">
+                                <div className="main-text">{p.structured_formatting.main_text}</div>
+                                <div className="secondary-text">{p.structured_formatting.secondary_text}</div>
+                              </div>
+                              <div className="item-action">
+                                <span>SELECT</span>
+                                <ChevronRight size={14} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
 
@@ -1212,6 +1275,10 @@ const NewJobForm: React.FC = () => {
         
         .item-action { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 800; color: var(--ink); opacity: 0; transition: opacity 0.2s; }
         .search-item-premium:hover .item-action { opacity: 1; }
+        
+        .address-item { padding: 10px 16px; }
+        .address-item .main-text { font-weight: 700; color: var(--ink); font-size: 0.95rem; }
+        .address-item .secondary-text { font-size: 0.75rem; color: var(--ink-soft); opacity: 0.6; margin-top: 2px; }
 
         .input-pill.has-suggestions { position: relative; }
         .match-badge { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: var(--ink); color: white; padding: 4px 10px; border-radius: 8px; font-size: 0.55rem; font-weight: 900; display: flex; align-items: center; gap: 4px; animation: badgePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; box-shadow: 0 4px 12px rgba(26, 61, 51, 0.1); }
@@ -1291,10 +1358,45 @@ const NewJobForm: React.FC = () => {
         @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-10px); } }
 
         @media (max-width: 700px) {
-          .input-grid { grid-template-columns: 1fr; }
+          .form-container { padding: 32px 16px; }
+          .form-header { margin-bottom: 32px; }
+          .form-header h1 { font-size: 1.8rem; }
+          .form-header p { font-size: 0.9rem; }
+          .header-icon-pill { width: 36px; height: 36px; margin-bottom: 12px; }
+          
+          .step-tracker { margin-bottom: 32px; gap: 8px; }
+          .step-circle { width: 32px; height: 32px; font-size: 0.8rem; }
+          .step-label { font-size: 0.5rem; }
+          .step-connector { top: 16px; left: calc(50% + 16px); width: calc(100% - 32px); }
+
+          .glass-card { padding: 20px; border-radius: 24px; }
+          .card-top-info { margin-bottom: 20px; }
+          .card-top-info h3 { font-size: 1.1rem; }
+
+          .input-grid { grid-template-columns: 1fr; gap: 12px; }
           .input-pill.full { grid-column: span 1; }
-          .service-grid { grid-template-columns: 1fr; }
-          .date-time-row { flex-direction: column; }
+          .input-pill { padding: 10px 16px; border-radius: 14px; gap: 8px; }
+          .input-pill input, .input-pill textarea { font-size: 0.85rem; }
+          
+          .selection-group { margin-bottom: 32px; }
+          .billing-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+          .billing-btn { padding: 12px; border-radius: 16px; }
+          
+          .service-grid { grid-template-columns: 1fr; gap: 12px; }
+          .service-btn { padding: 16px; border-radius: 20px; }
+          .srv-price { font-size: 1.2rem; }
+
+          .date-time-row { flex-direction: column; gap: 12px; }
+          .date-pill-group { padding: 12px 16px; border-radius: 16px; }
+          .frequency-grid { grid-template-columns: repeat(5, 1fr); gap: 6px; }
+          .freq-pill { padding: 8px; font-size: 0.7rem; border-radius: 8px; }
+
+          .voucher-card { padding: 20px; border-radius: 24px; margin-bottom: 24px; }
+          .voucher-header { padding-bottom: 16px; margin-bottom: 20px; }
+          .v-row.total .v-val { font-size: 1.25rem; }
+
+          .form-actions { margin-top: 24px; flex-direction: column; gap: 12px; }
+          .btn-primary, .btn-secondary { padding: 14px 24px; border-radius: 14px; font-size: 0.9rem; }
         }
       `}</style>
     </div>

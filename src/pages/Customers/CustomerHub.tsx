@@ -361,25 +361,38 @@ const CustomerHub: React.FC = () => {
         .empty-hub h3 { color: var(--ink); margin-bottom: 8px; }
 
         @media (max-width: 768px) {
-           .customer-hub-premium { padding: 24px 16px 120px; }
-           .page-header { flex-direction: column; gap: 24px; margin-bottom: 32px; }
-           .page-header h1 { font-size: 1.75rem; }
+           .customer-hub-premium { padding: 16px 12px 100px; }
+           .page-header { flex-direction: column; gap: 16px; margin-bottom: 24px; }
+           .page-header h1 { font-size: 1.5rem; }
+           .page-header p { font-size: 0.85rem; }
+           .header-icon { width: 32px; height: 32px; }
            .header-right { width: 100%; }
-           .btn-premium-action { width: 100%; justify-content: center; }
+           .btn-premium-action { width: 100%; justify-content: center; padding: 12px 20px; font-size: 0.85rem; }
            
-           .hub-controls { flex-direction: column; align-items: stretch; gap: 16px; }
-           .search-bar-glass { max-width: none; padding: 0 16px; }
-           .filter-pills { flex-wrap: wrap; }
-           .pill { flex: 1; min-width: calc(50% - 5px); justify-content: center; font-size: 0.75rem; padding: 8px 12px; }
+           .hub-controls { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 24px; }
+           .search-bar-glass { max-width: none; padding: 0 12px; }
+           .search-bar-glass input { padding: 14px 0; font-size: 0.9rem; }
+           .filter-pills { gap: 8px; }
+           .pill { flex: 1; min-width: calc(50% - 4px); justify-content: center; font-size: 0.7rem; padding: 6px 10px; }
 
-           .customer-grid { grid-template-columns: 1fr; }
-           .customer-card { padding: 16px; border-radius: 24px; }
-           .card-top { align-items: flex-start; }
-           .status-badge-premium { position: absolute; top: 0; right: 0; }
-           .main-info h3 { padding-right: 80px; }
+           .customer-grid { gap: 16px; }
+           .customer-card { padding: 14px; border-radius: 20px; }
+           .card-top { margin-bottom: 12px; }
+           .avatar { width: 36px; height: 36px; font-size: 1rem; border-radius: 10px; }
+           .main-info h3 { font-size: 1rem; }
+           .status-badge-premium { font-size: 0.5rem; padding: 3px 8px; }
 
-           .service-details-premium, .services-setup-premium { padding: 0 0 16px; }
-           .detail-tag { flex: 1; }
+           .card-body { padding: 12px 0; margin-bottom: 12px; gap: 8px; }
+           .contact-item { font-size: 0.75rem; }
+           
+           .service-details-premium, .services-setup-premium { padding: 0 0 12px; }
+           .detail-tag { padding: 4px 8px; font-size: 0.7rem; }
+           .service-tag-pill { padding: 3px 8px; font-size: 0.5rem; }
+           
+           .card-footer { padding-top: 12px; border-top: 1px solid var(--cream-warm); }
+           .stat-item label { font-size: 0.5rem; }
+           .stat-item span { font-size: 0.7rem; }
+           .view-details { width: 32px; height: 32px; border-radius: 10px; }
         }
       `}</style>
     </div>

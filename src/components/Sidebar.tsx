@@ -256,9 +256,6 @@ const Sidebar: React.FC = () => {
         }
 
         .brand-redesign {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
           margin-bottom: 40px;
           padding-left: 4px;
           transition: all 0.3s;
@@ -271,35 +268,16 @@ const Sidebar: React.FC = () => {
         }
         
         .logo-text {
-          font-family: var(--font-headings);
           font-size: 1.6rem;
-          font-weight: 400;
           color: #ffffff;
-          display: flex;
-          align-items: baseline;
-          letter-spacing: -0.025em;
-          line-height: 1;
         }
 
         .collapsed .logo-text {
           font-size: 2rem;
         }
         
-        .logo-plus {
-          font-family: var(--font-headings);
-          font-weight: 500;
-          font-style: italic;
-          color: var(--yellow);
-        }
-        
         .logo-platform {
-          font-family: var(--font-ui);
-          font-size: 0.5rem;
-          font-weight: 500;
-          letter-spacing: 0.16em;
-          color: rgba(255, 255, 255, 0.4);
           white-space: nowrap;
-          text-transform: uppercase;
         }
 
         .user-profile-glass {

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LpoProvider, useLpo } from './context/LpoContext';
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
+import LoadingScreen from './components/LoadingScreen';
 import SignIn from './pages/Auth/SignIn';
 import Dashboard from './pages/Dashboard/Dashboard';
 import NewJobForm from './pages/Jobs/NewJobForm';
@@ -18,7 +19,7 @@ import Reports from './pages/Admin/Reports';
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useLpo();
   
-  if (loading) return <div className="loader">Loading...</div>;
+  if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/signin" />;
   
   return <>{children}</>;

@@ -95,8 +95,148 @@ h3 {
   color: var(--gold);
 }
 
+/* Brand Redesign */
+.brand-redesign {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  line-height: 1;
+}
+
+.logo-text {
+  font-family: var(--font-headings);
+  font-size: 1.6rem;
+  font-weight: 400;
+  display: flex;
+  align-items: baseline;
+  letter-spacing: -0.025em;
+}
+
+.logo-lpo {
+  color: inherit;
+}
+
 .logo-plus {
+  font-family: var(--font-headings);
+  font-weight: 500;
+  font-style: italic;
   color: var(--yellow);
+}
+
+.logo-platform {
+  font-family: var(--font-ui);
+  font-size: 0.5rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.4);
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+/* Loading Screen */
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: var(--offwhite);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.loading-inline {
+  width: 100%;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(10px);
+  border-radius: 32px;
+  margin: 20px 0;
+}
+
+.loading-inline .loading-logo {
+  transform: scale(1);
+}
+
+.loading-inline .loading-logo .logo-text {
+  font-size: 1.4rem;
+}
+
+.loading-inline .loading-logo .logo-platform {
+  font-size: 0.4rem;
+}
+
+.loading-inline .loading-bar-container {
+  width: 140px;
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  animation: fadeIn 0.8s ease-out;
+}
+
+.loading-logo {
+  transform: scale(1.5);
+  align-items: center !important;
+}
+
+.loading-logo .logo-text {
+  color: var(--ink);
+  font-size: 2.2rem;
+}
+
+.loading-logo .logo-platform {
+  color: var(--ink-soft);
+  opacity: 0.5;
+  font-size: 0.6rem;
+}
+
+.loading-bar-container {
+  width: 180px;
+  height: 3px;
+  background: rgba(26, 61, 51, 0.08);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+.loading-bar {
+  width: 40%;
+  height: 100%;
+  background: var(--gold);
+  border-radius: 10px;
+  position: absolute;
+  left: -40%;
+  animation: loadingSlide 1.8s infinite cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.loading-text {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  opacity: 0.5;
+  text-transform: uppercase;
+  margin-top: -8px;
+}
+
+@keyframes loadingSlide {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .text-center { text-align: center; }
@@ -116,26 +256,56 @@ h3 {
   min-height: 100vh;
 }
 
-.main-content {
-  flex: 1;
-  padding: 20px;
-  margin-left: 0; /* Default for mobile */
-  margin-bottom: var(--bottom-nav-height); /* Space for mobile nav */
-  transition: margin-left 0.3s ease;
-}
+@media (max-width: 768px) {
+  :root {
+    --header-height: 56px;
+    --bottom-nav-height: 52px;
+  }
 
-.app-container.sidebar-unpinned .main-content {
-  margin-left: 0;
-}
+  body {
+    font-size: 14px;
+    line-height: 1.45;
+  }
 
-@media (min-width: 768px) {
+  h1 { font-size: 1.5rem !important; }
+  h2 { font-size: 1.25rem !important; }
+  h3 { font-size: 1.1rem !important; }
+
+  .card {
+    padding: 16px;
+    border-radius: 10px;
+  }
+
+  input, select, textarea {
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+
   .main-content {
-    margin-left: var(--sidebar-width);
-    margin-bottom: 0;
-    padding: 40px;
+    padding: 16px;
+  }
+}
+
+.main-content {
+    flex: 1;
+    padding: 20px;
+    margin-left: 0; /* Default for mobile */
+    margin-bottom: var(--bottom-nav-height); /* Space for mobile nav */
+    transition: margin-left 0.3s ease;
   }
   
   .app-container.sidebar-unpinned .main-content {
-    margin-left: var(--sidebar-collapsed-width);
+    margin-left: 0;
   }
-}
+  
+  @media (min-width: 768px) {
+    .main-content {
+      margin-left: var(--sidebar-width);
+      margin-bottom: 0;
+      padding: 40px;
+    }
+    
+    .app-container.sidebar-unpinned .main-content {
+      margin-left: var(--sidebar-collapsed-width);
+    }
+  }
