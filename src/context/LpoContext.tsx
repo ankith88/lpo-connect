@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { requestNotificationPermission, saveTokenToFirestore } from '../utils/notifications';
 
@@ -20,6 +20,8 @@ interface LpoContextType {
   loading: boolean;
   isSidebarPinned: boolean;
   setIsSidebarPinned: (pinned: boolean) => void;
+  hasCompletedTour: boolean;
+  completeTour: () => Promise<void>;
 }
 
 const LpoContext = createContext<LpoContextType>({
@@ -28,6 +30,8 @@ const LpoContext = createContext<LpoContextType>({
   loading: true,
   isSidebarPinned: false,
   setIsSidebarPinned: () => {},
+  hasCompletedTour: true, // Default to true to avoid showing it while loading
+  completeTour: async () => {},
 });
 
 export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -35,6 +39,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [lpo, setLpo] = useState<LpoMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
+  const [hasCompletedTour, setHasCompletedTour] = useState(true);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -51,7 +56,10 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (userDoc.exists()) {
-            const lpoId = userDoc.data().lpo_id;
+            const userData = userDoc.data();
+            const lpoId = userData.lpo_id;
+            setHasCompletedTour(userData.hasCompletedTour || false);
+
             const lpoDoc = await getDoc(doc(db, 'lpo', lpoId));
             if (lpoDoc.exists()) {
               setLpo({ id: lpoId, ...lpoDoc.data() } as LpoMetadata);
@@ -69,6 +77,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       } else {
         setLpo(null);
+        setHasCompletedTour(true);
       }
       setLoading(false);
     });
@@ -76,8 +85,29 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
+  const completeTour = async () => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, { hasCompletedTour: true });
+      setHasCompletedTour(true);
+    } catch (error) {
+      console.error("Error completing tour:", error);
+      // Even if firestore fails, we set it locally to hide it for the current session
+      setHasCompletedTour(true);
+    }
+  };
+
   return (
-    <LpoContext.Provider value={{ user, lpo, loading, isSidebarPinned, setIsSidebarPinned }}>
+    <LpoContext.Provider value={{ 
+      user, 
+      lpo, 
+      loading, 
+      isSidebarPinned, 
+      setIsSidebarPinned, 
+      hasCompletedTour, 
+      completeTour 
+    }}>
       {children}
     </LpoContext.Provider>
   );

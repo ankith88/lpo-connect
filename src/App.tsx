@@ -15,6 +15,9 @@ import CustomerHub from './pages/Customers/CustomerHub';
 import Schedules from './pages/Jobs/Schedules';
 import AwaitingTCPage from './pages/Jobs/AwaitingTCPage';
 import Reports from './pages/Admin/Reports';
+import SupportCenter from './pages/Help/SupportCenter';
+
+import OnboardingTour from './components/OnboardingTour';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useLpo();
@@ -30,6 +33,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   
   return (
     <div className={`app-container ${!isSidebarPinned ? 'sidebar-unpinned' : ''}`}>
+      <OnboardingTour />
       <Sidebar />
       <main className="main-content">
         {children}
@@ -110,6 +114,14 @@ const App: React.FC = () => {
             <PrivateRoute>
               <AppLayout>
                 <Reports />
+              </AppLayout>
+            </PrivateRoute>
+          } />
+
+          <Route path="/help" element={
+            <PrivateRoute>
+              <AppLayout>
+                <SupportCenter />
               </AppLayout>
             </PrivateRoute>
           } />

@@ -644,22 +644,6 @@ const Schedules: React.FC = () => {
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); }
         .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.7rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
 
-        .btn-primary-glass {
-          width: 100%;
-          background: rgba(26, 61, 51, 0.05);
-          border: 1px solid rgba(26, 61, 51, 0.1);
-          color: var(--ink);
-          padding: 14px;
-          border-radius: 14px;
-          font-weight: 800;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 10px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .btn-primary-glass:hover { background: var(--ink); color: white; }
 
         .loading-state, .empty-state {
           padding: 80px 40px; text-align: center; color: var(--ink-soft);
@@ -742,7 +726,6 @@ const Schedules: React.FC = () => {
           .card-meta { flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px 0; margin-top: 12px; }
           .meta-pill { font-size: 0.7rem; }
           .job-ref { margin-left: 0; font-size: 0.6rem; }
-          .btn-primary-glass { padding: 10px; font-size: 0.8rem; }
 
           .modal-content { padding: 20px 14px; max-height: 85vh; overflow-y: auto; border-radius: 24px; }
           .modal-header { margin-bottom: 16px; }

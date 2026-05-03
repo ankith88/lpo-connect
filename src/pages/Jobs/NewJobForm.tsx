@@ -4,7 +4,6 @@ import {
   ChevronLeft, 
   Truck, 
   Repeat, 
-  Calendar,
   CheckCircle2,
   Info,
   Building2,
@@ -21,7 +20,9 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
-import { getDefaultBookingDate, formatDateForInput } from '../../utils/scheduling';
+import { formatDateForInput, getDefaultBookingDate } from '../../utils/scheduling';
+import CustomDatePicker from '../../components/CustomDatePicker';
+import CustomTimePicker from '../../components/CustomTimePicker';
 import { useLpo } from '../../context/LpoContext';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db, googleMapsApiKey } from '../../firebase/config';
@@ -1055,25 +1056,21 @@ const NewJobForm: React.FC = () => {
                   <div className="date-time-row">
                     <div className="selection-group flex-1">
                       <label className="group-label">Booking Date</label>
-                      <div className="date-pill-group">
-                        <Calendar size={18} />
-                        <input 
-                          type="date" 
-                          value={formData.date}
-                          min={formatDateForInput(getDefaultBookingDate())}
-                          onChange={(e) => setFormData({...formData, date: e.target.value})}
-                        />
-                      </div>
+                       <div className="custom-booking-date">
+                         <CustomDatePicker 
+                           value={formData.date}
+                           min={formatDateForInput(getDefaultBookingDate())}
+                           onChange={(val) => setFormData({...formData, date: val})}
+                         />
+                       </div>
                     </div>
 
                     <div className="selection-group flex-1">
                       <label className="group-label">Time Constraints (Optional)</label>
-                      <div className="input-pill time-pill no-margin">
-                        <Clock size={18} />
-                        <input 
-                          type="time" 
+                      <div className="custom-booking-time">
+                        <CustomTimePicker 
                           value={formData.preferredTime}
-                          onChange={(e) => setFormData({...formData, preferredTime: e.target.value})}
+                          onChange={(val) => setFormData({...formData, preferredTime: val})}
                         />
                       </div>
                       <p className="field-hint">Are there any timing restrictions for this job? Leave blank if the operator can attend anytime during business hours.</p>

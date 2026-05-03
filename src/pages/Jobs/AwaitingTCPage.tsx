@@ -374,19 +374,6 @@ const AwaitingTCPage: React.FC = () => {
           padding-top: 16px; border-top: 1px solid rgba(0,0,0,0.03);
         }
         .messaging-group { display: flex; gap: 8px; }
-        .btn-primary-glass {
-          background: var(--ink);
-          color: white;
-          border: none;
-          padding: 10px 20px;
-          border-radius: 12px;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          cursor: pointer;
-          font-size: 0.8rem;
-        }
 
         .overflow-menu { position: relative; }
         .menu-trigger { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--ink-soft); cursor: pointer; }

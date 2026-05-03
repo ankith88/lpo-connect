@@ -4,6 +4,7 @@ import {
   Users, 
   LayoutDashboard, 
   RotateCcw, 
+  HelpCircle,
   LogOut 
 } from 'lucide-react';
 import { auth } from '../firebase/config';
@@ -12,8 +13,9 @@ const BottomNav: React.FC = () => {
   const navigate = useNavigate();
   const navItems = [
     { name: 'Customers', icon: Users, path: '/customers' },
-    { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
     { name: 'Schedules', icon: RotateCcw, path: '/schedules' },
+    { name: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+    { name: 'Support', icon: HelpCircle, path: '/help' },
   ];
 
   const handleLogout = async () => {

@@ -13,19 +13,20 @@ import {
   getDocs
 } from 'firebase/firestore';
 import { 
-  CheckCircle2, 
-  XCircle, 
-  MessageSquare, 
-  Clock, 
+  Building2, 
   MapPin, 
+  Clock, 
   Truck, 
-  Building2,
-  Phone,
-  User as UserIcon,
+  ChevronLeft, 
+  MessageSquare, 
   Send,
-  ChevronLeft,
-  Mail
+  XCircle,
+  CheckCircle2,
+  Phone,
+  Mail,
+  User as UserIcon
 } from 'lucide-react';
+import CustomDatePicker from '../../components/CustomDatePicker';
 import LoadingScreen from '../../components/LoadingScreen';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
@@ -614,13 +615,13 @@ const RequestPage: React.FC = () => {
                             <div className="form-row">
                                <div className="input-group">
                                   <label>New Date</label>
-                                  <input 
-                                     type="date" 
-                                     value={newDate}
-                                     onChange={(e) => setNewDate(e.target.value)}
-                                     required
-                                     min={formatDateForInput(new Date())}
-                                  />
+                                   <div className="custom-reprocess-date">
+                                      <CustomDatePicker 
+                                         value={newDate}
+                                         onChange={(val) => setNewDate(val)}
+                                         min={formatDateForInput(new Date())}
+                                      />
+                                   </div>
                                </div>
                                <div className="input-group">
                                   <label>Preferred Time</label>

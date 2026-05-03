@@ -31,7 +31,7 @@ const Sidebar: React.FC = () => {
     { name: 'Service Area', icon: MapPin, path: '/service-area' },
     { name: 'Share Booking Link', icon: Share2, path: '/share' },
     { name: 'Customer Hub', icon: Users, path: '/customers' },
-    { name: 'Weekly Invoices', icon: FileText, path: '/invoices' },
+    { name: 'Invoices', icon: FileText, path: '/invoices' },
     { name: 'Operational Insights', icon: BarChart3, path: '/reports' },
   ];
 
@@ -89,7 +89,7 @@ const Sidebar: React.FC = () => {
           </div>
         </div>
         
-        <nav className="sidebar-nav">
+        <nav className="sidebar-nav" id="tour-sidebar">
           <div className="nav-group">
             {isExpanded && <p className="group-title">Logistics Management</p>}
             {navItems.slice(0, 4).map((item) => (
@@ -122,7 +122,7 @@ const Sidebar: React.FC = () => {
         </nav>
 
         <div className="sidebar-footer">
-          <NavLink to="/help" className="nav-item-glass footer-item" title={!isExpanded ? "Support Center" : ""}>
+          <NavLink to="/help" className="nav-item-glass footer-item" id="tour-help" title={!isExpanded ? "Support Center" : ""}>
             <HelpCircle size={20} />
             {isExpanded && <span>Support Center</span>}
           </NavLink>

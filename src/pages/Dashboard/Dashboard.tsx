@@ -30,6 +30,8 @@ import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
 import { sortStops } from '../../utils/stops';
+import CustomDatePicker from '../../components/CustomDatePicker';
+import CustomSelect from '../../components/CustomSelect';
 
 
 const Dashboard: React.FC = () => {
@@ -345,7 +347,7 @@ const Dashboard: React.FC = () => {
               </div>
            </div>
            <div className="header-right">
-              <button onClick={() => window.location.href = '/new-job'} className="btn-premium-action">
+              <button onClick={() => window.location.href = '/new-job'} className="btn-premium-action" id="tour-new-job">
                 <Plus size={20} />
                 <span>BOOK NEW JOB</span>
               </button>
@@ -356,9 +358,9 @@ const Dashboard: React.FC = () => {
            {/* Stats Section */}
            <div className="stats-row">
               {[
-                { label: 'Active Jobs', value: jobs.length, icon: Calendar, color: 'var(--ink)' },
-                { label: 'Pending Requests', value: requests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: 'var(--gold)' },
-                { label: 'Completed Jobs', value: jobs.filter(j => j.date < today).length, icon: CheckCircle2, color: 'var(--ink)' }
+                 { label: 'Active Jobs', value: jobs.filter(j => j.date === today && j.status !== 'completed').length, icon: Calendar, color: 'var(--ink)' },
+                 { label: 'Pending Requests', value: requests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: 'var(--gold)' },
+                 { label: 'Completed Jobs', value: jobs.filter(j => j.status === 'completed').length, icon: CheckCircle2, color: 'var(--ink)' }
               ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
                    <div className="stat-icon" style={{ background: `var(--cream-warm)`, color: stat.color }}>
@@ -397,7 +399,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             {/* Filter Bar */}
-            <div className="glass-card filter-bar">
+            <div className="glass-card filter-bar" id="tour-filters">
               <div className="search-pill">
                 <Search size={18} />
                 <input 
@@ -407,30 +409,25 @@ const Dashboard: React.FC = () => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
               </div>
-               <div className="filter-actions">
-                  <div className="date-picker-glass">
-                     <Calendar size={16} />
-                     <input 
-                       type="date" 
+                <div className="filter-actions">
+                   <div className="custom-filter-date" style={{ position: 'relative', zIndex: 10 }}>
+                     <CustomDatePicker 
                        value={dateFilter}
-                       onChange={(e) => setDateFilter(e.target.value)}
+                       onChange={(val) => setDateFilter(val)}
+                       placeholder="All Dates"
                      />
-                     {dateFilter && (
-                       <button className="clear-date" onClick={() => setDateFilter('')}>
-                          <X size={14} />
-                       </button>
-                     )}
-                  </div>
-                  <select 
-                    className="select-glass"
-                    value={serviceFilter}
-                    onChange={(e) => setServiceFilter(e.target.value)}
-                  >
-                    <option value="all">All Services</option>
-                    <option value="site-to-lpo">Site ➔ LPO</option>
-                    <option value="lpo-to-site">LPO ➔ Site</option>
-                    <option value="round-trip">Round Trip</option>
-                  </select>
+                   </div>
+                   <CustomSelect 
+                     value={serviceFilter}
+                     onChange={(val) => setServiceFilter(val)}
+                     options={[
+                       { value: 'all', label: 'All Services' },
+                       { value: 'site-to-lpo', label: 'Site ➔ LPO' },
+                       { value: 'lpo-to-site', label: 'LPO ➔ Site' },
+                       { value: 'round-trip', label: 'Round Trip' }
+                     ]}
+                     className="service-select-custom"
+                   />
                   <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
                   <button className="btn-secondary-glass icon-only" onClick={exportJobsCSV} title="Export Jobs">
                     <Download size={18} />
@@ -442,7 +439,7 @@ const Dashboard: React.FC = () => {
             <div className="dashboard-layout-with-sidebar">
               <aside className="dashboard-sidebar desktop-only">
                 <h3 className="sidebar-title">Views</h3>
-                <nav className="vertical-tabs">
+                <nav className="vertical-tabs" id="tour-tabs">
                   {[
                     { id: 'pending', label: 'Pending Requests', icon: MessageSquare },
                     { id: 'in-progress', label: 'Active Today', icon: Clock },
@@ -880,6 +877,8 @@ const Dashboard: React.FC = () => {
           padding: 12px;
           margin-bottom: 24px;
           border-radius: 20px;
+          position: relative;
+          z-index: 10;
         }
         .search-pill {
           flex: 1;
@@ -908,7 +907,6 @@ const Dashboard: React.FC = () => {
           padding: 10px;
           justify-content: center;
         }
-        
         .timeline-container { position: relative; padding-top: 20px; }
         .timeline-manifest { position: relative; padding-left: 60px; }
         .timeline-rail {
