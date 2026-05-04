@@ -148,17 +148,25 @@ const Dashboard: React.FC = () => {
   // Projections are now managed exclusively in the Schedules page calendar
   const projectedJobs: any[] = [];
 
+  // Global Filter Function
+  const applyGlobalFilters = (item: any) => {
+    const matchesSearch = item.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         item.customer.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         item.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesService = serviceFilter === 'all' || item.service === serviceFilter;
+    const matchesDate = !dateFilter || item.date === dateFilter;
+    return matchesSearch && matchesService && matchesDate;
+  };
+
+  const globalFilteredJobs = jobs.filter(applyGlobalFilters);
+  const globalFilteredRequests = requests.filter(applyGlobalFilters);
+
   // Define source based on tab
   const source = (activeTab === 'pending' || activeTab === 'declined') 
-    ? requests 
-    : (activeTab === 'history' ? [...jobs, ...requests] : (activeTab === 'upcoming' ? [...jobs, ...projectedJobs] : jobs));
+    ? globalFilteredRequests 
+    : (activeTab === 'history' ? [...globalFilteredJobs, ...globalFilteredRequests] : (activeTab === 'upcoming' ? [...globalFilteredJobs, ...projectedJobs] : globalFilteredJobs));
 
   const filteredJobs = source.filter(j => {
-    const matchesSearch = j.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         j.customer.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         j.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesService = serviceFilter === 'all' || j.service === serviceFilter;
-    
     // Tab Filtering
     const isOneOff = j.jobType === 'one-off';
 
@@ -177,12 +185,7 @@ const Dashboard: React.FC = () => {
       return false;
     }
 
-    const matchesTab = checkTab(activeTab);
-
-    // Date selection filter
-    const matchesDate = !dateFilter || j.date === dateFilter;
-
-    return matchesSearch && matchesService && matchesTab && matchesDate;
+    return checkTab(activeTab);
   });
 
   // Group jobs by date for the timeline
@@ -316,10 +319,10 @@ const Dashboard: React.FC = () => {
   };
 
   const getTabCount = (tabId: string) => {
-    if (tabId === 'pending') return requests.filter(r => r.status === 'pending').length;
-    if (tabId === 'declined') return requests.filter(r => r.status === 'rejected').length;
+    if (tabId === 'pending') return globalFilteredRequests.filter(r => r.status === 'pending').length;
+    if (tabId === 'declined') return globalFilteredRequests.filter(r => r.status === 'rejected').length;
     
-    return jobs.filter(j => {
+    return globalFilteredJobs.filter(j => {
       if (tabId === 'in-progress') return j.date === today;
       if (tabId === 'upcoming') return j.date > today;
       if (tabId === 'history') return j.date < today;
@@ -357,11 +360,11 @@ const Dashboard: React.FC = () => {
         <div className="dashboard-grid">
            {/* Stats Section */}
            <div className="stats-row">
-              {[
-                 { label: 'Active Jobs', value: jobs.filter(j => j.date === today && j.status !== 'completed').length, icon: Calendar, color: 'var(--ink)' },
-                 { label: 'Pending Requests', value: requests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: 'var(--gold)' },
-                 { label: 'Completed Jobs', value: jobs.filter(j => j.status === 'completed').length, icon: CheckCircle2, color: 'var(--ink)' }
-              ].map((stat, i) => (
+               {[
+                  { label: 'Active Jobs', value: globalFilteredJobs.filter(j => j.date === today && j.status !== 'completed').length, icon: Calendar, color: 'var(--ink)' },
+                  { label: 'Pending Requests', value: globalFilteredRequests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: 'var(--gold)' },
+                  { label: 'Completed Jobs', value: globalFilteredJobs.filter(j => j.status === 'completed').length, icon: CheckCircle2, color: 'var(--ink)' }
+               ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
                    <div className="stat-icon" style={{ background: `var(--cream-warm)`, color: stat.color }}>
                       <stat.icon size={20} />
@@ -404,7 +407,7 @@ const Dashboard: React.FC = () => {
                 <Search size={18} />
                 <input 
                   type="text" 
-                  placeholder="Search company or address..." 
+                  placeholder="Search company, address or Job ID..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />

@@ -12,7 +12,8 @@ import {
   BarChart3,
   Clock,
   Pin,
-  PinOff
+  PinOff,
+  UserCircle
 } from 'lucide-react';
 import { auth } from '../firebase/config';
 import { useLpo } from '../context/LpoContext';
@@ -33,6 +34,7 @@ const Sidebar: React.FC = () => {
     { name: 'Customer Hub', icon: Users, path: '/customers' },
     { name: 'Invoices', icon: FileText, path: '/invoices' },
     { name: 'Operational Insights', icon: BarChart3, path: '/reports' },
+    { name: 'My Profile', icon: UserCircle, path: '/profile' },
   ];
 
   const handleLogout = async () => {
@@ -74,7 +76,7 @@ const Sidebar: React.FC = () => {
             )}
           </div>
           
-          <div className="user-profile-glass">
+          <NavLink to="/profile" className="user-profile-glass profile-link">
             <div className="avatar-ring">
               <div className="avatar-placeholder">
                 {lpo?.name?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'CK'}
@@ -86,7 +88,7 @@ const Sidebar: React.FC = () => {
                 <p className="lpo-name">{lpo?.name || 'Rouse Hill LPO'}</p>
               </div>
             )}
-          </div>
+          </NavLink>
         </div>
         
         <nav className="sidebar-nav" id="tour-sidebar">
@@ -289,6 +291,13 @@ const Sidebar: React.FC = () => {
           align-items: center;
           gap: 12px;
           transition: all 0.3s;
+          text-decoration: none;
+        }
+
+        .profile-link:hover {
+          background: rgba(255, 255, 255, 0.15);
+          transform: translateY(-2px);
+          border-color: rgba(255, 255, 255, 0.2);
         }
 
         .collapsed .user-profile-glass {

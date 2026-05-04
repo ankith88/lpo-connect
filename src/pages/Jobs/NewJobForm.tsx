@@ -70,6 +70,13 @@ const NewJobForm: React.FC = () => {
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
   
+  // Processing States
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingMessage, setProcessingMessage] = useState('');
+
+  const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+  
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: googleMapsApiKey,
@@ -515,7 +522,9 @@ const NewJobForm: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!lpo) return;
-    setLoading(true);
+    setIsProcessing(true);
+    setProcessingProgress(10);
+    setProcessingMessage('Validating request details...');
     setValidationError(null);
 
     try {
@@ -527,6 +536,8 @@ const NewJobForm: React.FC = () => {
 
       // 1. NetSuite API Integration (Stage 1) - Only for NEW customers
       if (!isExistingCustomer) {
+        setProcessingProgress(25);
+        setProcessingMessage('Registering new customer in NetSuite...');
         const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2527&deploy=1&compid=1048144&ns-at=AAEJ7tMQJX8dMLsjS5TGMacB9-M8pUB6q50I_ptxbLYqKZ_HR3c";
         
         const params = new URLSearchParams({
@@ -558,21 +569,18 @@ const NewJobForm: React.FC = () => {
 
         if (!nsResult.success) {
           setValidationError(nsResult.message || "Failed to create record in NetSuite.");
-          setLoading(false);
+          setIsProcessing(false);
           return;
         }
 
         // Check if we need to pause for T&C
-        // Billing 'lpo' means "LPO Pays", which sets status to Active immediately
         const initialStatus = formData.billing === 'lpo' ? 'Active' : "Awaiting T&C's to be Accepted";
         setCustomerStatus(initialStatus);
-        
-        // We'll set isAwaitingTC later, after the Firestore write succeeds
-      } else {
-        // Existing customer: check their current cached status
-        // We'll set isAwaitingTC later
       }
 
+      setProcessingProgress(50);
+      setProcessingMessage('Securing job request in database...');
+      
       // 2. Local Firestore Job Request
       if (!lpo?.id) {
         throw new Error("LPO ID is missing. Cannot save request.");
@@ -646,13 +654,13 @@ const NewJobForm: React.FC = () => {
           createdAt: serverTimestamp()
         };
 
-        console.log("Attempting to create Firestore request with payload:", requestPayload);
-
         const docRef = await addDoc(collection(db, 'requests'), requestPayload);
         finalRequestId = docRef.id;
-        console.log("Firestore request created successfully. Doc ID:", finalRequestId);
         setCreatedRequestId(finalRequestId);
       }
+
+      setProcessingProgress(80);
+      setProcessingMessage('Synchronising job data with NetSuite...');
 
       // 3. Second NetSuite API (Job Confirmation with Request ID)
       const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2528&deploy=1&compid=1048144&ns-at=AAEJ7tMQM_E8dKF2qjDMy9ESy5q883g7xrb8uKwfgGOku62wheU";
@@ -660,19 +668,20 @@ const NewJobForm: React.FC = () => {
         const customer_id = nsResult.customerInternalId || formData.customer.netsuiteId || "";
         const confirmResponse = await fetch(`${SECOND_NETSUITE_API}&request_id=${finalRequestId}&lpo_id=${lpo.id}&customer_id=${customer_id}`);
         const confirmResult = await confirmResponse.json();
-        console.log("NetSuite Script 2528 Response:", confirmResult);
         if (confirmResult.success && confirmResult.message) {
           setNetsuiteMessage(confirmResult.message);
         }
       } catch (e) {
         console.error("Secondary NetSuite sync failed", e);
-        // We don't block success state here as the primary records are created
       }
+
+      setProcessingProgress(100);
+      setProcessingMessage('Finalising booking...');
+      await wait(800);
 
       // Now update the UI state based on the calculated status
       if (initialRequestStatus !== 'pending') {
         setIsAwaitingTC(true);
-        console.log("Request created with awaiting-activation status. Showing T&C screen.");
       } else {
         setSuccess(true);
       }
@@ -680,7 +689,7 @@ const NewJobForm: React.FC = () => {
       console.error("Error saving job request:", error);
       setValidationError("A technical error occurred during submission. Please try again.");
     } finally {
-      setLoading(false);
+      setIsProcessing(false);
     }
   };
 
@@ -727,7 +736,41 @@ const NewJobForm: React.FC = () => {
       </div>
 
       <div className="form-container">
-        {success ? (
+        {isProcessing ? (
+          <div className="success-view-premium fade-in">
+            <div className="success-card glass processing-card">
+              <div className="processing-icon-area">
+                <div className="processing-spinner">
+                   <div className="spinner-ring"></div>
+                   <Rocket size={32} className="rocket-icon" />
+                </div>
+              </div>
+              <div className="success-text">
+                <h2>Booking your Job</h2>
+                <p>We're processing your request with NetSuite and our dispatch system. <strong>This can take a moment.</strong></p>
+              </div>
+
+              <div className="progress-container-premium">
+                <div className="progress-label-row">
+                  <span className="current-status">{processingMessage}</span>
+                  <span className="percentage">{processingProgress}%</span>
+                </div>
+                <div className="progress-bar-bg">
+                  <div 
+                    className="progress-bar-fill" 
+                    style={{ width: `${processingProgress}%` }}
+                  ></div>
+                </div>
+                <div className="steps-indicator">
+                   <div className={`step-dot ${processingProgress >= 25 ? 'done' : 'active'}`}></div>
+                   <div className={`step-dot ${processingProgress >= 50 ? 'done' : processingProgress >= 25 ? 'active' : ''}`}></div>
+                   <div className={`step-dot ${processingProgress >= 80 ? 'done' : processingProgress >= 50 ? 'active' : ''}`}></div>
+                   <div className={`step-dot ${processingProgress >= 100 ? 'done' : processingProgress >= 80 ? 'active' : ''}`}></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : success ? (
           <div className="success-view-premium fade-in">
             <div className="success-card glass">
               <div className="success-icon-animation">
@@ -1395,6 +1438,32 @@ const NewJobForm: React.FC = () => {
           .form-actions { margin-top: 24px; flex-direction: column; gap: 12px; }
           .btn-primary, .btn-secondary { padding: 14px 24px; border-radius: 14px; font-size: 0.9rem; }
         }
+
+        /* Processing Loader Styles */
+        .processing-card { border-top: 6px solid var(--ink); }
+        .processing-icon-area { display: flex; justify-content: center; margin-bottom: 24px; }
+        .processing-spinner { position: relative; width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; }
+        .spinner-ring { position: absolute; width: 100%; height: 100%; border: 4px solid var(--cream-warm); border-top-color: var(--ink); border-radius: 50%; animation: spin 1s infinite linear; }
+        .rocket-icon { color: var(--ink); animation: rocketFloat 2s infinite ease-in-out; }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes rocketFloat { 
+          0%, 100% { transform: translateY(0) rotate(0deg); } 
+          50% { transform: translateY(-10px) rotate(5deg); } 
+        }
+
+        .progress-container-premium { width: 100%; margin-top: 32px; }
+        .progress-label-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-family: var(--font-ui); }
+        .current-status { font-size: 0.75rem; font-weight: 700; color: var(--ink); text-transform: uppercase; letter-spacing: 0.5px; }
+        .percentage { font-size: 0.8rem; font-weight: 900; color: var(--ink-soft); }
+        
+        .progress-bar-bg { width: 100%; height: 8px; background: var(--cream-warm); border-radius: 10px; overflow: hidden; margin-bottom: 16px; }
+        .progress-bar-fill { height: 100%; background: var(--ink); border-radius: 10px; transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .steps-indicator { display: flex; justify-content: space-between; padding: 0 4px; }
+        .step-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cream-warm); transition: all 0.3s; }
+        .step-dot.active { background: var(--ink); transform: scale(1.5); box-shadow: 0 0 10px rgba(26,61,51,0.2); }
+        .step-dot.done { background: var(--ink); opacity: 0.5; }
       `}</style>
     </div>
   );

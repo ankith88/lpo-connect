@@ -1,8 +1,10 @@
 import * as admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
+import { onDocumentUpdated, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { defineSecret } from "firebase-functions/params";
+import * as nodemailer from "nodemailer";
 
 // Initialize admin once
 if (admin.apps.length === 0) {
@@ -11,6 +13,211 @@ if (admin.apps.length === 0) {
 
 // Database helper - Specify the named database if needed
 const getDB = () => getFirestore("lpoconnect");
+
+// Secrets
+const gmailAppPassword = defineSecret("GMAIL_APP_PASSWORD");
+const netsuiteApiKey = defineSecret("NETSUITE_API_KEY");
+
+// Logic: onJobRequestCreated (Email Automation)
+export const onJobRequestCreated = onDocumentCreated({
+  document: "requests/{requestId}",
+  database: "lpoconnect",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  const snapshot = event.data;
+  const requestId = event.params.requestId;
+  console.log(`[Trigger Check] onJobRequestCreated triggered for ID: ${requestId}`);
+  
+  if (!snapshot) {
+    console.error(`[Trigger Error] No snapshot data for request ${requestId}`);
+    return;
+  }
+  const data = snapshot.data();
+
+  const customerEmail = data.customer?.email;
+  const companyName = data.customer?.company || "Unknown Company";
+  const firstName = data.customer?.firstName || "there";
+  const serviceType = data.service || "Standard Service";
+  const date = data.date || "To be confirmed";
+
+  if (!customerEmail) {
+    console.warn(`No customer email found for request ${requestId}. Skipping email confirmation.`);
+    return;
+  }
+
+  console.log(`[Email Automation] Preparing confirmation for ${customerEmail} (Request: ${requestId})`);
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "bookings@lpo.plus",
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  // Format service name for display
+  const displayService = typeof serviceType === 'string' 
+    ? serviceType.replace(/-/g, ' ').toUpperCase() 
+    : "SERVICE REQUESTED";
+
+  const mailOptions = {
+    from: '"LPO.PLUS Bookings" <bookings@lpo.plus>',
+    to: customerEmail,
+    replyTo: "bookings@lpo.plus",
+    subject: `Booking Confirmation: ${companyName} (${displayService})`,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          .email-container {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border: 1px solid #f0f0f0;
+          }
+          .header {
+            background-color: #095c7b;
+            padding: 40px 20px;
+            text-align: center;
+          }
+          .header h1 {
+            color: #ffffff;
+            margin: 0;
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 1px;
+          }
+          .header span {
+            color: #EAF044;
+            font-weight: bold;
+          }
+          .content {
+            padding: 40px 30px;
+            color: #333333;
+            line-height: 1.6;
+          }
+          .greeting {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #095c7b;
+          }
+          .job-details {
+            background-color: #f8fafb;
+            border-radius: 8px;
+            padding: 25px;
+            margin: 30px 0;
+            border-left: 4px solid #EAF044;
+          }
+          .detail-row {
+            margin-bottom: 12px;
+            display: flex;
+          }
+          .detail-label {
+            font-weight: bold;
+            width: 120px;
+            color: #666;
+            font-size: 13px;
+            text-transform: uppercase;
+          }
+          .detail-value {
+            color: #095c7b;
+            font-weight: 600;
+          }
+          .button-container {
+            text-align: center;
+            margin: 40px 0;
+          }
+          .btn-primary {
+            background-color: #EAF044;
+            color: #095c7b;
+            padding: 16px 32px;
+            text-decoration: none;
+            font-weight: bold;
+            border-radius: 8px;
+            display: inline-block;
+            transition: background 0.3s;
+            box-shadow: 0 4px 12px rgba(234, 240, 68, 0.3);
+          }
+          .footer {
+            background-color: #f4f7f8;
+            padding: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+          }
+          .footer p {
+            margin: 5px 0;
+          }
+          .social-links {
+            margin-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="email-container">
+          <div class="header">
+            <h1>LPO<span>.PLUS</span></h1>
+          </div>
+          <div class="content">
+            <div class="greeting">Booking Received</div>
+            <p>Hello ${firstName},</p>
+            <p>Thank you for choosing LPO.PLUS. We have received your job request for <strong>${companyName}</strong> and it is currently being processed by our dispatch team.</p>
+            
+            <div class="job-details">
+              <div class="detail-row">
+                <span class="detail-label">Reference:</span>
+                <span class="detail-value">#${requestId.substring(0, 8).toUpperCase()}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Service:</span>
+                <span class="detail-value">${displayService}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Date:</span>
+                <span class="detail-value">${date}</span>
+              </div>
+            </div>
+
+            <p>You can track the live status of your request, view logistics details, or chat directly with your operator through our portal.</p>
+            
+            <!--
+            <div class="button-container">
+              <a href="https://mp-lpo-connect.web.app/request/${requestId}" class="btn-primary">
+                VIEW JOB DETAILS
+              </a>
+            </div>
+            -->
+
+            <p style="font-size: 14px; color: #666;">If you need to make any urgent changes, please reply to this email or use the chat feature in the portal.</p>
+          </div>
+          <div class="footer">
+            <p><strong>LPO.PLUS</strong> | Premium Logistics Solutions</p>
+            <p>Powered by MailPlus Australia</p>
+            <p style="margin-top: 15px;">&copy; ${new Date().getFullYear()} LPO.PLUS. All rights reserved.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[Email Success] Confirmation sent to ${customerEmail}. Message ID: ${info.messageId}`);
+  } catch (error) {
+    console.error(`[Email Error] Failed to send confirmation to ${customerEmail}:`, error);
+    // Log more details if it's an auth error
+    if (error instanceof Error && error.message.includes('Invalid login')) {
+      console.error("CRITICAL: Gmail SMTP Authentication failed. Please verify the GMAIL_APP_PASSWORD secret.");
+    }
+  }
+});
 
 // Logic: onCustomerActive
 export const onCustomerActive = onDocumentUpdated({
@@ -88,6 +295,55 @@ export const onCustomerActive = onDocumentUpdated({
 
     await batch.commit();
     console.log("Batch activation complete.");
+  }
+});
+
+// Logic: sendEmailFromNetSuite (NetSuite API)
+export const sendEmailFromNetSuite = onRequest({
+  secrets: [gmailAppPassword, netsuiteApiKey],
+  cors: true, // Allow cross-origin requests from NetSuite
+}, async (req, res) => {
+  // 1. Security Check
+  const providedKey = req.headers['x-api-key'] || req.query.api_key;
+  if (!providedKey || providedKey !== netsuiteApiKey.value()) {
+    console.warn("Unauthorized attempt to call NetSuite Email API");
+    res.status(401).send({ success: false, message: "Unauthorized. Please provide a valid X-API-KEY." });
+    return;
+  }
+
+  // 2. Parse and Validate Body
+  const { to, cc, subject, html } = req.body;
+
+  if (!to || !subject || !html) {
+    res.status(400).send({ success: false, message: "Missing required fields: to, subject, or html." });
+    return;
+  }
+
+  console.log(`NetSuite API: Sending email to ${to} with subject: ${subject}`);
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "bookings@lpo.plus",
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  const mailOptions = {
+    from: '"LPO.PLUS" <bookings@lpo.plus>',
+    to: Array.isArray(to) ? to.join(',') : to,
+    cc: cc ? (Array.isArray(cc) ? cc.join(',') : cc) : undefined,
+    subject: subject,
+    html: html,
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log("NetSuite Email sent:", info.messageId);
+    res.status(200).send({ success: true, messageId: info.messageId });
+  } catch (error: any) {
+    console.error("Error sending NetSuite email:", error);
+    res.status(500).send({ success: false, message: error.message });
   }
 });
 

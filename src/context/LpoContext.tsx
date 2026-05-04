@@ -14,28 +14,42 @@ interface LpoMetadata {
   franchiseeTerritoryJSON?: string | string[];
 }
 
+interface UserMetadata {
+  uid: string;
+  email: string;
+  mobile?: string;
+  role: string;
+  lpo_id: string;
+  hasCompletedTour?: boolean;
+}
+
 interface LpoContextType {
   user: User | null;
+  userData: UserMetadata | null;
   lpo: LpoMetadata | null;
   loading: boolean;
   isSidebarPinned: boolean;
   setIsSidebarPinned: (pinned: boolean) => void;
   hasCompletedTour: boolean;
   completeTour: () => Promise<void>;
+  updateUserData: (data: Partial<UserMetadata>) => Promise<void>;
 }
 
 const LpoContext = createContext<LpoContextType>({
   user: null,
+  userData: null,
   lpo: null,
   loading: true,
   isSidebarPinned: false,
   setIsSidebarPinned: () => {},
-  hasCompletedTour: true, // Default to true to avoid showing it while loading
+  hasCompletedTour: true,
   completeTour: async () => {},
+  updateUserData: async () => {},
 });
 
 export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [userData, setUserData] = useState<UserMetadata | null>(null);
   const [lpo, setLpo] = useState<LpoMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
@@ -56,9 +70,10 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (userDoc.exists()) {
-            const userData = userDoc.data();
-            const lpoId = userData.lpo_id;
-            setHasCompletedTour(userData.hasCompletedTour || false);
+            const data = userDoc.data() as UserMetadata;
+            setUserData({ ...data, uid: user.uid });
+            const lpoId = data.lpo_id;
+            setHasCompletedTour(data.hasCompletedTour || false);
 
             const lpoDoc = await getDoc(doc(db, 'lpo', lpoId));
             if (lpoDoc.exists()) {
@@ -76,6 +91,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           console.error("Error fetching LPO metadata:", error);
         }
       } else {
+        setUserData(null);
         setLpo(null);
         setHasCompletedTour(true);
       }
@@ -91,6 +107,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, { hasCompletedTour: true });
       setHasCompletedTour(true);
+      setUserData(prev => prev ? { ...prev, hasCompletedTour: true } : null);
     } catch (error) {
       console.error("Error completing tour:", error);
       // Even if firestore fails, we set it locally to hide it for the current session
@@ -98,15 +115,29 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateUserData = async (data: Partial<UserMetadata>) => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, data);
+      setUserData(prev => prev ? { ...prev, ...data } : null);
+    } catch (error) {
+      console.error("Error updating user data:", error);
+      throw error;
+    }
+  };
+
   return (
     <LpoContext.Provider value={{ 
       user, 
+      userData,
       lpo, 
       loading, 
       isSidebarPinned, 
       setIsSidebarPinned, 
       hasCompletedTour, 
-      completeTour 
+      completeTour,
+      updateUserData
     }}>
       {children}
     </LpoContext.Provider>

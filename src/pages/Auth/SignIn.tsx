@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { Mail, Phone, Lock, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../../firebase/config';
+import { 
+  signInWithEmailAndPassword, 
+  sendPasswordResetEmail 
+} from 'firebase/auth';
+import { 
+  collection, 
+  query, 
+  where, 
+  getDocs 
+} from 'firebase/firestore';
+import { auth, db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import LoadingScreen from '../../components/LoadingScreen';
 
@@ -13,6 +22,7 @@ const SignIn: React.FC = () => {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Redirect if already logged in
@@ -27,20 +37,61 @@ const SignIn: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setMessage('');
     console.log(`Attempting sign in for ${identifier}...`);
 
     try {
-      if (loginMethod === 'email') {
-        await signInWithEmailAndPassword(auth, identifier, password);
-      } else {
-        const email = identifier.includes('@') ? identifier : `${identifier}@lpo.plus`;
-        await signInWithEmailAndPassword(auth, email, password);
+      let emailToUse = identifier;
+
+      if (loginMethod === 'mobile') {
+        // Remove spaces and common formatting if any
+        const cleanedMobile = identifier.replace(/\s+/g, '');
+        
+        // Query users collection for this mobile number
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('mobile', '==', cleanedMobile));
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+          throw new Error('No account found with this mobile number. Please check or sign in with email.');
+        }
+
+        emailToUse = querySnapshot.docs[0].data().email;
       }
+
+      await signInWithEmailAndPassword(auth, emailToUse, password);
       console.log("Sign in successful! Redirecting...");
       navigate('/dashboard');
     } catch (err: any) {
       console.error("Sign in error:", err);
-      setError(err.message || 'Failed to sign in. Please check your credentials.');
+      let errorMessage = 'Failed to sign in. Please check your credentials.';
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        errorMessage = 'Invalid email or password.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!identifier || loginMethod !== 'email') {
+      setError('Please enter your email address to reset your password.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setMessage('');
+
+    try {
+      await sendPasswordResetEmail(auth, identifier);
+      setMessage('Password reset email sent! Please check your inbox.');
+    } catch (err: any) {
+      console.error("Reset error:", err);
+      setError(err.message || 'Failed to send reset email.');
     } finally {
       setLoading(false);
     }
@@ -93,7 +144,17 @@ const SignIn: React.FC = () => {
             </div>
 
             <div className="input-group">
-              <label htmlFor="password">Password</label>
+              <div className="label-row">
+                <label htmlFor="password">Password</label>
+                <button 
+                  type="button" 
+                  className="forgot-password-link"
+                  onClick={handleForgotPassword}
+                  disabled={loading}
+                >
+                  Forgot Password?
+                </button>
+              </div>
               <div className="input-wrapper">
                 <Lock size={20} />
                 <input 
@@ -102,12 +163,13 @@ const SignIn: React.FC = () => {
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
+                  required={loginMethod === 'email' || !!password}
                 />
               </div>
             </div>
 
             {error && <div className="error-message">{error}</div>}
+            {message && <div className="success-message">{message}</div>}
 
             <button type="submit" className="signin-btn" disabled={loading}>
               {loading ? 'Signing in...' : 'Sign In'}
@@ -215,10 +277,34 @@ const SignIn: React.FC = () => {
           font-family: var(--font-ui);
           font-size: 0.7rem;
           font-weight: 500;
-          margin-bottom: 8px;
           color: var(--ink);
           text-transform: uppercase;
           letter-spacing: 0.16em;
+        }
+
+        .label-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+
+        .forgot-password-link {
+          background: none;
+          border: none;
+          color: var(--ink-soft);
+          font-size: 0.7rem;
+          font-weight: 600;
+          cursor: pointer;
+          padding: 0;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          transition: color 0.2s;
+        }
+
+        .forgot-password-link:hover {
+          color: var(--ink);
+          text-decoration: underline;
         }
 
         .input-wrapper {
@@ -243,6 +329,15 @@ const SignIn: React.FC = () => {
           margin-bottom: 20px;
           padding: 10px;
           background: #ffebee;
+          border-radius: 8px;
+        }
+
+        .success-message {
+          color: #2e7d32;
+          font-size: 0.85rem;
+          margin-bottom: 20px;
+          padding: 10px;
+          background: #e8f5e9;
           border-radius: 8px;
         }
 

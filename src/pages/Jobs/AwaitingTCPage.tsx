@@ -151,7 +151,7 @@ const AwaitingTCPage: React.FC = () => {
                 <Search size={18} />
                 <input 
                   type="text" 
-                  placeholder="Search company or address..." 
+                  placeholder="Search company, address or Job ID..." 
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />

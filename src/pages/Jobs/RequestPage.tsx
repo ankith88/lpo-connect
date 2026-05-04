@@ -51,9 +51,14 @@ const RequestPage: React.FC = () => {
   const [newDate, setNewDate] = useState('');
   const [newTime, setNewTime] = useState('');
 
-  // Identity: If lpo exists, person is the Operator. 
-  // Otherwise, they are the Requester/User.
-  const isOperator = !!lpo;
+  // Propose New Time Modal State
+  const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
+  const [proposedTime, setProposedTime] = useState('');
+
+  // Identity: If lpo exists, person is the LPO User.
+  // Otherwise, they are an External User.
+  const isLpoUser = !!lpo;
+  const isExternalUser = !lpo;
 
   useEffect(() => {
     if (!id) return;
@@ -86,7 +91,7 @@ const RequestPage: React.FC = () => {
     const setupNotifications = async () => {
       const token = await requestNotificationPermission();
       if (token) {
-        if (isOperator && lpo?.id) {
+        if (isLpoUser && lpo?.id) {
           // If operator is logged in, we save to user doc (handled in LpoContext usually, but here for safety)
           // Actually, let's just save to current session
           saveTokenToFirestore(token, 'operator', lpo.id); 
@@ -98,7 +103,7 @@ const RequestPage: React.FC = () => {
 
     setupNotifications();
     onForegroundMessage();
-  }, [id, isOperator, lpo?.id]);
+  }, [id, isLpoUser, lpo?.id]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -109,7 +114,7 @@ const RequestPage: React.FC = () => {
     if (!message.trim() || !id) return;
 
     const newMessage = {
-      sender: isOperator ? 'operator' : 'user',
+      sender: isLpoUser ? 'operator' : 'user',
       text: message.trim(),
       timestamp: new Date().toISOString(),
     };
@@ -160,14 +165,14 @@ const RequestPage: React.FC = () => {
         const sysMessage = {
           id: Date.now().toString(),
           sender: 'system',
-          text: `Job cancelled by ${isOperator ? 'operator' : 'customer'}.`,
+          text: `Job cancelled by ${isLpoUser ? 'MailPlus LPO' : 'Franchisee'}.`,
           timestamp: new Date().toISOString()
         };
 
         await updateDoc(doc(db, 'requests', id), {
           status: 'cancelled',
           cancelledAt: new Date().toISOString(),
-          cancelledBy: isOperator ? 'operator' : 'customer',
+          cancelledBy: isLpoUser ? 'operator' : 'customer',
           chat: arrayUnion(sysMessage)
         });
 
@@ -182,7 +187,14 @@ const RequestPage: React.FC = () => {
   };
 
   const handleAccept = async () => {
-    if (!request || !isOperator || !lpo) return;
+    if (!request) return;
+    if (isLpoUser && !lpo) return;
+
+    const lpoId = lpo?.id || request.lpo_id;
+    if (!lpoId) {
+      alert("Error: LPO information missing for this request.");
+      return;
+    }
 
     if (request.status === 'awaiting-activation') {
       alert("This customer is still awaiting T&C activation. You cannot accept the job until they are Active.");
@@ -202,7 +214,7 @@ const RequestPage: React.FC = () => {
           
           try {
             const custQ = query(
-              collection(db, `lpo/${lpo.id}/customers`),
+              collection(db, `lpo/${lpoId}/customers`),
               where('companyName', '==', request.customer.company)
             );
             const custSnap = await getDocs(custQ);
@@ -227,7 +239,7 @@ const RequestPage: React.FC = () => {
           const { id: _, ...requestData } = request;
           const templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
             ...requestData,
-            lpo_id: lpo.id,
+            lpo_id: lpoId,
             status: 'scheduled',
             serviceInternalId,
             serviceRate,
@@ -242,7 +254,7 @@ const RequestPage: React.FC = () => {
           if (request.date <= today && request.frequency?.includes(todayDayName)) {
             jobDocRef = await addDoc(collection(db, 'jobs'), {
               ...requestData,
-              lpo_id: lpo.id,
+              lpo_id: lpoId,
               status: 'scheduled',
               serviceInternalId,
               serviceRate,
@@ -262,7 +274,7 @@ const RequestPage: React.FC = () => {
           
           try {
             const custQ = query(
-              collection(db, `lpo/${lpo.id}/customers`),
+              collection(db, `lpo/${lpoId}/customers`),
               where('companyName', '==', request.customer.company)
             );
             const custSnap = await getDocs(custQ);
@@ -286,7 +298,7 @@ const RequestPage: React.FC = () => {
           const { id: _, ...requestData } = request;
           jobDocRef = await addDoc(collection(db, 'jobs'), {
             ...requestData,
-            lpo_id: lpo.id,
+            lpo_id: lpoId,
             status: 'scheduled',
             serviceInternalId,
             serviceRate,
@@ -306,7 +318,7 @@ const RequestPage: React.FC = () => {
             customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
             instructions: request.customer?.instructions || "",
             job_type: request.jobType || "",
-            lpo_id: lpo.id,
+            lpo_id: lpoId,
             request_id: request.id,
             preferred_time: request.preferredTime || "",
             service_name: request.service || "null",
@@ -334,11 +346,13 @@ const RequestPage: React.FC = () => {
   };
 
   const handleReject = () => {
+    if (!isExternalUser && !isLpoUser) return;
     setIsRejectModalOpen(true);
   };
 
   const submitReject = async () => {
-    if (!request || !isOperator) return;
+    if (!request) return;
+    if (!isLpoUser && !isExternalUser) return;
     if (!rejectReason || !rejectNotes.trim()) {
       alert("Please select a reason and provide notes.");
       return;
@@ -357,7 +371,7 @@ const RequestPage: React.FC = () => {
         rejectionReason: rejectReason,
         rejectionNotes: rejectNotes.trim(),
         rejectedAt: new Date().toISOString(),
-        rejectedBy: lpo?.id || 'unknown',
+        rejectedBy: isLpoUser ? (lpo?.id || 'operator') : 'customer',
         chat: arrayUnion(sysMessage)
       });
 
@@ -368,7 +382,7 @@ const RequestPage: React.FC = () => {
         action: 'reject',
         request_id: request.id,
         customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
-        lpo_id: lpo?.id || "",
+        lpo_id: lpo?.id || request.lpo_id || "",
         reason: rejectReason,
         notes: rejectNotes.trim()
       });
@@ -384,6 +398,33 @@ const RequestPage: React.FC = () => {
     } catch (err) {
       console.error("Error rejecting job:", err);
       alert("Failed to reject job.");
+    }
+  };
+
+  const handleProposeNewTime = async () => {
+    if (!request || !id || !proposedTime) return;
+
+    try {
+      const sysMessage = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `Franchisee proposed a new 'Must be completed by' time: ${proposedTime}`,
+        timestamp: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'requests', id), {
+        status: 'new-time-proposed',
+        preferredTime: proposedTime,
+        proposedAt: new Date().toISOString(),
+        chat: arrayUnion(sysMessage)
+      });
+
+      setIsTimeModalOpen(false);
+      setProposedTime('');
+      alert("New time proposal sent to operator.");
+    } catch (err) {
+      console.error("Error proposing new time:", err);
+      alert("Failed to send proposal.");
     }
   };
 
@@ -462,6 +503,7 @@ const RequestPage: React.FC = () => {
                 {request.status === 'scheduled' ? 'Job Scheduled' : 
                  request.status === 'awaiting-activation' ? 'Awaiting Activation' : 
                  request.status === 'cancelled' ? 'Cancelled' :
+                 request.status === 'new-time-proposed' ? 'New Time Proposed' :
                  'Coordination Phase'}
               </div>
               <h1>Job Request Coordination</h1>
@@ -476,12 +518,29 @@ const RequestPage: React.FC = () => {
               )}
            </div>
            
-           {(request.status === 'pending' || request.status === 'awaiting-activation') && (
+           {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && (
              <div className="operator-actions desktop-only">
-               {isOperator ? (
+               {isLpoUser ? (
+                 <>
+                   <button className="btn-reject" onClick={handleCancelRequest}>
+                     <XCircle size={18} /> CANCEL REQUEST
+                   </button>
+                   {request.status === 'new-time-proposed' && (
+                     <button className="btn-accept shadow-teal" onClick={handleAccept}>
+                        <div className="accept-content">
+                          <CheckCircle2 size={18} /> 
+                          <span>ACCEPT NEW TIME</span>
+                        </div>
+                     </button>
+                   )}
+                 </>
+               ) : (
                  <>
                    <button className="btn-reject" onClick={handleReject}>
-                     <XCircle size={18} /> DECLINE
+                     <XCircle size={18} /> DECLINE JOB
+                   </button>
+                   <button className="btn-propose" onClick={() => setIsTimeModalOpen(true)}>
+                     <Clock size={18} /> PROPOSE NEW TIME
                    </button>
                    <button 
                      className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
@@ -497,10 +556,6 @@ const RequestPage: React.FC = () => {
                      )}
                    </button>
                  </>
-               ) : (
-                 <button className="btn-reject" onClick={handleCancelRequest}>
-                   <XCircle size={18} /> CANCEL REQUEST
-                 </button>
                )}
              </div>
            )}
@@ -607,8 +662,8 @@ const RequestPage: React.FC = () => {
                       </div>
                    </div>
 
-                   {!isOperator && (
-                      <div className="reprocess-section">
+                    {!isLpoUser && (
+                       <div className="reprocess-section">
                          <h3>Submit a new proposed time</h3>
                          <p>If you'd like the operator to review this again, pick a new date and time.</p>
                          <form className="reprocess-form" onSubmit={handleReprocess}>
@@ -671,7 +726,7 @@ const RequestPage: React.FC = () => {
                        }
                        return (
                           <div key={idx} className={`message-bubble ${msg.sender}`}>
-                             <div className="sender-label">{msg.sender === 'operator' ? 'MailPlus Operator' : 'Customer'}</div>
+                             <div className="sender-label">{msg.sender === 'operator' ? 'MailPlus Operator' : 'Franchisee'}</div>
                              <div className="message-content">{msg.text}</div>
                              <div className="message-time">
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -700,31 +755,36 @@ const RequestPage: React.FC = () => {
         </div>
       </div>
 
-      {(request.status === 'pending' || request.status === 'awaiting-activation') && (
+       {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
-            {isOperator ? (
+            {isLpoUser ? (
+              <>
+                <button className="btn-reject" style={{ width: '100%' }} onClick={handleCancelRequest}>
+                  <XCircle size={18} /> CANCEL REQUEST
+                </button>
+                {request.status === 'new-time-proposed' && (
+                  <button className="btn-accept shadow-teal" onClick={handleAccept}>
+                    <CheckCircle2 size={18} /> ACCEPT NEW TIME
+                  </button>
+                )}
+              </>
+            ) : (
               <>
                 <button className="btn-reject" onClick={handleReject}>
                   <XCircle size={18} /> DECLINE
+                </button>
+                <button className="btn-propose-mobile" onClick={() => setIsTimeModalOpen(true)}>
+                  <Clock size={18} /> PROPOSE TIME
                 </button>
                 <button 
                   className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
                   onClick={handleAccept}
                 >
-                  <div className="accept-content">
-                    <CheckCircle2 size={18} /> 
-                    <span>ACCEPT JOB</span>
-                  </div>
-                  {request.preferredTime && (
-                    <div className="btn-badge">Time Priority</div>
-                  )}
+                  <CheckCircle2 size={18} /> 
+                  <span>ACCEPT</span>
                 </button>
               </>
-            ) : (
-              <button className="btn-reject" style={{ width: '100%' }} onClick={handleCancelRequest}>
-                <XCircle size={18} /> CANCEL REQUEST
-              </button>
             )}
           </div>
         </div>
@@ -748,13 +808,15 @@ const RequestPage: React.FC = () => {
                        <option value="Outside Territory">Outside Territory</option>
                        <option value="Vehicle Breakdown">Vehicle Breakdown</option>
                        <option value="Service Not Offered">Service Not Offered</option>
+                       {isExternalUser && <option value="Unsuitable Time">Unsuitable Time</option>}
+                       {isExternalUser && <option value="Found Other Provider">Found Other Provider</option>}
                        <option value="Other">Other</option>
                     </select>
                  </div>
                  <div className="input-group">
                     <label>Additional Notes <span style={{color: '#ff4757'}}>*</span></label>
                     <textarea 
-                       placeholder="Please provide details for the customer and dispatch team..."
+                       placeholder={isLpoUser ? "Please provide details for the Franchisee and dispatch team..." : "Please let us know why you are declining this request..."}
                        value={rejectNotes}
                        onChange={(e) => setRejectNotes(e.target.value)}
                     />
@@ -763,6 +825,38 @@ const RequestPage: React.FC = () => {
               <div className="modal-actions">
                  <button className="btn-cancel" onClick={() => setIsRejectModalOpen(false)}>CANCEL</button>
                  <button className="btn-confirm-reject" onClick={submitReject}>CONFIRM DECLINE</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {isTimeModalOpen && (
+        <div className="modal-overlay">
+           <div className="modal-content">
+              <div className="modal-header">
+                 <h3>Propose New Time</h3>
+                 <button className="close-btn" onClick={() => setIsTimeModalOpen(false)}>
+                    <XCircle size={24} />
+                 </button>
+              </div>
+              <div className="modal-body">
+                 <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', marginBottom: '10px' }}>
+                   If you can't make the requested time, please suggest a new "Must be completed by" time for the operator to review.
+                 </p>
+                 <div className="input-group">
+                    <label>Proposed Completion Time</label>
+                    <input 
+                       type="time" 
+                       value={proposedTime}
+                       onChange={(e) => setProposedTime(e.target.value)}
+                    />
+                 </div>
+              </div>
+              <div className="modal-actions">
+                 <button className="btn-cancel" onClick={() => setIsTimeModalOpen(false)}>CANCEL</button>
+                 <button className="btn-confirm-time shadow-teal" onClick={handleProposeNewTime} disabled={!proposedTime}>
+                   SUBMIT PROPOSAL
+                 </button>
               </div>
            </div>
         </div>
@@ -857,7 +951,14 @@ const RequestPage: React.FC = () => {
             border: 2px solid var(--offwhite);
           }
 
-        .instructions-box { background: var(--cream-warm); padding: 16px; border-radius: 16px; font-size: 0.85rem; color: var(--ink-soft); font-weight: 600; line-height: 1.5; border-left: 4px solid var(--gold); }
+         .btn-propose { background: var(--cream-warm); color: var(--gold); border: 1px solid var(--gold); padding: 12px 20px; border-radius: 14px; font-weight: 800; display: flex; align-items: center; gap: 8px; cursor: pointer; }
+         .btn-propose-mobile { background: var(--cream-warm); color: var(--gold); border: 1px solid var(--gold); padding: 12px 10px; border-radius: 14px; font-weight: 800; display: flex; align-items: center; justify-content: center; gap: 6px; }
+         .btn-confirm-time { background: var(--ink); color: white; border: none; }
+         .btn-confirm-time:disabled { opacity: 0.5; }
+         
+         .status-pill.new-time-proposed { background: #e3f2fd; color: #1976d2; }
+
+         .instructions-box { background: var(--cream-warm); padding: 16px; border-radius: 16px; font-size: 0.85rem; color: var(--ink-soft); font-weight: 600; line-height: 1.5; border-left: 4px solid var(--gold); }
 
         .chat-interface { flex: 1; display: flex; flex-direction: column; min-height: 500px; padding: 0 !important; overflow: hidden; }
         .chat-header { display: flex; align-items: center; gap: 12px; margin: 32px 32px 24px; }

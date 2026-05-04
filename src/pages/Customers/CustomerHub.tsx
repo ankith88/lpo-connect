@@ -9,7 +9,8 @@ import {
   Plus,
   Mail,
   CreditCard,
-  Rocket
+  Rocket,
+  User
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
@@ -21,7 +22,9 @@ const CustomerHub: React.FC = () => {
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [serviceFilter, setServiceFilter] = useState('all');
+  const [billingFilter, setBillingFilter] = useState('all');
+  const [jobTypeFilter, setJobTypeFilter] = useState('all');
 
   useEffect(() => {
     if (lpo) {
@@ -107,19 +110,21 @@ const CustomerHub: React.FC = () => {
 
     if (!matchesSearch) return false;
 
-    // 2. Tab Filter
-    if (activeFilter === 'all') return true;
-    
-    if (activeFilter === 'recent') {
-      if (!c.lastJobDate) return false;
-      const lastDate = new Date(c.lastJobDate);
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      return lastDate >= thirtyDaysAgo;
+    // 2. Advanced Filters
+    if (serviceFilter !== 'all') {
+      if (serviceFilter === 'lpo-to-site' && !(c.lpoServiceAMPOInternalID && c.lpoServiceAMPOInternalID !== 'null')) return false;
+      if (serviceFilter === 'site-to-lpo' && !(c.lpoServicePMPOInternalID && c.lpoServicePMPOInternalID !== 'null')) return false;
+      if (serviceFilter === 'round-trip' && !(c.lpoServiceAMPOPMPOInternalID && c.lpoServiceAMPOPMPOInternalID !== 'null')) return false;
     }
 
-    if (activeFilter === 'frequent') {
-      return (c.totalJobs || 0) >= 3;
+    if (billingFilter !== 'all') {
+      const b = (c.billing || '').toLowerCase();
+      if (b !== billingFilter) return false;
+    }
+
+    if (jobTypeFilter !== 'all') {
+      const jt = (c.jobtype || c.jobType || '').toLowerCase();
+      if (jt !== jobTypeFilter) return false;
     }
 
     return true;
@@ -138,7 +143,7 @@ const CustomerHub: React.FC = () => {
               <div className="title-area">
                 <Users className="header-icon" />
                 <div>
-                  <h1>Customer Hub</h1>
+                  <h1>Customer Hub <span className="title-count">{filteredCustomers.length}</span></h1>
                   <p>Manage and track your service territory clients.</p>
                 </div>
               </div>
@@ -161,25 +166,33 @@ const CustomerHub: React.FC = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
            </div>
-           <div className="filter-pills">
-              <button 
-                className={`pill ${activeFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setActiveFilter('all')}
-              >
-                <Filter size={14} /> All Clients
-              </button>
-              <button 
-                className={`pill ${activeFilter === 'recent' ? 'active' : ''}`}
-                onClick={() => setActiveFilter('recent')}
-              >
-                Recent Acquisitions
-              </button>
-              <button 
-                className={`pill ${activeFilter === 'frequent' ? 'active' : ''}`}
-                onClick={() => setActiveFilter('frequent')}
-              >
-                Frequent Service
-              </button>
+           <div className="filter-group-glass">
+              <div className="filter-item">
+                <Filter size={14} />
+                <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}>
+                  <option value="all">All Service Types</option>
+                  <option value="lpo-to-site">LPO ➔ Site</option>
+                  <option value="site-to-lpo">Site ➔ LPO</option>
+                  <option value="round-trip">Round Trip</option>
+                </select>
+              </div>
+              <div className="filter-item">
+                <CreditCard size={14} />
+                <select value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
+                  <option value="all">All Billing</option>
+                  <option value="customer">Customer</option>
+                  <option value="split">Split</option>
+                  <option value="lpo">LPO Paid</option>
+                </select>
+              </div>
+              <div className="filter-item">
+                <Rocket size={14} />
+                <select value={jobTypeFilter} onChange={(e) => setJobTypeFilter(e.target.value)}>
+                  <option value="all">All Job Types</option>
+                  <option value="one-off">One-off</option>
+                  <option value="scheduled">Scheduled</option>
+                </select>
+              </div>
            </div>
         </div>
 
@@ -212,18 +225,22 @@ const CustomerHub: React.FC = () => {
                           <div className={`status-badge-premium ${customer.status === 'Active' ? 'active' : 'awaiting'}`}>{customer.status === 'Active' ? 'ACTIVE' : 'AWAITING T&C'}</div>
                        </div>
 
-                      <div className="card-body">
+                       <div className="card-body">
+                          <div className="contact-item">
+                             <User size={14} />
+                             <span>{customer.firstName || customer.first_name ? `${customer.firstName || customer.first_name} ${customer.lastName || customer.last_name || ''}` : customer.contact || 'No contact name'}</span>
+                          </div>
+                          <div className="contact-item">
+                             <Mail size={14} />
+                             <span>{customer.customerEmail || customer.email || 'No email'}</span>
+                          </div>
                           <div className="contact-item">
                              <Phone size={14} />
                              <span>{customer.customerPhone || customer.phone || 'No phone'}</span>
                           </div>
                           <div className="contact-item">
                              <MapPin size={14} />
-                             <span>{(customer.address1 || customer.address?.street || 'No address')}, {(customer.city || customer.address?.suburb || '')}</span>
-                          </div>
-                          <div className="contact-item">
-                             <Mail size={14} />
-                             <span>{(customer.state || customer.address?.state || '')} {(customer.zip || customer.address?.postcode || '')}</span>
+                             <span>{(customer.address1 || customer.address?.street || 'No address')}, {(customer.city || customer.address?.suburb || '')} {(customer.state || customer.address?.state || '')}</span>
                           </div>
                       </div>
  
@@ -290,7 +307,8 @@ const CustomerHub: React.FC = () => {
         .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
         .title-area { display: flex; gap: 20px; align-items: center; }
         .header-icon { width: 44px; height: 44px; color: var(--ink); }
-        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
+        .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; display: flex; align-items: center; gap: 12px; }
+        .title-count { font-family: var(--font-ui); font-size: 1rem; background: var(--cream-warm); color: var(--ink); padding: 4px 12px; border-radius: 12px; font-weight: 700; opacity: 0.8; }
         .page-header p { margin: 4px 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
         .btn-premium-action {
@@ -309,9 +327,18 @@ const CustomerHub: React.FC = () => {
         .search-bar-glass input:focus { outline: none; }
         .search-bar-glass svg { color: var(--ink-soft); }
 
-        .filter-pills { display: flex; gap: 10px; }
-        .pill { background: white; border: 1px solid var(--cream-warm); padding: 10px 20px; border-radius: 50px; font-weight: 700; color: var(--ink-soft); font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.2s; }
-        .pill.active { background: var(--ink); color: white; border-color: var(--ink); }
+        .filter-group-glass { display: flex; gap: 12px; align-items: center; }
+        .filter-item {
+           display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.7);
+           backdrop-filter: blur(10px); padding: 8px 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.4);
+           transition: all 0.2s;
+        }
+        .filter-item:focus-within { border-color: var(--ink); background: white; }
+        .filter-item select {
+           border: none; background: transparent; font-weight: 700; color: var(--ink-soft); font-size: 0.85rem; cursor: pointer;
+           outline: none; padding: 4px 0; min-width: 120px;
+        }
+        .filter-item svg { color: var(--ink-soft); opacity: 0.7; }
 
         .customers-view { margin-top: 20px; }
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 32px; padding: 24px; }
@@ -372,8 +399,9 @@ const CustomerHub: React.FC = () => {
            .hub-controls { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 24px; }
            .search-bar-glass { max-width: none; padding: 0 12px; }
            .search-bar-glass input { padding: 14px 0; font-size: 0.9rem; }
-           .filter-pills { gap: 8px; }
-           .pill { flex: 1; min-width: calc(50% - 4px); justify-content: center; font-size: 0.7rem; padding: 6px 10px; }
+           .filter-group-glass { flex-direction: column; gap: 8px; }
+           .filter-item { width: 100%; justify-content: flex-start; padding: 12px; }
+           .filter-item select { flex: 1; font-size: 0.8rem; }
 
            .customer-grid { gap: 16px; }
            .customer-card { padding: 14px; border-radius: 20px; }

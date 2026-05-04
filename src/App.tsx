@@ -16,6 +16,8 @@ import Schedules from './pages/Jobs/Schedules';
 import AwaitingTCPage from './pages/Jobs/AwaitingTCPage';
 import Reports from './pages/Admin/Reports';
 import SupportCenter from './pages/Help/SupportCenter';
+import Profile from './pages/Auth/Profile';
+import ResetPassword from './pages/Auth/ResetPassword';
 
 import OnboardingTour from './components/OnboardingTour';
 
@@ -49,6 +51,7 @@ const App: React.FC = () => {
       <BrowserRouter>
         <Routes>
           <Route path="/signin" element={<SignIn />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           
           <Route path="/dashboard" element={
             <PrivateRoute>
@@ -122,6 +125,14 @@ const App: React.FC = () => {
             <PrivateRoute>
               <AppLayout>
                 <SupportCenter />
+              </AppLayout>
+            </PrivateRoute>
+          } />
+
+          <Route path="/profile" element={
+            <PrivateRoute>
+              <AppLayout>
+                <Profile />
               </AppLayout>
             </PrivateRoute>
           } />
