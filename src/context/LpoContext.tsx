@@ -108,13 +108,19 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               }
             }
           } else if (user.uid === SUPER_ADMIN_ID) {
-            // Edge case: Super admin ID logged in but no Firestore doc yet
-            setUserData({ 
+            // Auto-seed the Super Admin record if it doesn't exist
+            const adminData = { 
               uid: user.uid, 
               email: user.email || '', 
               role: 'admin', 
-              lpo_id: '' 
-            });
+              lpo_id: '',
+              hasCompletedTour: true
+            };
+            setUserData(adminData);
+            
+            // Create the document asynchronously
+            const { setDoc, doc } = await import('firebase/firestore');
+            setDoc(doc(db, 'users', user.uid), adminData).catch(e => console.error("Auto-seed error:", e));
           }
 
           // If admin, fetch all LPOs for the filter list
