@@ -206,6 +206,8 @@ const RequestPage: React.FC = () => {
         // 1. Create Job or Scheduled Template
         let jobDocRef;
         const today = formatDateForInput(new Date());
+        let finalJobId = "";
+        const netsuiteCustomerId = request.netsuiteCustomerId || request.customer?.netsuiteId || "";
         
         if (request.jobType === 'scheduled') {
           // 1.1 Fetch Service Metadata from Customer Record
@@ -248,6 +250,7 @@ const RequestPage: React.FC = () => {
           });
           
           console.log("Created scheduled_jobs template:", templateRef.id);
+          finalJobId = templateRef.id;
           
           // Check if today matches frequency to immediately generate first instance
           const todayDayName = getDayName(new Date());
@@ -265,6 +268,7 @@ const RequestPage: React.FC = () => {
               originalRequestId: request.id
             });
             console.log("Created immediate job instance:", jobDocRef.id);
+            finalJobId = jobDocRef.id;
           }
         } else {
           // Normal one-off job
@@ -306,6 +310,7 @@ const RequestPage: React.FC = () => {
             originalRequestId: request.id
           });
           console.log("Created one-off job:", jobDocRef.id);
+          finalJobId = jobDocRef.id;
         }
 
         // 1.5 Sync with NetSuite if same-day job instance was created
@@ -326,10 +331,35 @@ const RequestPage: React.FC = () => {
             date: request.date || "null"
           });
 
-          fetch(`${NETSUITE_API}&${params.toString()}`)
-            .then(res => res.json())
-            .then(data => console.log("NetSuite Script 2529 Response:", data))
-            .catch(err => console.error("NetSuite Script 2529 Error:", err));
+          try {
+            const res = await fetch(`${NETSUITE_API}&${params.toString()}`);
+            const data = await res.json();
+            console.log("NetSuite Script 2529 Response:", data);
+          } catch (err) {
+            console.error("NetSuite Script 2529 Error:", err);
+          }
+        }
+
+        // 1.6 Secondary NetSuite Sync (Confirmation)
+        const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2536&deploy=1&compid=1048144&ns-at=AAEJ7tMQhaB4QYR7Pw-EtSlrxcIMl2il8br6cxfmm6xmf7VP-1w";
+        if (finalJobId) {
+          const params2536 = new URLSearchParams({
+            job_id: finalJobId,
+            lpo_id: lpoId,
+            customer_id: netsuiteCustomerId
+          });
+
+          console.log("Triggering NetSuite 2536 with:", Object.fromEntries(params2536));
+
+          try {
+            const res = await fetch(`${SECOND_NETSUITE_API}&${params2536.toString()}`);
+            const data = await res.json();
+            console.log("NetSuite Script 2536 Response:", data);
+          } catch (err) {
+            console.error("NetSuite Script 2536 Error:", err);
+          }
+        } else {
+          console.warn("NetSuite 2536 not triggered: finalJobId is empty");
         }
 
         // 2. Update Request Status

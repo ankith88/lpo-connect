@@ -25,6 +25,7 @@ import {
   Phone
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
+import SupportEmailModal from '../../components/SupportEmailModal';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
@@ -50,6 +51,11 @@ const Dashboard: React.FC = () => {
   const [selectedJobForComm, setSelectedJobForComm] = useState<any>(null);
   const [commMessage, setCommMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
+  
+  // Support Email Modal State
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [supportJobId, setSupportJobId] = useState('');
+  const [supportMetadata, setSupportMetadata] = useState<any>(null);
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -612,7 +618,25 @@ const Dashboard: React.FC = () => {
                                       <RotateCcw size={12} />
                                       <span>{job.billing}</span>
                                    </div>
-                                    <div className="job-ref">REF: {job.id}</div>
+                                    <div 
+                                      className="job-ref interactive" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSupportJobId(job.id);
+                                        setSupportMetadata({
+                                          lpoName: lpo?.name,
+                                          companyName: job.customer?.company,
+                                          contactName: job.customer?.contactName,
+                                          contactEmail: job.customer?.email,
+                                          contactPhone: job.customer?.phone,
+                                          serviceType: job.service,
+                                          billing: job.billing
+                                        });
+                                        setIsSupportModalOpen(true);
+                                      }}
+                                    >
+                                      REF: {job.id}
+                                    </div>
                                 </div>
 
                                  <div className="card-actions">
@@ -720,6 +744,14 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <SupportEmailModal 
+        isOpen={isSupportModalOpen} 
+        onClose={() => setIsSupportModalOpen(false)}
+        jobId={supportJobId}
+        contextTitle={supportJobId ? `Job Reference: ${supportJobId}` : undefined}
+        metadata={supportMetadata}
+      />
 
       <style>{`
         .job-manager-premium {

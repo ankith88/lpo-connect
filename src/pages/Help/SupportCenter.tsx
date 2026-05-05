@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Mail, 
   Phone, 
@@ -8,8 +8,12 @@ import {
   ShieldCheck,
   User
 } from 'lucide-react';
+import SupportEmailModal from '../../components/SupportEmailModal';
+import { useLpo } from '../../context/LpoContext';
 
 const SupportCenter: React.FC = () => {
+  const { lpo } = useLpo();
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const contactInfo = {
     name: "Kerry O'Neill",
     email: "kerry.oneill@mailplus.com.au",
@@ -50,7 +54,11 @@ const SupportCenter: React.FC = () => {
                 <p className="contact-role">Dedicated Support Specialist for LPO.PLUS</p>
                 
                 <div className="contact-actions-grid">
-                  <a href={`mailto:${contactInfo.email}`} className="contact-action-item">
+                  <div 
+                    className="contact-action-item" 
+                    onClick={() => setIsModalOpen(true)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="icon-box email">
                       <Mail size={20} />
                     </div>
@@ -59,7 +67,7 @@ const SupportCenter: React.FC = () => {
                       <span className="action-value">{contactInfo.email}</span>
                     </div>
                     <ArrowRight size={16} className="arrow-hover" />
-                  </a>
+                  </div>
 
                   <a href={`tel:${contactInfo.phone.replace(/\s/g, '')}`} className="contact-action-item">
                     <div className="icon-box phone">
@@ -103,6 +111,15 @@ const SupportCenter: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <SupportEmailModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)}
+        defaultSubject="Support Inquiry: LPO.PLUS Assistance"
+        metadata={{
+          lpoName: lpo?.name
+        }}
+      />
 
       <style>{`
         .support-center-premium {

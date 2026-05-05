@@ -34,6 +34,7 @@ export const onJobRequestCreated = onDocumentCreated({
   }
   const data = snapshot.data();
 
+/*
   const customerEmail = data.customer?.email;
   const companyName = data.customer?.company || "Unknown Company";
   const firstName = data.customer?.firstName || "there";
@@ -217,6 +218,7 @@ export const onJobRequestCreated = onDocumentCreated({
       console.error("CRITICAL: Gmail SMTP Authentication failed. Please verify the GMAIL_APP_PASSWORD secret.");
     }
   }
+*/
 });
 
 // Logic: onCustomerActive
@@ -610,4 +612,89 @@ export const generateDailyScheduledJobs = onSchedule({
   }
 
   console.log(`Generated ${generatedCount} daily scheduled jobs for ${todayStr}`);
+});
+
+// Logic: sendSupportEmail
+export const sendSupportEmail = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
+  console.log("[Support Email] Function triggered");
+  
+  if (!request.auth) {
+    console.warn("[Support Email] Unauthenticated request");
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const { message, subject, jobId, metadata } = request.data;
+  console.log(`[Support Email] Data: jobId=${jobId}, subject=${subject}`);
+
+  if (!message) {
+    console.warn("[Support Email] Missing message");
+    throw new HttpsError("invalid-argument", "Message is required.");
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+
+    const recipients = ["michael.mcdaid@mailplus.com.au", "kerry.oneill@mailplus.com.au"];
+    
+    // Build metadata section
+    let metadataHtml = "";
+    if (metadata) {
+      metadataHtml = `
+        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #e9ecef;">
+          <h4 style="margin-top: 0; color: #1A3D33;">Inquiry Metadata</h4>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            ${metadata.lpoName ? `<tr><td style="padding: 4px 0; color: #666; width: 150px;"><strong>LPO Name:</strong></td><td style="padding: 4px 0;">${metadata.lpoName}</td></tr>` : ""}
+            ${metadata.companyName ? `<tr><td style="padding: 4px 0; color: #666;"><strong>Company:</strong></td><td style="padding: 4px 0;">${metadata.companyName}</td></tr>` : ""}
+            ${metadata.contactName ? `<tr><td style="padding: 4px 0; color: #666;"><strong>Contact:</strong></td><td style="padding: 4px 0;">${metadata.contactName}</td></tr>` : ""}
+            ${metadata.contactEmail ? `<tr><td style="padding: 4px 0; color: #666;"><strong>Contact Email:</strong></td><td style="padding: 4px 0;">${metadata.contactEmail}</td></tr>` : ""}
+            ${metadata.contactPhone ? `<tr><td style="padding: 4px 0; color: #666;"><strong>Contact Phone:</strong></td><td style="padding: 4px 0;">${metadata.contactPhone}</td></tr>` : ""}
+            ${metadata.serviceType ? `<tr><td style="padding: 4px 0; color: #666;"><strong>Service Type:</strong></td><td style="padding: 4px 0;">${metadata.serviceType}</td></tr>` : ""}
+            ${metadata.billing ? `<tr><td style="padding: 4px 0; color: #666;"><strong>Billing:</strong></td><td style="padding: 4px 0;">${metadata.billing}</td></tr>` : ""}
+            ${jobId ? `<tr><td style="padding: 4px 0; color: #666;"><strong>Job Reference:</strong></td><td style="padding: 4px 0;">${jobId}</td></tr>` : ""}
+          </table>
+        </div>
+      `;
+    }
+
+    const mailOptions = {
+      from: '"LPO.PLUS Support" <bookings@lpo.plus>',
+      to: recipients.join(","),
+      replyTo: "bookings@lpo.plus",
+      subject: subject || `Inquiry from LPO.PLUS User${jobId ? ` (Job Ref: ${jobId})` : ""}`,
+      html: `
+        <div style="font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #1A3D33;">New Support Inquiry</h2>
+          <p><strong>User Email:</strong> ${request.auth.token.email || "Unknown User"}</p>
+          
+          ${metadataHtml}
+
+          <p><strong>User Message:</strong></p>
+          <div style="background: #fdfef0; padding: 20px; border-radius: 8px; border-left: 4px solid #EAF044; font-style: italic;">
+            ${message.replace(/\n/g, '<br>')}
+          </div>
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+          <p style="font-size: 12px; color: #999;">This email was sent via LPO.PLUS Support System.</p>
+        </div>
+      `,
+    };
+
+    console.log("[Support Email] Sending via Nodemailer...");
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[Support Email Success] Message ID: ${info.messageId}`);
+    return { success: true, messageId: info.messageId };
+  } catch (error: any) {
+    console.error("[Support Email Error] Failed:", error);
+    if (error.message && error.message.includes("Invalid login")) {
+      throw new HttpsError("internal", "Email authentication failed. Please contact admin.");
+    }
+    throw new HttpsError("internal", error.message || "Failed to send email.");
+  }
 });

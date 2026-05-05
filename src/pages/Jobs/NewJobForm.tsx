@@ -97,7 +97,7 @@ const NewJobForm: React.FC = () => {
       instructions: '',
     },
     service: 'site-to-lpo',
-    billing: 'customer',
+    billing: 'lpo',
     date: formatDateForInput(getDefaultBookingDate()),
     jobType: 'one-off',
     frequency: [],

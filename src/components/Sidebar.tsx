@@ -3,7 +3,6 @@ import { NavLink } from 'react-router-dom';
 import { 
   ClipboardList,
   MapPin, 
-  Share2,
   Users, 
   RotateCcw, 
   FileText, 
@@ -29,11 +28,10 @@ const Sidebar: React.FC = () => {
     { name: 'Job Manager', icon: ClipboardList, path: '/dashboard' },
     { name: 'Awaiting T&C', icon: Clock, path: '/awaiting-tc' },
     { name: 'Recurring Schedules', icon: RotateCcw, path: '/schedules' },
-    { name: 'Service Area', icon: MapPin, path: '/service-area' },
-    { name: 'Share Booking Link', icon: Share2, path: '/share' },
     { name: 'Customer Hub', icon: Users, path: '/customers' },
     { name: 'Invoices', icon: FileText, path: '/invoices' },
     { name: 'Operational Insights', icon: BarChart3, path: '/reports' },
+    { name: 'Service Area', icon: MapPin, path: '/service-area' },
     { name: 'My Profile', icon: UserCircle, path: '/profile' },
   ];
 
@@ -94,7 +92,7 @@ const Sidebar: React.FC = () => {
         <nav className="sidebar-nav" id="tour-sidebar">
           <div className="nav-group">
             {isExpanded && <p className="group-title">Logistics Management</p>}
-            {navItems.slice(0, 4).map((item) => (
+            {navItems.slice(0, 3).map((item) => (
               <NavLink 
                 key={item.path} 
                 to={item.path}
@@ -109,7 +107,7 @@ const Sidebar: React.FC = () => {
 
           <div className="nav-group">
             {isExpanded && <p className="group-title">Administration</p>}
-            {navItems.slice(4).map((item) => (
+            {navItems.slice(3).map((item) => (
               <NavLink 
                 key={item.path} 
                 to={item.path}

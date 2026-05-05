@@ -20,6 +20,7 @@ import { collection, query, where, getDocs, doc, orderBy, updateDoc, arrayUnion,
 import { sortStops } from '../../utils/stops';
 
 import { db } from '../../firebase/config';
+import SupportEmailModal from '../../components/SupportEmailModal';
 import { useLpo } from '../../context/LpoContext';
 import { getNextOccurrences, parseLocalDate } from '../../utils/scheduling';
 
@@ -30,6 +31,9 @@ const Schedules: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSchedule, setSelectedSchedule] = useState<any | null>(null);
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [supportJobId, setSupportJobId] = useState('');
+  const [supportMetadata, setSupportMetadata] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
@@ -356,7 +360,25 @@ const Schedules: React.FC = () => {
                              <RotateCcw size={12} />
                              <span>{schedule.billing}</span>
                           </div>
-                          <div className="job-ref">REF: {schedule.id}</div>
+                          <div 
+                            className="job-ref interactive" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSupportJobId(schedule.id);
+                              setSupportMetadata({
+                                lpoName: lpo?.name,
+                                companyName: schedule.customer?.company,
+                                contactName: schedule.customer?.contactName,
+                                contactEmail: schedule.customer?.email,
+                                contactPhone: schedule.customer?.phone,
+                                serviceType: schedule.service,
+                                billing: schedule.billing
+                              });
+                              setIsSupportModalOpen(true);
+                            }}
+                          >
+                            REF: {schedule.id}
+                          </div>
                        </div>
 
                         <div className="card-actions">
@@ -372,6 +394,14 @@ const Schedules: React.FC = () => {
             )}
         </div>
       </div>
+
+      <SupportEmailModal 
+        isOpen={isSupportModalOpen} 
+        onClose={() => setIsSupportModalOpen(false)}
+        jobId={supportJobId}
+        contextTitle={supportJobId ? `Job Reference: ${supportJobId}` : undefined}
+        metadata={supportMetadata}
+      />
 
       {selectedSchedule && (
         <div className="modal-overlay fade-in active">
