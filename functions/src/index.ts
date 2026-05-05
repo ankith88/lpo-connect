@@ -32,7 +32,7 @@ export const onJobRequestCreated = onDocumentCreated({
     console.error(`[Trigger Error] No snapshot data for request ${requestId}`);
     return;
   }
-  const data = snapshot.data();
+  // const data = snapshot.data();
 
 /*
   const customerEmail = data.customer?.email;

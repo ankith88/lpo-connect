@@ -18,6 +18,7 @@ import Reports from './pages/Admin/Reports';
 import SupportCenter from './pages/Help/SupportCenter';
 import Profile from './pages/Auth/Profile';
 import ResetPassword from './pages/Auth/ResetPassword';
+import UserManagement from './pages/Admin/UserManagement';
 
 import OnboardingTour from './components/OnboardingTour';
 
@@ -26,6 +27,16 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/signin" />;
+  
+  return <>{children}</>;
+};
+
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isAdmin, loading } = useLpo();
+  
+  if (loading) return <LoadingScreen />;
+  if (!user) return <Navigate to="/signin" />;
+  if (!isAdmin) return <Navigate to="/dashboard" />;
   
   return <>{children}</>;
 };
@@ -135,6 +146,14 @@ const App: React.FC = () => {
                 <Profile />
               </AppLayout>
             </PrivateRoute>
+          } />
+
+          <Route path="/admin/users" element={
+            <AdminRoute>
+              <AppLayout>
+                <UserManagement />
+              </AppLayout>
+            </AdminRoute>
           } />
 
           <Route path="/" element={<Navigate to="/dashboard" />} />

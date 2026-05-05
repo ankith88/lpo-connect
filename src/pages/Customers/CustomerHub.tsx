@@ -10,7 +10,8 @@ import {
   Mail,
   CreditCard,
   Rocket,
-  User
+  User,
+  Building2
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
@@ -18,7 +19,7 @@ import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 
 const CustomerHub: React.FC = () => {
-  const { lpo } = useLpo();
+  const { lpo, isAdmin, allLpos, selectedLpoId, setSelectedLpoId } = useLpo();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -27,78 +28,88 @@ const CustomerHub: React.FC = () => {
   const [jobTypeFilter, setJobTypeFilter] = useState('all');
 
   useEffect(() => {
-    if (lpo) {
-      const fetchCustomers = async () => {
-        try {
-          // 1. Fetch Customers
+    const fetchCustomers = async () => {
+      try {
+        setLoading(true);
+        let allCustomers: any[] = [];
+        let allRequests: any[] = [];
+
+        const lposToFetch = selectedLpoId === 'all' ? allLpos : allLpos.filter(l => l.id === selectedLpoId);
+
+        if (lposToFetch.length === 0 && lpo) {
+          lposToFetch.push(lpo);
+        }
+
+        // Fetch customers from all relevant LPOs
+        await Promise.all(lposToFetch.map(async (targetLpo) => {
           const q = query(
-            collection(db, `lpo/${lpo.id}/customers`),
+            collection(db, `lpo/${targetLpo.id}/customers`),
             orderBy('companyName', 'asc')
           );
           const snapshot = await getDocs(q);
-          const customersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+          const customersData = snapshot.docs.map(doc => ({ 
+            ...doc.data(), 
+            id: doc.id, 
+            lpo_id: targetLpo.id,
+            lpoName: targetLpo.name 
+          }));
+          allCustomers = [...allCustomers, ...customersData];
+        }));
 
-          // 2. Fetch Requests for this LPO to calculate stats
-          const requestsQ = query(
-            collection(db, 'requests'),
-            where('lpo_id', '==', lpo.id.toString())
-          );
-          const requestsSnap = await getDocs(requestsQ);
-          const requests = requestsSnap.docs.map(doc => doc.data());
-
-          // 3. Aggregate Stats
-          const statsMap: Record<string, { totalJobs: number, lastJobDate: string | null }> = {};
-          
-          requests.forEach(req => {
-            const custId = req.netsuiteCustomerId?.toString() || req.customer?.netsuiteId?.toString();
-            const company = req.customer?.company;
-            
-            // Link requests to customers by ID or Company Name
-            const key = custId || company;
-            if (!key) return;
-
-            if (!statsMap[key]) {
-              statsMap[key] = { totalJobs: 0, lastJobDate: null };
-            }
-            
-            statsMap[key].totalJobs += 1;
-            
-            if (req.date) {
-              if (!statsMap[key].lastJobDate || req.date > statsMap[key].lastJobDate) {
-                statsMap[key].lastJobDate = req.date;
-              }
-            }
-          });
-
-          // 4. Merge stats into customers
-          const enrichedCustomers = customersData.map((c: any) => {
-            const custId = (c.companyId || c.customerInternalId || '').toString();
-            const company = c.companyName || c.company_name || '';
-            
-            // Match by ID first, then by company name
-            const stats = (custId && statsMap[custId]) ? statsMap[custId] : (company ? statsMap[company] : null);
-            
-            return {
-              ...c,
-              totalJobs: stats?.totalJobs || 0,
-              lastJobDate: stats?.lastJobDate || c.lastJobDate || null
-            };
-          });
-
-          setCustomers(enrichedCustomers);
-        } catch (error) {
-          console.error("Error fetching customers/stats:", error);
-          // Fallback if index isn't ready
-          const q = query(collection(db, `lpo/${lpo.id}/customers`));
-          const snapshot = await getDocs(q);
-          setCustomers(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
-        } finally {
-          setLoading(false);
+        // Fetch Requests to calculate stats
+        let reqBaseQ = collection(db, 'requests');
+        let reqConstraints: any[] = [];
+        if (selectedLpoId !== 'all') {
+          reqConstraints.push(where('lpo_id', '==', selectedLpoId));
         }
-      };
+        const requestsSnap = await getDocs(query(reqBaseQ, ...reqConstraints));
+        allRequests = requestsSnap.docs.map(doc => doc.data());
+
+        // Aggregate Stats
+        const statsMap: Record<string, { totalJobs: number, lastJobDate: string | null }> = {};
+        
+        allRequests.forEach(req => {
+          const custId = req.netsuiteCustomerId?.toString() || req.customer?.netsuiteId?.toString();
+          const company = req.customer?.company;
+          const key = custId || company;
+          if (!key) return;
+
+          if (!statsMap[key]) {
+            statsMap[key] = { totalJobs: 0, lastJobDate: null };
+          }
+          statsMap[key].totalJobs += 1;
+          if (req.date) {
+            if (!statsMap[key].lastJobDate || req.date > statsMap[key].lastJobDate) {
+              statsMap[key].lastJobDate = req.date;
+            }
+          }
+        });
+
+        // Merge stats
+        const enrichedCustomers = allCustomers.map((c: any) => {
+          const custId = (c.companyId || c.customerInternalId || '').toString();
+          const company = c.companyName || c.company_name || '';
+          const stats = (custId && statsMap[custId]) ? statsMap[custId] : (company ? statsMap[company] : null);
+          
+          return {
+            ...c,
+            totalJobs: stats?.totalJobs || 0,
+            lastJobDate: stats?.lastJobDate || c.lastJobDate || null
+          };
+        });
+
+        setCustomers(enrichedCustomers);
+      } catch (error) {
+        console.error("Error fetching customers/stats:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (lpo || isAdmin) {
       fetchCustomers();
     }
-  }, [lpo]);
+  }, [lpo, isAdmin, selectedLpoId, allLpos]);
 
   const filteredCustomers = customers.filter(c => {
     // 1. Search Filter
@@ -149,6 +160,24 @@ const CustomerHub: React.FC = () => {
               </div>
            </div>
            <div className="header-right">
+              {isAdmin && (
+                <div className="admin-lpo-selector glass" style={{ marginRight: '16px' }}>
+                  <div className="selector-label">
+                    <Building2 size={14} />
+                    <span>LPO:</span>
+                  </div>
+                  <select 
+                    value={selectedLpoId} 
+                    onChange={(e) => setSelectedLpoId(e.target.value)}
+                    className="lpo-select-dropdown"
+                  >
+                    <option value="all">All Accounts</option>
+                    {allLpos.map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <button className="btn-premium-action" onClick={() => window.location.href = '/new-job'}>
                 <Plus size={20} />
                 <span>NEW JOB FOR CUSTOMER</span>
@@ -215,6 +244,12 @@ const CustomerHub: React.FC = () => {
                           </div>
                           <div className="main-info">
                              <h3>{customer.companyName || customer.company_name}</h3>
+                             {isAdmin && customer.lpoName && (
+                               <div className="sub-info lpo-tag">
+                                  <Building2 size={12} />
+                                  <span>LPO: {customer.lpoName}</span>
+                               </div>
+                             )}
                              {customer.franchiseeText && (
                                <div className="sub-info franchisee-tag">
                                   <Users size={12} />
@@ -301,6 +336,38 @@ const CustomerHub: React.FC = () => {
         .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }
         .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); }
+
+        .admin-lpo-selector {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .selector-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--ink-soft);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .lpo-select-dropdown {
+          background: transparent;
+          border: none;
+          font-weight: 700;
+          color: var(--ink);
+          font-size: 0.9rem;
+          cursor: pointer;
+          outline: none;
+          padding-right: 20px;
+        }
+
+        .lpo-tag { color: var(--gold); background: rgba(234, 240, 68, 0.1); padding: 2px 8px; border-radius: 6px; width: fit-content; margin-bottom: 4px; }
 
         .content-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; }
 

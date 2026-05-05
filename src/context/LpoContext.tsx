@@ -18,7 +18,7 @@ interface UserMetadata {
   uid: string;
   email: string;
   mobile?: string;
-  role: string;
+  role: string; // 'admin' or 'operator'
   lpo_id: string;
   hasCompletedTour?: boolean;
 }
@@ -33,7 +33,13 @@ interface LpoContextType {
   hasCompletedTour: boolean;
   completeTour: () => Promise<void>;
   updateUserData: (data: Partial<UserMetadata>) => Promise<void>;
+  isAdmin: boolean;
+  selectedLpoId: string; // Used by admins to filter, defaults to own lpo_id or 'all'
+  setSelectedLpoId: (id: string) => void;
+  allLpos: LpoMetadata[];
 }
+
+const SUPER_ADMIN_ID = 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
 
 const LpoContext = createContext<LpoContextType>({
   user: null,
@@ -45,6 +51,10 @@ const LpoContext = createContext<LpoContextType>({
   hasCompletedTour: true,
   completeTour: async () => {},
   updateUserData: async () => {},
+  isAdmin: false,
+  selectedLpoId: 'all',
+  setSelectedLpoId: () => {},
+  allLpos: [],
 });
 
 export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -54,6 +64,10 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loading, setLoading] = useState(true);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
   const [hasCompletedTour, setHasCompletedTour] = useState(true);
+  const [selectedLpoId, setSelectedLpoId] = useState<string>('all');
+  const [allLpos, setAllLpos] = useState<LpoMetadata[]>([]);
+
+  const isAdmin = userData?.role === 'admin' || userData?.uid === SUPER_ADMIN_ID;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -74,19 +88,42 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setUserData({ ...data, uid: user.uid });
             const lpoId = data.lpo_id;
             setHasCompletedTour(data.hasCompletedTour || false);
-
-            const lpoDoc = await getDoc(doc(db, 'lpo', lpoId));
-            if (lpoDoc.exists()) {
-              setLpo({ id: lpoId, ...lpoDoc.data() } as LpoMetadata);
-              
-              // Request and save FCM token for operator
-              requestNotificationPermission().then(token => {
-                if (token) {
-                  saveTokenToFirestore(token, 'operator', user.uid);
-                }
-              });
+            
+            // Set initial filter to user's LPO if they are not an admin
+            if (data.role !== 'admin' && user.uid !== SUPER_ADMIN_ID) {
+              setSelectedLpoId(lpoId);
             }
+
+            if (lpoId) {
+              const lpoDoc = await getDoc(doc(db, 'lpo', lpoId));
+              if (lpoDoc.exists()) {
+                setLpo({ id: lpoId, ...lpoDoc.data() } as LpoMetadata);
+                
+                // Request and save FCM token for operator
+                requestNotificationPermission().then(token => {
+                  if (token) {
+                    saveTokenToFirestore(token, 'operator', user.uid);
+                  }
+                });
+              }
+            }
+          } else if (user.uid === SUPER_ADMIN_ID) {
+            // Edge case: Super admin ID logged in but no Firestore doc yet
+            setUserData({ 
+              uid: user.uid, 
+              email: user.email || '', 
+              role: 'admin', 
+              lpo_id: '' 
+            });
           }
+
+          // If admin, fetch all LPOs for the filter list
+          if (user.uid === SUPER_ADMIN_ID || userDoc.data()?.role === 'admin') {
+            const { getDocs, collection } = await import('firebase/firestore');
+            const lposSnapshot = await getDocs(collection(db, 'lpo'));
+            setAllLpos(lposSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LpoMetadata)));
+          }
+
         } catch (error) {
           console.error("Error fetching LPO metadata:", error);
         }
@@ -94,6 +131,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setUserData(null);
         setLpo(null);
         setHasCompletedTour(true);
+        setAllLpos([]);
       }
       setLoading(false);
     });
@@ -137,7 +175,11 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsSidebarPinned, 
       hasCompletedTour, 
       completeTour,
-      updateUserData
+      updateUserData,
+      isAdmin,
+      selectedLpoId,
+      setSelectedLpoId,
+      allLpos
     }}>
       {children}
     </LpoContext.Provider>

@@ -24,7 +24,7 @@ import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 
 const AwaitingTCPage: React.FC = () => {
-  const { lpo } = useLpo();
+  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -44,24 +44,32 @@ const AwaitingTCPage: React.FC = () => {
   };
 
   useEffect(() => {
-    if (lpo) {
-      const fetchData = async () => {
-        setLoading(true);
-        try {
-          const reqQ = query(collection(db, 'requests'), where('lpo_id', '==', lpo.id));
-          const reqSnapshot = await getDocs(reqQ);
-          const allReqs = reqSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
-          // Only show awaiting-activation
-          setRequests(allReqs.filter((r: any) => r.status === 'awaiting-activation'));
-        } catch (error) {
-          console.error("Error fetching data:", error);
-        } finally {
-          setLoading(false);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        let reqBaseQ = collection(db, 'requests');
+        let constraints: any[] = [];
+
+        if (selectedLpoId !== 'all') {
+          constraints.push(where('lpo_id', '==', selectedLpoId));
         }
-      };
+
+        const reqQ = query(reqBaseQ, ...constraints);
+        const reqSnapshot = await getDocs(reqQ);
+        const allReqs = reqSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as any));
+        // Only show awaiting-activation
+        setRequests(allReqs.filter((r: any) => r.status === 'awaiting-activation'));
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (lpo || isAdmin) {
       fetchData();
     }
-  }, [lpo]);
+  }, [lpo, isAdmin, selectedLpoId]);
 
   const filteredRequests = requests.filter(j => {
     const matchesSearch = j.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -151,6 +159,24 @@ const AwaitingTCPage: React.FC = () => {
         <div className="dashboard-grid">
             {/* Filter Bar */}
             <div className="glass-card filter-bar">
+              {isAdmin && (
+                <div className="admin-lpo-selector glass" style={{ marginRight: '12px' }}>
+                  <div className="selector-label">
+                    <MapPin size={14} />
+                    <span>LPO:</span>
+                  </div>
+                  <select 
+                    value={selectedLpoId} 
+                    onChange={(e) => setSelectedLpoId(e.target.value)}
+                    className="lpo-select-dropdown"
+                  >
+                    <option value="all">All Accounts</option>
+                    {allLpos.map(l => (
+                      <option key={l.id} value={l.id}>{l.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="search-pill">
                 <Search size={18} />
                 <input 
@@ -189,8 +215,15 @@ const AwaitingTCPage: React.FC = () => {
                            </div>
                            <div className="timeline-content-card glass-card">
                                <div className="card-header" onClick={() => toggleExpand(job.id)} style={{ cursor: 'pointer' }}>
-                                  <div className="customer-block">
-                                     <h3 className="company-name">{job.customer.company}</h3>
+                                   <div className="customer-block">
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <h3 className="company-name">{job.customer.company}</h3>
+                                        {isAdmin && (
+                                          <span className="lpo-badge-inline">
+                                            {allLpos.find(l => l.id === job.lpo_id)?.name || 'Unknown LPO'}
+                                          </span>
+                                        )}
+                                      </div>
                                      <div className="location-info">
                                         <MapPin size={12} />
                                         <span>{job.customer.suburb}, {job.customer.state}</span>
@@ -325,6 +358,36 @@ const AwaitingTCPage: React.FC = () => {
         .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
         .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
+        .admin-lpo-selector {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .selector-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--ink-soft);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .lpo-select-dropdown {
+          background: transparent;
+          border: none;
+          font-weight: 700;
+          color: var(--ink);
+          font-size: 0.9rem;
+          cursor: pointer;
+          outline: none;
+          padding-right: 20px;
+        }
+
         .filter-bar {
           display: flex;
           justify-content: space-between;
@@ -361,6 +424,18 @@ const AwaitingTCPage: React.FC = () => {
         .timeline-rail {
           position: absolute; left: 24px; top: 0; bottom: 0; width: 4px;
           background: var(--cream-warm); border-radius: 4px;
+        }
+
+        .lpo-badge-inline {
+          font-family: var(--font-ui);
+          font-size: 0.6rem;
+          font-weight: 700;
+          color: var(--gold);
+          background: rgba(234, 240, 68, 0.1);
+          padding: 2px 8px;
+          border-radius: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
 
         .timeline-item { position: relative; margin-bottom: 24px; display: flex; align-items: center; }

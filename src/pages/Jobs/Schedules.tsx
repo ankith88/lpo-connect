@@ -25,7 +25,7 @@ import { useLpo } from '../../context/LpoContext';
 import { getNextOccurrences, parseLocalDate } from '../../utils/scheduling';
 
 const Schedules: React.FC = () => {
-  const { lpo } = useLpo();
+  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
   const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,33 +38,35 @@ const Schedules: React.FC = () => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
-    if (lpo) {
-      const fetchSchedules = async () => {
-        setLoading(true);
-        try {
-          const q = query(
-            collection(db, 'scheduled_jobs'), 
-            where('lpo_id', '==', lpo.id),
-            orderBy('createdAt', 'desc')
-          );
-          const snapshot = await getDocs(q);
-          setSchedules(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
-        } catch (error) {
-          console.error("Error fetching schedules:", error);
-          // Fallback if index isn't ready
-          const q = query(
-            collection(db, 'scheduled_jobs'), 
-            where('lpo_id', '==', lpo.id)
-          );
-          const snapshot = await getDocs(q);
-          setSchedules(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })));
-        } finally {
-          setLoading(false);
+    const fetchSchedules = async () => {
+      setLoading(true);
+      try {
+        let baseQ = collection(db, 'scheduled_jobs');
+        let constraints: any[] = [orderBy('createdAt', 'desc')];
+
+        if (selectedLpoId !== 'all') {
+          constraints.unshift(where('lpo_id', '==', selectedLpoId));
         }
-      };
+
+        const q = query(baseQ, ...constraints);
+        const snapshot = await getDocs(q);
+        setSchedules(snapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
+      } catch (error) {
+        console.error("Error fetching schedules:", error);
+        // Fallback for missing indexes
+        let baseQ = collection(db, 'scheduled_jobs');
+        const q = selectedLpoId !== 'all' ? query(baseQ, where('lpo_id', '==', selectedLpoId)) : baseQ;
+        const snapshot = await getDocs(q as any);
+        setSchedules(snapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (lpo || isAdmin) {
       fetchSchedules();
     }
-  }, [lpo]);
+  }, [lpo, isAdmin, selectedLpoId]);
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -223,6 +225,24 @@ const Schedules: React.FC = () => {
 
         <div className="schedules-view-layout">
             <div className="glass-card filter-bar">
+               {isAdmin && (
+                 <div className="admin-lpo-selector glass">
+                   <div className="selector-label">
+                     <MapPin size={14} />
+                     <span>LPO:</span>
+                   </div>
+                   <select 
+                     value={selectedLpoId} 
+                     onChange={(e) => setSelectedLpoId(e.target.value)}
+                     className="lpo-select-dropdown"
+                   >
+                     <option value="all">All Accounts</option>
+                     {allLpos.map(l => (
+                       <option key={l.id} value={l.id}>{l.name}</option>
+                     ))}
+                   </select>
+                 </div>
+               )}
                <div className="search-pill">
                  <Plus size={18} style={{ transform: 'rotate(45deg)', color: '#8fa6a0' }} />
                  <input 
@@ -315,7 +335,14 @@ const Schedules: React.FC = () => {
                      <div className="timeline-content-card glass-card">
                         <div className="card-header" onClick={() => toggleExpand(schedule.id)} style={{ cursor: 'pointer' }}>
                            <div className="customer-block">
-                              <h3 className="company-name">{schedule.customer.company}</h3>
+                               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                 <h3 className="company-name">{schedule.customer.company}</h3>
+                                 {isAdmin && (
+                                   <span className="lpo-badge-inline">
+                                     {allLpos.find(l => l.id === schedule.lpo_id)?.name || 'Unknown LPO'}
+                                   </span>
+                                 )}
+                               </div>
                               <div className="location-info">
                                  <MapPin size={12} />
                                  <span>{schedule.customer.suburb}, {schedule.customer.state}</span>
@@ -500,6 +527,48 @@ const Schedules: React.FC = () => {
         .header-icon { width: 44px; height: 44px; color: var(--ink); }
         .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
         .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
+
+        .admin-lpo-selector {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .selector-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--ink-soft);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .lpo-select-dropdown {
+          background: transparent;
+          border: none;
+          font-weight: 700;
+          color: var(--ink);
+          font-size: 0.9rem;
+          cursor: pointer;
+          outline: none;
+          padding-right: 20px;
+        }
+
+        .lpo-badge-inline {
+          font-family: var(--font-ui);
+          font-size: 0.6rem;
+          font-weight: 700;
+          color: var(--gold);
+          background: rgba(234, 240, 68, 0.1);
+          padding: 2px 8px;
+          border-radius: 6px;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
 
         .btn-premium-action {
           background: var(--ink);

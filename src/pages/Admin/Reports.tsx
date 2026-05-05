@@ -9,14 +9,15 @@ import {
   PieChart,
   Activity,
   Award,
-  Map
+  Map,
+  MapPin
 } from 'lucide-react';
 import { collection, query, getDocs, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 
 const Reports: React.FC = () => {
-  const { lpo } = useLpo();
+  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -40,94 +41,111 @@ const Reports: React.FC = () => {
   });
 
   useEffect(() => {
-    if (lpo) {
-      const fetchStats = async () => {
-        try {
-          const jobsQ = query(collection(db, 'jobs'), where('lpo_id', '==', lpo.id));
-          const snapshot = await getDocs(jobsQ);
-          
-          let completed = 0;
-          let revenue = 0;
-          let forecast = 0;
-          const statusCount = { scheduled: 0, completed: 0, cancelled: 0 };
-          const customerRevenue: Record<string, number> = {};
-          const suburbs: Record<string, number> = {};
-          const split = { 'lpo-to-site': 0, 'site-to-lpo': 0, 'round-trip': 0 };
-          
-          const today = new Date();
-          const nextWeek = new Date();
-          nextWeek.setDate(today.getDate() + 7);
+    const fetchStats = async () => {
+      try {
+        setLoading(true);
+        let jobsBaseQ = collection(db, 'jobs');
+        let jobsConstraints: any[] = [];
 
-          snapshot.docs.forEach(doc => {
-            const data = doc.data();
-            const rate = parseFloat(data.serviceRate || '0');
-            const status = data.status as keyof typeof statusCount;
-            const customerName = data.customer?.company || 'Unknown';
-            const suburb = data.customer?.suburb || 'N/A';
-            
-            // Status counts
-            if (statusCount[status] !== undefined) statusCount[status]++;
-            if (status === 'completed') {
-              completed++;
-              revenue += rate;
-              
-              // Top customers revenue
-              customerRevenue[customerName] = (customerRevenue[customerName] || 0) + rate;
-            }
-            
-            // Forecast logic (scheduled jobs in the next 7 days)
-            if (status === 'scheduled' && data.date) {
-              const jobDate = new Date(data.date);
-              if (jobDate >= today && jobDate <= nextWeek) {
-                forecast += rate;
-              }
-            }
-
-            // Geographic data
-            suburbs[suburb] = (suburbs[suburb] || 0) + 1;
-            
-            // Service split
-            const type = data.service as keyof typeof split;
-            if (split[type] !== undefined) split[type]++;
-          });
-
-          // Process top customers
-          const topCustomers = Object.entries(customerRevenue)
-            .map(([name, rev]) => ({ name, revenue: rev }))
-            .sort((a, b) => b.revenue - a.revenue)
-            .slice(0, 5);
-
-          // Process geographic data
-          const geographicData = Object.entries(suburbs)
-            .map(([suburb, count]) => ({ suburb, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5);
-
-          // Fetch customers count
-          const custQ = query(collection(db, `lpo/${lpo.id}/customers`));
-          const custSnapshot = await getDocs(custQ);
-
-          setStats({
-            totalJobs: snapshot.size,
-            completedJobs: completed,
-            activeCustomers: custSnapshot.size,
-            estimatedRevenue: revenue,
-            revenueForecast: forecast,
-            averageJobValue: completed > 0 ? revenue / completed : 0,
-            statusBreakdown: statusCount,
-            topCustomers,
-            geographicData,
-            serviceSplit: split
-          });
-        } catch (err) {
-          console.error("Error fetching report stats:", err);
-        } finally {
-          setLoading(false);
+        if (selectedLpoId !== 'all') {
+          jobsConstraints.push(where('lpo_id', '==', selectedLpoId));
         }
-      };
+
+        const jobsQ = query(jobsBaseQ, ...jobsConstraints);
+        const snapshot = await getDocs(jobsQ);
+        
+        let completed = 0;
+        let revenue = 0;
+        let forecast = 0;
+        const statusCount = { scheduled: 0, completed: 0, cancelled: 0 };
+        const customerRevenue: Record<string, number> = {};
+        const suburbs: Record<string, number> = {};
+        const split = { 'lpo-to-site': 0, 'site-to-lpo': 0, 'round-trip': 0 };
+        
+        const today = new Date();
+        const nextWeek = new Date();
+        nextWeek.setDate(today.getDate() + 7);
+
+        snapshot.docs.forEach(doc => {
+          const data = doc.data();
+          const rate = parseFloat(data.serviceRate || '0');
+          const status = data.status as keyof typeof statusCount;
+          const customerName = data.customer?.company || 'Unknown';
+          const suburb = data.customer?.suburb || 'N/A';
+          
+          // Status counts
+          if (statusCount[status] !== undefined) statusCount[status]++;
+          if (status === 'completed') {
+            completed++;
+            revenue += rate;
+            
+            // Top customers revenue
+            customerRevenue[customerName] = (customerRevenue[customerName] || 0) + rate;
+          }
+          
+          // Forecast logic (scheduled jobs in the next 7 days)
+          if (status === 'scheduled' && data.date) {
+            const jobDate = new Date(data.date);
+            if (jobDate >= today && jobDate <= nextWeek) {
+              forecast += rate;
+            }
+          }
+
+          // Geographic data
+          suburbs[suburb] = (suburbs[suburb] || 0) + 1;
+          
+          // Service split
+          const type = data.service as keyof typeof split;
+          if (split[type] !== undefined) split[type]++;
+        });
+
+        // Process top customers
+        const topCustomers = Object.entries(customerRevenue)
+          .map(([name, rev]) => ({ name, revenue: rev }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 5);
+
+        // Process geographic data
+        const geographicData = Object.entries(suburbs)
+          .map(([suburb, count]) => ({ suburb, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        // Fetch customers count
+        let totalCustomers = 0;
+        if (selectedLpoId !== 'all') {
+          const custQ = query(collection(db, `lpo/${selectedLpoId}/customers`));
+          const custSnapshot = await getDocs(custQ);
+          totalCustomers = custSnapshot.size;
+        } else {
+          // For all LPOs, this might be expensive, so we just use unique customers from jobs or a simplified approach
+          // For now, let's just count unique customers in the jobs we fetched
+          totalCustomers = Object.keys(customerRevenue).length;
+        }
+
+        setStats({
+          totalJobs: snapshot.size,
+          completedJobs: completed,
+          activeCustomers: totalCustomers,
+          estimatedRevenue: revenue,
+          revenueForecast: forecast,
+          averageJobValue: completed > 0 ? revenue / completed : 0,
+          statusBreakdown: statusCount,
+          topCustomers,
+          geographicData,
+          serviceSplit: split
+        });
+      } catch (err) {
+        console.error("Error fetching report stats:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (lpo || isAdmin) {
       fetchStats();
     }
-  }, [lpo]);
+  }, [lpo, isAdmin, selectedLpoId]);
 
   const serviceLabels: Record<string, string> = {
     'lpo-to-site': 'LPO ➔ Site',
@@ -154,6 +172,24 @@ const Reports: React.FC = () => {
             </div>
           </div>
           <div className="header-right">
+            {isAdmin && (
+              <div className="admin-lpo-selector glass" style={{ marginRight: '12px' }}>
+                <div className="selector-label">
+                  <MapPin size={14} />
+                  <span>LPO:</span>
+                </div>
+                <select 
+                  value={selectedLpoId} 
+                  onChange={(e) => setSelectedLpoId(e.target.value)}
+                  className="lpo-select-dropdown"
+                >
+                  <option value="all">All Accounts</option>
+                  {allLpos.map(l => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="date-range-glass">
               <Calendar size={16} />
               <span>Last 30 Days</span>
@@ -355,6 +391,36 @@ const Reports: React.FC = () => {
         .blob { position: absolute; border-radius: 50%; width: 600px; height: 600px; background: var(--cream-warm); }
         .blob-1 { top: -100px; right: -100px; }
         .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); }
+
+        .admin-lpo-selector {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          background: rgba(255, 255, 255, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        .selector-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          color: var(--ink-soft);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .lpo-select-dropdown {
+          background: transparent;
+          border: none;
+          font-weight: 700;
+          color: var(--ink);
+          font-size: 0.9rem;
+          cursor: pointer;
+          outline: none;
+          padding-right: 20px;
+        }
 
         .content-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; }
 

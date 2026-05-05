@@ -18,7 +18,7 @@ import { auth } from '../firebase/config';
 import { useLpo } from '../context/LpoContext';
 
 const Sidebar: React.FC = () => {
-  const { isSidebarPinned, setIsSidebarPinned, lpo } = useLpo();
+  const { isSidebarPinned, setIsSidebarPinned, lpo, isAdmin, userData } = useLpo();
   const [isHovered, setIsHovered] = useState(false);
 
   // The sidebar is visually expanded if it's either pinned OR being hovered over
@@ -33,6 +33,10 @@ const Sidebar: React.FC = () => {
     { name: 'Operational Insights', icon: BarChart3, path: '/reports' },
     { name: 'Service Area', icon: MapPin, path: '/service-area' },
     { name: 'My Profile', icon: UserCircle, path: '/profile' },
+  ];
+
+  const adminNavItems = [
+    { name: 'User Management', icon: Users, path: '/admin/users' },
   ];
 
   const handleLogout = async () => {
@@ -77,19 +81,36 @@ const Sidebar: React.FC = () => {
           <NavLink to="/profile" className="user-profile-glass profile-link">
             <div className="avatar-ring">
               <div className="avatar-placeholder">
-                {lpo?.name?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'CK'}
+                {userData?.role === 'admin' ? 'AD' : (lpo?.name?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'CK')}
               </div>
             </div>
             {isExpanded && (
               <div className="user-info">
-                <p className="user-name">Clarke Kent</p>
-                <p className="lpo-name">{lpo?.name || 'Rouse Hill LPO'}</p>
+                <p className="user-name">{userData?.email.split('@')[0] || 'Clarke Kent'}</p>
+                <p className="lpo-name">{userData?.role === 'admin' ? 'Head Office Admin' : (lpo?.name || 'Rouse Hill LPO')}</p>
               </div>
             )}
           </NavLink>
         </div>
         
         <nav className="sidebar-nav" id="tour-sidebar">
+          {isAdmin && (
+            <div className="nav-group">
+              {isExpanded && <p className="group-title">Head Office Admin</p>}
+              {adminNavItems.map((item) => (
+                <NavLink 
+                  key={item.path} 
+                  to={item.path}
+                  title={!isExpanded ? item.name : ''}
+                  className={({ isActive }) => `nav-item-glass ${isActive ? 'active' : ''}`}
+                >
+                  <item.icon size={20} className="nav-icon" />
+                  {isExpanded && <span>{item.name}</span>}
+                </NavLink>
+              ))}
+            </div>
+          )}
+
           <div className="nav-group">
             {isExpanded && <p className="group-title">Logistics Management</p>}
             {navItems.slice(0, 3).map((item) => (
