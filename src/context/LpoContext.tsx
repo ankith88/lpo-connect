@@ -67,7 +67,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedLpoId, setSelectedLpoId] = useState<string>('all');
   const [allLpos, setAllLpos] = useState<LpoMetadata[]>([]);
 
-  const isAdmin = userData?.role === 'admin' || userData?.uid === SUPER_ADMIN_ID;
+  const isAdmin = userData?.role === 'admin' || userData?.role === 'superadmin' || userData?.uid === SUPER_ADMIN_ID;
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -112,7 +112,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const adminData = { 
               uid: user.uid, 
               email: user.email || '', 
-              role: 'admin', 
+              role: 'superadmin', 
               lpo_id: '',
               hasCompletedTour: true
             };
@@ -124,7 +124,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           // If admin, fetch all LPOs for the filter list
-          if (user.uid === SUPER_ADMIN_ID || userDoc.data()?.role === 'admin') {
+          if (user.uid === SUPER_ADMIN_ID || userDoc.data()?.role === 'admin' || userDoc.data()?.role === 'superadmin') {
             const { getDocs, collection } = await import('firebase/firestore');
             const lposSnapshot = await getDocs(collection(db, 'lpo'));
             setAllLpos(lposSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LpoMetadata)));

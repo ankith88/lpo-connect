@@ -86,7 +86,7 @@ const UserManagement: React.FC = () => {
       await setDoc(userRef, {
         email: newUser.email,
         role: newUser.role,
-        lpo_id: newUser.role === 'admin' ? '' : newUser.lpo_id,
+        lpo_id: (newUser.role === 'admin' || newUser.role === 'superadmin') ? '' : newUser.lpo_id,
         createdAt: new Date()
       });
 
@@ -186,13 +186,13 @@ const UserManagement: React.FC = () => {
                     </td>
                     <td>
                       <div className={`role-tag ${u.role}`}>
-                        {u.role === 'admin' ? <Shield size={12} /> : <Users size={12} />}
-                        <span>{u.role.toUpperCase()}</span>
+                        {(u.role === 'admin' || u.role === 'superadmin') ? <Shield size={12} /> : <Users size={12} />}
+                        <span>{u.role === 'superadmin' ? 'SUPER ADMIN' : u.role.toUpperCase()}</span>
                       </div>
                     </td>
                     <td>
                       <div className="lpo-cell">
-                        {u.role === 'admin' ? (
+                        {(u.role === 'admin' || u.role === 'superadmin') ? (
                           <span className="global-access">Global Access</span>
                         ) : (
                           <>
@@ -278,7 +278,7 @@ const UserManagement: React.FC = () => {
               </div>
             </div>
 
-            {newUser.role === 'operator' && (
+            {(newUser.role === 'operator') && (
               <div className="form-section fade-in">
                 <label className="m-label">Assign to LPO</label>
                 <div className="input-wrapper-glass">
@@ -352,6 +352,7 @@ const UserManagement: React.FC = () => {
 
         .user-cell { display: flex; align-items: center; gap: 16px; }
         .user-avatar { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 800; color: white; background: var(--ink-soft); }
+        .user-avatar.superadmin { background: #1a1a1a; box-shadow: 0 0 15px rgba(0,0,0,0.2); }
         .user-avatar.admin { background: var(--ink); }
         .user-avatar.operator { background: var(--gold); }
         
@@ -360,6 +361,7 @@ const UserManagement: React.FC = () => {
         .user-id { font-size: 0.7rem; color: var(--ink-soft); opacity: 0.6; }
 
         .role-tag { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 8px; font-size: 0.7rem; font-weight: 800; }
+        .role-tag.superadmin { background: #000; color: #fff; }
         .role-tag.admin { background: #e8f0fe; color: #1a73e8; }
         .role-tag.operator { background: #fff4e5; color: #d97706; }
 
