@@ -19,6 +19,7 @@ import SupportCenter from './pages/Help/SupportCenter';
 import Profile from './pages/Auth/Profile';
 import ResetPassword from './pages/Auth/ResetPassword';
 import UserManagement from './pages/Admin/UserManagement';
+import AdminCommunications from './pages/Admin/AdminCommunications';
 
 import OnboardingTour from './components/OnboardingTour';
 
@@ -152,6 +153,14 @@ const App: React.FC = () => {
             <AdminRoute>
               <AppLayout>
                 <UserManagement />
+              </AppLayout>
+            </AdminRoute>
+          } />
+
+          <Route path="/admin/communications" element={
+            <AdminRoute>
+              <AppLayout>
+                <AdminCommunications />
               </AppLayout>
             </AdminRoute>
           } />

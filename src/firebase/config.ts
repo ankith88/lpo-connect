@@ -3,6 +3,8 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getMessaging } from 'firebase/messaging';
 
+import { getFunctions } from 'firebase/functions';
+
 // TODO: Replace with actual Firebase config from USER
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
@@ -20,6 +22,7 @@ export const googleMapsApiKey = "AIzaSyC3uWNpVJ7jFsGyWUKkzQGkDJGrW4yY-2o";
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, "lpoconnect");
+export const functions = getFunctions(app, 'australia-southeast1');
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 export default app;

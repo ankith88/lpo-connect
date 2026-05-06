@@ -5,6 +5,8 @@ import { onDocumentUpdated, onDocumentCreated } from "firebase-functions/v2/fire
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
 import * as nodemailer from "nodemailer";
+import { connect, ImapSimple } from "imap-simple";
+import { simpleParser } from "mailparser";
 
 // Initialize admin once
 if (admin.apps.length === 0) {
@@ -17,6 +19,74 @@ const getDB = () => getFirestore("lpoconnect");
 // Secrets
 const gmailAppPassword = defineSecret("GMAIL_APP_PASSWORD");
 const netsuiteApiKey = defineSecret("NETSUITE_API_KEY");
+const geminiApiKey = defineSecret("GEMINI_API_KEY"); // For AI summarization
+
+// Communication Helpers
+const logCommunication = async (data: {
+  from: string;
+  to: string | string[];
+  subject: string;
+  body: string;
+  type: 'sent' | 'received';
+  metadata: any;
+  threadId?: string;
+  timestamp?: Date;
+}) => {
+  const db = getDB();
+  const metadata = { ...(data.metadata || {}) };
+
+  // 1. Enrich LPO Name if missing
+  if (metadata.lpoId && !metadata.lpoName) {
+    try {
+      const lpoDoc = await db.collection("lpo").doc(metadata.lpoId).get();
+      if (lpoDoc.exists) {
+        metadata.lpoName = lpoDoc.data()?.name;
+      }
+    } catch (e) {
+      console.error("[Enrichment] LPO error:", e);
+    }
+  }
+
+  // 2. Enrich Customer Name (Company Name) if missing
+  if (metadata.lpoId && metadata.customerId && !metadata.companyName) {
+    try {
+      const cid = metadata.customerId;
+      const cidStr = cid.toString();
+      const cidNum = parseInt(cidStr);
+      
+      const custQuery = db.collection("lpo").doc(metadata.lpoId).collection("customers");
+      
+      // Try companyId
+      let custSnap = await custQuery.where("companyId", "in", [cidStr, cidNum]).limit(1).get();
+      
+      // Try customerInternalId fallback
+      if (custSnap.empty) {
+        custSnap = await custQuery.where("customerInternalId", "in", [cidStr, cidNum]).limit(1).get();
+      }
+
+      if (!custSnap.empty) {
+        const custData = custSnap.docs[0].data();
+        metadata.companyName = custData.companyName || custData.company_name;
+      }
+    } catch (e) {
+      console.error("[Enrichment] Customer error:", e);
+    }
+  }
+
+  await db.collection("communications").add({
+    ...data,
+    metadata,
+    timestamp: data.timestamp || admin.firestore.FieldValue.serverTimestamp(),
+    processedAt: admin.firestore.FieldValue.serverTimestamp(),
+    threadId: data.threadId || `thread_${Date.now()}`
+  });
+};
+
+const injectMetadataTag = (html: string, metadata: any) => {
+  if (!metadata) return html;
+  const tag = `\n<!-- LPO_CONNECT_METADATA: ${JSON.stringify(metadata)} -->`;
+  return html + tag;
+};
 
 // Logic: onJobRequestCreated (Email Automation)
 export const onJobRequestCreated = onDocumentCreated({
@@ -300,6 +370,116 @@ export const onCustomerActive = onDocumentUpdated({
   }
 });
 
+// Logic: onCustomerCancelled
+export const onCustomerCancelled = onDocumentUpdated({
+  document: "lpo/{lpoId}/customers/{customerId}",
+  database: "lpoconnect",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  const newData = event.data?.after.data();
+  const oldData = event.data?.before.data();
+  const { lpoId, customerId } = event.params;
+
+  if (!newData || !oldData) return;
+
+  if (newData.status === "cancelled" && oldData.status !== "cancelled") {
+    console.log(`[Customer Cancellation] Triggered for ${newData.companyName} (${customerId})`);
+
+    const db = getDB();
+    
+    // Get LPO Name
+    let lpoName = "Unknown LPO";
+    try {
+      const lpoDoc = await db.collection("lpo").doc(lpoId).get();
+      if (lpoDoc.exists) {
+        lpoName = lpoDoc.data()?.name || lpoName;
+      }
+    } catch (e) {
+      console.error("Error fetching LPO name:", e);
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+
+    const customerName = newData.companyName || newData.company_name || "Unknown Customer";
+    const netsuiteId = newData.companyId || newData.customerInternalId || newData.netsuiteId || "N/A";
+    const reason = newData.cancellationReason || "No reason provided";
+    const notes = newData.cancellationNotes || "No notes provided";
+
+    const mailOptions = {
+      from: '"LPO.PLUS Notifications" <bookings@lpo.plus>',
+      to: "mailplusit@mailplus.com.au",
+      subject: `CUSTOMER CANCELLED: ${customerName} (${lpoName})`,
+      html: `
+        <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+          <h2 style="color: #dc2626;">Customer Cancellation Notification</h2>
+          <p>The following customer has been cancelled in the LPO.PLUS system.</p>
+          
+          <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #e9ecef; margin: 20px 0;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; color: #666; width: 180px;"><strong>Customer Name:</strong></td>
+                <td>${customerName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;"><strong>NetSuite Internal ID:</strong></td>
+                <td>${netsuiteId}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;"><strong>LPO:</strong></td>
+                <td>${lpoName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;"><strong>Reason:</strong></td>
+                <td>${reason}</td>
+              </tr>
+            </table>
+          </div>
+
+          <div style="background: #fffbeb; padding: 20px; border-radius: 8px; border: 1px solid #fef3c7; margin: 20px 0;">
+            <p><strong>Cancellation Notes:</strong></p>
+            <p style="white-space: pre-wrap; font-style: italic;">${notes}</p>
+          </div>
+
+          <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+          <p style="font-size: 12px; color: #999;">
+            <strong>System Metadata:</strong><br>
+            LPO ID: ${lpoId}<br>
+            Customer ID: ${customerId}
+          </p>
+        </div>
+      `,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log(`[Email Success] Cancellation email sent for ${customerName}`);
+      
+      // Log to communications
+      await logCommunication({
+        from: "bookings@lpo.plus",
+        to: "mailplusit@mailplus.com.au",
+        subject: mailOptions.subject,
+        body: mailOptions.html,
+        type: 'sent',
+        metadata: {
+          lpoId,
+          customerId,
+          companyName: customerName,
+          type: 'cancellation_notification'
+        }
+      });
+    } catch (error) {
+      console.error(`[Email Error] Failed to send cancellation email:`, error);
+    }
+  }
+});
+
 // Logic: sendEmailFromNetSuite (NetSuite API)
 export const sendEmailFromNetSuite = onRequest({
   secrets: [gmailAppPassword, netsuiteApiKey],
@@ -314,14 +494,12 @@ export const sendEmailFromNetSuite = onRequest({
   }
 
   // 2. Parse and Validate Body
-  const { to, cc, subject, html } = req.body;
+  const { to, cc, subject, html, metadata } = req.body;
 
   if (!to || !subject || !html) {
     res.status(400).send({ success: false, message: "Missing required fields: to, subject, or html." });
     return;
   }
-
-  console.log(`NetSuite API: Sending email to ${to} with subject: ${subject}`);
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -331,17 +509,30 @@ export const sendEmailFromNetSuite = onRequest({
     },
   });
 
+  const taggedHtml = injectMetadataTag(html, metadata);
+
   const mailOptions = {
     from: '"LPO.PLUS" <bookings@lpo.plus>',
     to: Array.isArray(to) ? to.join(',') : to,
     cc: cc ? (Array.isArray(cc) ? cc.join(',') : cc) : undefined,
-    subject: subject,
-    html: html,
+    subject: metadata?.jobId ? `[Ref: ${metadata.jobId}] ${subject}` : subject,
+    html: taggedHtml,
   };
 
   try {
     const info = await transporter.sendMail(mailOptions);
     console.log("NetSuite Email sent:", info.messageId);
+
+    // Log to communications
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      body: taggedHtml,
+      type: 'sent',
+      metadata: metadata || {}
+    });
+
     res.status(200).send({ success: true, messageId: info.messageId });
   } catch (error: any) {
     console.error("Error sending NetSuite email:", error);
@@ -389,6 +580,8 @@ export const onChatMessageSent = onDocumentUpdated({
     const sender = lastMessage.sender;
     const text = lastMessage.text;
     const requestId = event.params.requestId;
+    const refId = requestId.slice(0, 8).toUpperCase();
+    const clickAction = `https://lpo.plus/request/${requestId}`;
 
     const messaging = admin.messaging();
     const db = getDB();
@@ -409,34 +602,67 @@ export const onChatMessageSent = onDocumentUpdated({
         }
       });
 
-      if (tokens.length > 0) {
-        const payload = {
-          notification: {
-            title: `New message from ${afterData.customer.company}`,
+      const uniqueTokens = [...new Set(tokens)].filter(t => !!t);
+      console.log(`[Notification] Found ${uniqueTokens.length} unique operator tokens for LPO: ${lpoId}`);
+
+      if (uniqueTokens.length > 0) {
+        const payload: admin.messaging.MulticastMessage = {
+          data: {
+            title: `[Ref: #${refId}] New message from ${afterData.customer.company}`,
             body: text,
-            clickAction: `https://mp-lpo-connect.web.app/request/${requestId}`
+            link: clickAction
           },
-          tokens: [...new Set(tokens)]
+          webpush: {
+            fcmOptions: {
+              link: clickAction
+            }
+          },
+          tokens: uniqueTokens
         };
 
         const response = await messaging.sendEachForMulticast(payload);
         console.log(`Successfully sent ${response.successCount} operator notifications.`);
+        
+        if (response.failureCount > 0) {
+          console.error(`Failed to send ${response.failureCount} operator notifications.`);
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              console.error(`Token Index ${idx} Error:`, resp.error);
+            }
+          });
+        }
       }
     } else if (sender === 'operator') {
-      const tokens = afterData.customerTokens || [];
+      const tokens = (afterData.customerTokens || []) as string[];
+      const uniqueTokens = [...new Set(tokens)].filter(t => !!t);
+      console.log(`[Notification] Found ${uniqueTokens.length} customer tokens for Request: ${requestId}`);
 
-      if (tokens.length > 0) {
-        const payload = {
-          notification: {
-            title: 'Message from MailPlus Operator',
+      if (uniqueTokens.length > 0) {
+        const payload: admin.messaging.MulticastMessage = {
+          data: {
+            title: `[Ref: #${refId}] Message from LPO`,
             body: text,
-            clickAction: `https://mp-lpo-connect.web.app/request/${requestId}`
+            link: clickAction
           },
-          tokens: [...new Set(tokens)] as string[]
+          webpush: {
+            fcmOptions: {
+              link: clickAction
+            }
+          },
+          tokens: uniqueTokens
         };
 
         const response = await messaging.sendEachForMulticast(payload);
         console.log(`Successfully sent ${response.successCount} customer notifications.`);
+        
+        if (response.failureCount > 0) {
+          console.error(`Failed to send ${response.failureCount} customer notifications.`);
+          response.responses.forEach((resp, idx) => {
+            if (!resp.success) {
+              console.error(`Token Index ${idx} Error:`, resp.error);
+            }
+          });
+        }
       }
     }
   }
@@ -642,7 +868,7 @@ export const sendSupportEmail = onCall({
       },
     });
 
-    const recipients = ["michael.mcdaid@mailplus.com.au", "kerry.oneill@mailplus.com.au"];
+    const recipients = ["michael.mcdaid@mailplus.com.au", "kerry.oneill@mailplus.com.au", "dispatcher@mailplus.com.au"];
     
     // Build metadata section
     let metadataHtml = "";
@@ -688,13 +914,1076 @@ export const sendSupportEmail = onCall({
 
     console.log("[Support Email] Sending via Nodemailer...");
     const info = await transporter.sendMail(mailOptions);
-    console.log(`[Support Email Success] Message ID: ${info.messageId}`);
+    console.log("Support Email sent:", info.messageId);
+
+    // Log to communications
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: recipients.join(","),
+      subject: mailOptions.subject,
+      body: mailOptions.html,
+      type: 'sent',
+      metadata: {
+        ...metadata,
+        jobId,
+        type: 'support_inquiry'
+      }
+    });
+
     return { success: true, messageId: info.messageId };
   } catch (error: any) {
-    console.error("[Support Email Error] Failed:", error);
-    if (error.message && error.message.includes("Invalid login")) {
-      throw new HttpsError("internal", "Email authentication failed. Please contact admin.");
+    console.error("Error sending support email:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// Logic: cancelJob
+export const cancelJob = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
+  console.log("[Cancel Job] Function triggered");
+  
+  if (!request.auth) {
+    console.warn("[Cancel Job] Unauthenticated request");
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const { jobId, reason, notes, metadata } = request.data;
+  console.log(`[Cancel Job] Data: jobId=${jobId}, reason=${reason}`);
+
+  if (!jobId || !reason) {
+    console.warn("[Cancel Job] Missing required fields");
+    throw new HttpsError("invalid-argument", "jobId and reason are required.");
+  }
+
+  const db = getDB();
+  
+  try {
+    // 1. Update Firestore
+    const jobRef = db.collection('jobs').doc(jobId);
+    const jobSnap = await jobRef.get();
+    
+    if (!jobSnap.exists) {
+      // Check scheduled_jobs if not in jobs
+      const schedRef = db.collection('scheduled_jobs').doc(jobId);
+      const schedSnap = await schedRef.get();
+      
+      if (!schedSnap.exists) {
+        throw new HttpsError("not-found", "Job not found in active jobs or schedules.");
+      }
+      
+      await schedRef.update({
+        status: 'cancelled',
+        cancellationReason: reason,
+        cancellationNotes: notes || "",
+        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancelledBy: request.auth.token.email
+      });
+    } else {
+      await jobRef.update({
+        status: 'cancelled',
+        cancellationReason: reason,
+        cancellationNotes: notes || "",
+        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancelledBy: request.auth.token.email
+      });
     }
-    throw new HttpsError("internal", error.message || "Failed to send email.");
+
+    // 2. Send Email
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+
+    const recipient = "dispatcher@mailplus.com.au";
+    const userEmail = request.auth.token.email || "Unknown User";
+    
+    const mailOptions = {
+      from: '"LPO.PLUS Bookings" <bookings@lpo.plus>',
+      to: recipient,
+      replyTo: "bookings@lpo.plus",
+      subject: `JOB CANCELLATION: [Ref: ${jobId}] ${metadata?.companyName || 'Job'}`,
+      html: `
+        <div style="font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+          <div style="background: #ff4757; color: white; padding: 20px; text-align: center;">
+            <h1 style="margin: 0; font-size: 24px;">Job Cancellation Notice</h1>
+          </div>
+          <div style="padding: 30px;">
+            <p>A job has been cancelled in the LPO.PLUS portal.</p>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr><td style="padding: 8px 0; color: #666; width: 140px;"><strong>Job Reference:</strong></td><td style="padding: 8px 0;">#${jobId}</td></tr>
+                ${metadata?.companyName ? `<tr><td style="padding: 8px 0; color: #666;"><strong>Customer:</strong></td><td style="padding: 8px 0;">${metadata.companyName}</td></tr>` : ""}
+                ${metadata?.serviceType ? `<tr><td style="padding: 8px 0; color: #666;"><strong>Service:</strong></td><td style="padding: 8px 0;">${metadata.serviceType}</td></tr>` : ""}
+                ${metadata?.date ? `<tr><td style="padding: 8px 0; color: #666;"><strong>Date:</strong></td><td style="padding: 8px 0;">${metadata.date}</td></tr>` : ""}
+                <tr><td style="padding: 8px 0; color: #666;"><strong>Cancelled By:</strong></td><td style="padding: 8px 0;">${userEmail}</td></tr>
+              </table>
+            </div>
+
+            <div style="margin-top: 30px;">
+              <h3 style="color: #ff4757; border-bottom: 2px solid #ff4757; padding-bottom: 8px; display: inline-block;">Cancellation Details</h3>
+              <p><strong>Reason:</strong> ${reason}</p>
+              ${notes ? `<p><strong>Notes:</strong></p><div style="background: #fffafa; padding: 15px; border-left: 4px solid #ff4757; font-style: italic;">${notes.replace(/\n/g, '<br>')}</div>` : ""}
+            </div>
+
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+            <p style="font-size: 14px; color: #666; text-align: center;">This is an automated notification from the LPO.PLUS portal.</p>
+          </div>
+        </div>
+      `,
+    };
+
+    const taggedHtml = injectMetadataTag(mailOptions.html, {
+      ...metadata,
+      jobId,
+      lpoId: metadata?.lpoId,
+      customerId: metadata?.customerId
+    });
+
+    await transporter.sendMail({
+      ...mailOptions,
+      html: taggedHtml
+    });
+
+    // 3. Log to communications
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: recipient,
+      subject: mailOptions.subject,
+      body: taggedHtml,
+      type: 'sent',
+      metadata: {
+        ...metadata,
+        jobId,
+        reason,
+        type: 'cancellation'
+      }
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error in cancelJob:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// Admin User Management Logic
+const SUPER_ADMIN_ID = "lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3";
+
+/**
+ * Validates if the calling user is a superadmin.
+ */
+const validateSuperAdmin = async (auth: any) => {
+  if (!auth) {
+    throw new HttpsError("unauthenticated", "Authentication required.");
+  }
+
+  if (auth.uid === SUPER_ADMIN_ID) return true;
+
+  const db = getDB();
+  const userDoc = await db.collection("users").doc(auth.uid).get();
+  const userData = userDoc.data();
+
+  if (userData?.role !== "superadmin") {
+    throw new HttpsError("permission-denied", "Only superadmins can perform this action.");
+  }
+
+  return true;
+};
+
+// Logic: adminCreateUser
+export const adminCreateUser = onCall(async (request) => {
+  await validateSuperAdmin(request.auth);
+
+  const { email, password, role, lpo_id } = request.data;
+
+  if (!email || !password || !role) {
+    throw new HttpsError("invalid-argument", "Missing required fields (email, password, role).");
+  }
+
+  try {
+    console.log(`[Admin] Creating user: ${email} with role: ${role}`);
+    
+    // 1. Create user in Firebase Auth
+    const userRecord = await admin.auth().createUser({
+      email,
+      password,
+      displayName: email.split('@')[0],
+    });
+
+    // 2. Create record in Firestore
+    const db = getDB();
+    await db.collection("users").doc(userRecord.uid).set({
+      uid: userRecord.uid,
+      email: email.toLowerCase(),
+      role: role,
+      lpo_id: (role === 'admin' || role === 'superadmin') ? '' : lpo_id,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      hasCompletedTour: false
+    });
+
+    return { success: true, uid: userRecord.uid };
+  } catch (error: any) {
+    console.error("[Admin Create User Error]:", error);
+    throw new HttpsError("internal", error.message || "Failed to create user.");
+  }
+});
+
+// Logic: adminResetPassword
+export const adminResetPassword = onCall(async (request) => {
+  await validateSuperAdmin(request.auth);
+
+  const { uid, newPassword } = request.data;
+
+  if (!uid || !newPassword) {
+    throw new HttpsError("invalid-argument", "Missing UID or new password.");
+  }
+
+  try {
+    console.log(`[Admin] Resetting password for user UID: ${uid}`);
+    
+    await admin.auth().updateUser(uid, {
+      password: newPassword
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Admin Reset Password Error]:", error);
+    throw new HttpsError("internal", error.message || "Failed to reset password.");
+  }
+});
+
+const processIncomingEmails = async () => {
+  try {
+    console.log("[IMAP Polling] Checking for new emails...");
+    const config = {
+      imap: {
+        user: 'bookings@lpo.plus',
+        password: gmailAppPassword.value(),
+        host: 'imap.gmail.com',
+        port: 993,
+        tls: true,
+        authTimeout: 5000,
+        tlsOptions: { rejectUnauthorized: false }
+      }
+    };
+
+    const connection: ImapSimple = await connect(config);
+    await connection.openBox('INBOX');
+
+    // Search for unread messages
+    const searchCriteria = ['UNSEEN'];
+    const fetchOptions = {
+      bodies: ['HEADER', 'TEXT', ''],
+      markSeen: true
+    };
+
+    const messages = await connection.search(searchCriteria, fetchOptions);
+    console.log(`[IMAP Polling] Found ${messages.length} unread messages.`);
+    
+    for (const msg of messages) {
+      const all = msg.parts.find(part => part.which === '');
+      const id = msg.attributes.uid;
+      
+      if (all) {
+        const parsed = await simpleParser(all.body);
+        const html = parsed.html || parsed.textAsHtml || parsed.text || "";
+        
+        // Extract Metadata from hidden tag if it exists
+        const metadataMatch = html.match(/<!-- LPO_CONNECT_METADATA: (.*?) -->/);
+        let metadata = {};
+        if (metadataMatch) {
+          try {
+            metadata = JSON.parse(metadataMatch[1]);
+          } catch (e) {
+            console.error("Failed to parse metadata", e);
+          }
+        }
+
+        // Log to Communications
+        await logCommunication({
+          from: parsed.from?.text || "Unknown",
+          to: 'bookings@lpo.plus',
+          subject: parsed.subject || "No Subject",
+          body: html,
+          type: 'received',
+          metadata: metadata,
+          threadId: parsed.messageId || `imap_${id}`
+        });
+
+        console.log(`[IMAP Polling] Ingested email: ${parsed.subject}`);
+      }
+    }
+
+    connection.end();
+  } catch (error) {
+    console.error("[IMAP Polling Error]:", error);
+  }
+};
+
+// Logic: pollGmailInbox (Scheduled every 2 minutes to stay within limits)
+export const pollGmailInbox = onSchedule({
+  schedule: "*/2 * * * *", // Every 2 minutes
+  timeZone: "Australia/Sydney",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  await processIncomingEmails();
+});
+
+// Logic: ingestGmailEmail (Legacy/Fallback for Push)
+export const ingestGmailEmail = onRequest({
+  secrets: [gmailAppPassword],
+  cors: true,
+}, async (req, res) => {
+  await processIncomingEmails();
+  res.status(200).send("OK");
+});
+
+// Logic: syncRecentEmails (Manual trigger to pull last 50 messages)
+export const syncRecentEmails = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
+  await validateSuperAdmin(request.auth);
+  
+  try {
+    const config = {
+      imap: {
+        user: 'bookings@lpo.plus',
+        password: gmailAppPassword.value(),
+        host: 'imap.gmail.com',
+        port: 993,
+        tls: true,
+        authTimeout: 10000,
+        tlsOptions: { rejectUnauthorized: false }
+      }
+    };
+
+    const connection: ImapSimple = await connect(config);
+    
+    // 1. Sync Inbox
+    await connection.openBox('INBOX');
+    const inboxMessages = await connection.search(['ALL'], { bodies: ['HEADER', 'TEXT', ''], struct: true });
+    const recentInbox = inboxMessages.slice(-50);
+    
+    for (const msg of recentInbox) {
+      const all = msg.parts.find(part => part.which === '');
+      if (all) {
+        const parsed = await simpleParser(all.body);
+        const html = parsed.html || parsed.textAsHtml || parsed.text || "";
+        const metadataMatch = html.match(/<!-- LPO_CONNECT_METADATA: (.*?) -->/);
+        let metadata = {};
+        if (metadataMatch) { try { metadata = JSON.parse(metadataMatch[1]); } catch (e) {} }
+
+        await logCommunication({
+          from: parsed.from?.text || "Unknown",
+          to: 'bookings@lpo.plus',
+          subject: parsed.subject || "No Subject",
+          body: html,
+          type: 'received',
+          metadata: metadata,
+          threadId: parsed.messageId || `imap_in_${msg.attributes.uid}`,
+          timestamp: parsed.date || new Date()
+        });
+      }
+    }
+
+    // 2. Sync Sent Mail
+    try {
+      await connection.openBox('[Gmail]/Sent Mail');
+      const sentMessages = await connection.search(['ALL'], { bodies: ['HEADER', 'TEXT', ''], struct: true });
+      const recentSent = sentMessages.slice(-50);
+      
+      for (const msg of recentSent) {
+        const all = msg.parts.find(part => part.which === '');
+        if (all) {
+          const parsed = await simpleParser(all.body);
+          const html = parsed.html || parsed.textAsHtml || parsed.text || "";
+          const metadataMatch = html.match(/<!-- LPO_CONNECT_METADATA: (.*?) -->/);
+          let metadata = {};
+          if (metadataMatch) { try { metadata = JSON.parse(metadataMatch[1]); } catch (e) {} }
+
+          await logCommunication({
+            from: 'bookings@lpo.plus',
+            to: Array.isArray(parsed.to) ? parsed.to.map(t => t.text).join(', ') : (parsed.to?.text || "Unknown"),
+            subject: parsed.subject || "No Subject",
+            body: html,
+            type: 'sent',
+            metadata: metadata,
+            threadId: parsed.messageId || `imap_sent_${msg.attributes.uid}`,
+            timestamp: parsed.date || new Date()
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Could not access Sent Mail folder (might be named differently)", e);
+    }
+
+    connection.end();
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Manual Sync Error]:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// Logic: respondToCommunication (Reply/Forward from Dashboard)
+export const respondToCommunication = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
+  
+  const { to, subject, body, metadata, threadId } = request.data;
+  if (!to || !subject || !body) {
+    throw new HttpsError("invalid-argument", "Missing required fields (to, subject, body).");
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: 'bookings@lpo.plus',
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  // Inject metadata for future tracking if it exists
+  let enrichedBody = body;
+  if (metadata) {
+    enrichedBody += `\n\n<!-- LPO_CONNECT_METADATA: ${JSON.stringify(metadata)} -->`;
+  }
+
+  const mailOptions = {
+    from: '"LPO Connect Support" <bookings@lpo.plus>',
+    to,
+    subject,
+    html: enrichedBody,
+    headers: {
+      'In-Reply-To': threadId,
+      'References': threadId
+    }
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[Dashboard Response] Email sent: ${info.messageId}`);
+
+    // Log the sent email
+    await logCommunication({
+      from: 'bookings@lpo.plus',
+      to,
+      subject,
+      body: enrichedBody,
+      type: 'sent',
+      metadata: metadata || {},
+      threadId: threadId || info.messageId
+    });
+
+    return { success: true, messageId: info.messageId };
+  } catch (error: any) {
+    console.error("[Dashboard Response Error]:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// Logic: summarizeCommunication (AI Summarization)
+export const summarizeCommunication = onCall({
+  secrets: [geminiApiKey],
+}, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
+  
+  const { communicationId, text } = request.data;
+  if (!text) throw new HttpsError("invalid-argument", "Text required.");
+
+  console.log(`[AI Summary] Summarizing communication: ${communicationId}`);
+
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey.value()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: `Please provide a concise, professional summary of the following logistics email. Highlight the Job ID, Customer Name, and any urgent action items: \n\n ${text}` }]
+        }]
+      })
+    });
+
+    const result = await response.json() as any;
+    const summary = result.candidates?.[0]?.content?.parts?.[0]?.text || "Failed to generate summary.";
+
+    if (communicationId) {
+      const db = getDB();
+      await db.collection("communications").doc(communicationId).update({ aiSummary: summary });
+    }
+
+    return { summary };
+  } catch (error: any) {
+    console.error("[AI Summary Error]:", error);
+    throw new HttpsError("internal", "Failed to generate summary.");
+  }
+});
+
+// Logic: setupGmailWatch (Utility - Now disabled as we use Polling)
+export const setupGmailWatch = onCall(async (request) => {
+  return { success: true, message: "Polling is active. No manual watch setup required." };
+});
+
+/**
+ * HELPER: Fetch Daily Job Data for Reports
+ */
+async function fetchDailyJobReportData(statuses: string[]) {
+  const db = getDB();
+  const sydneyTimeFormatter = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+  
+  const parts = sydneyTimeFormatter.formatToParts(new Date());
+  let year = '', month = '', day = '';
+  for (const part of parts) {
+    if (part.type === 'year') year = part.value;
+    if (part.type === 'month') month = part.value;
+    if (part.type === 'day') day = part.value;
+  }
+  const todayStr = `${year}-${month}-${day}`;
+  
+  console.log(`[Daily Report] Fetching jobs for ${todayStr} with statuses: ${statuses.join(', ')}`);
+  
+  const jobsSnapshot = await db.collection('jobs')
+    .where('date', '==', todayStr)
+    .where('status', 'in', statuses)
+    .get();
+    
+  const jobsData = [];
+  const lpoCache: {[key: string]: string} = {};
+  
+  for (const doc of jobsSnapshot.docs) {
+    const data = doc.data();
+    let lpoName = data.lpo_name;
+    
+    if (!lpoName && data.lpo_id) {
+      if (lpoCache[data.lpo_id]) {
+        lpoName = lpoCache[data.lpo_id];
+      } else {
+        const lpoDoc = await db.collection('lpo').doc(data.lpo_id).get();
+        lpoName = lpoDoc.data()?.name || "Unknown LPO";
+        lpoCache[data.lpo_id] = lpoName;
+      }
+    }
+    
+    jobsData.push({
+      id: doc.id,
+      lpoName: lpoName || "N/A",
+      customerName: data.customer?.company || data.customer?.companyName || "Unknown Customer",
+      franchisee: data.customer?.franchiseeText || "N/A",
+      status: data.status,
+      service: data.service,
+      lpoId: data.lpo_id
+    });
+  }
+  
+  return { todayStr, jobs: jobsData };
+}
+
+/**
+ * DAILY REPORT: 12:15 PM Sydney Time (Weekdays)
+ * Shows all jobs still in "Scheduled" status.
+ */
+export const sendScheduledJobsReport = onSchedule({
+  schedule: "15 12 * * 1-5",
+  timeZone: "Australia/Sydney",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  const { todayStr, jobs } = await fetchDailyJobReportData(['scheduled']);
+  
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "bookings@lpo.plus",
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  const reportDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const recipient = "dispatcher@mailplus.com.au";
+  
+  let jobRows = "";
+  jobs.forEach(job => {
+    jobRows += `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;">${job.lpoName}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>${job.customerName}</strong></td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;">${job.franchisee}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #666;">#${job.id.substring(0, 8).toUpperCase()}</td>
+      </tr>
+    `;
+  });
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        .container { font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333; }
+        .header { background-color: #095c7b; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 300; }
+        .header span { color: #EAF044; font-weight: bold; }
+        .alert-bar { background-color: #fffbeb; border-left: 4px solid #EAF044; padding: 20px; margin: 20px 0; }
+        .stats { display: flex; gap: 20px; margin-bottom: 30px; }
+        .stat-box { background: #f8f9fa; padding: 15px; border-radius: 8px; flex: 1; text-align: center; border: 1px solid #eee; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #095c7b; }
+        .stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th { text-align: left; background: #f4f7f8; padding: 12px; color: #095c7b; font-weight: bold; }
+        .footer { padding: 30px; text-align: center; font-size: 12px; color: #999; background: #f4f7f8; border-radius: 0 0 12px 12px; margin-top: 30px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>LPO<span>.PLUS</span> | Daily Manifest Alert</h1>
+        </div>
+        <div class="alert-bar">
+          <p style="margin: 0; color: #854d0e;"><strong>Action Required:</strong> The following jobs are still in <strong>Scheduled</strong> status for today. This means they have not yet been accepted by an operator.</p>
+        </div>
+        <div class="stats">
+          <div class="stat-box">
+            <div class="stat-value">${jobs.length}</div>
+            <div class="stat-label">Pending Acceptance</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value">${reportDate}</div>
+            <div class="stat-label">Report Date</div>
+          </div>
+        </div>
+        ${jobs.length > 0 ? `
+          <table>
+            <thead>
+              <tr>
+                <th>LPO</th>
+                <th>Customer</th>
+                <th>Franchisee</th>
+                <th>Job Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${jobRows}
+            </tbody>
+          </table>
+        ` : `<p style="text-align: center; padding: 40px; background: #fdfdfd; border: 1px dashed #ccc; border-radius: 8px;">All jobs for today have been accepted.</p>`}
+        <div style="text-align: center; margin-top: 30px;">
+          <a href="https://lpo.plus/dashboard" style="background: #095c7b; color: white; padding: 12px 25px; text-decoration: none; border-radius: 6px; font-weight: bold;">VIEW JOB MANAGER</a>
+        </div>
+        <div class="footer">
+          <p>This is an automated system notification from LPO.PLUS</p>
+          <p>&copy; ${new Date().getFullYear()} LPO.PLUS | Premium Logistics Solutions</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const metadata = {
+    type: 'daily_report_scheduled',
+    date: todayStr,
+    jobCount: jobs.length
+  };
+
+  const taggedHtml = injectMetadataTag(html, metadata);
+
+  const mailOptions = {
+    from: '"LPO.PLUS Manifest" <bookings@lpo.plus>',
+    to: recipient,
+    subject: `[Action Required] Daily Manifest: Scheduled Jobs (${todayStr})`,
+    html: taggedHtml,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`[Daily Report] Scheduled jobs report sent to ${recipient}`);
+    
+    // Log to communications
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: recipient,
+      subject: mailOptions.subject,
+      body: taggedHtml,
+      type: 'sent',
+      metadata: metadata
+    });
+  } catch (error) {
+    console.error("[Daily Report Error] Failed to send scheduled jobs report:", error);
+  }
+});
+
+/**
+ * DAILY REPORT: 4:30 PM Sydney Time (Weekdays)
+ * Shows all jobs in "Accepted" or "In-Progress" status.
+ */
+export const sendInProgressJobsReport = onSchedule({
+  schedule: "30 16 * * 1-5",
+  timeZone: "Australia/Sydney",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  const { todayStr, jobs } = await fetchDailyJobReportData(['accepted', 'in-progress']);
+  
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "bookings@lpo.plus",
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  const reportDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const recipient = "dispatcher@mailplus.com.au";
+  
+  let jobRows = "";
+  jobs.forEach(job => {
+    const statusPill = `<span style="background: ${job.status === 'in-progress' ? '#e0f2fe' : '#f0fdf4'}; color: ${job.status === 'in-progress' ? '#0369a1' : '#15803d'}; padding: 2px 8px; border-radius: 12px; font-size: 11px; text-transform: uppercase; font-weight: bold;">${job.status}</span>`;
+    jobRows += `
+      <tr>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;">${job.lpoName}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;"><strong>${job.customerName}</strong></td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee;">${statusPill}</td>
+        <td style="padding: 12px; border-bottom: 1px solid #eee; font-family: monospace; color: #666;">#${job.id.substring(0, 8).toUpperCase()}</td>
+      </tr>
+    `;
+  });
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        .container { font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333; }
+        .header { background-color: #1A3D33; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; }
+        .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 300; }
+        .header span { color: #EAF044; font-weight: bold; }
+        .info-bar { background-color: #f0f9ff; border-left: 4px solid #0ea5e9; padding: 20px; margin: 20px 0; }
+        .stats { display: flex; gap: 20px; margin-bottom: 30px; }
+        .stat-box { background: #f8f9fa; padding: 15px; border-radius: 8px; flex: 1; text-align: center; border: 1px solid #eee; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #1A3D33; }
+        .stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th { text-align: left; background: #f4f7f8; padding: 12px; color: #1A3D33; font-weight: bold; }
+        .footer { padding: 30px; text-align: center; font-size: 12px; color: #999; background: #f4f7f8; border-radius: 0 0 12px 12px; margin-top: 30px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>LPO<span>.PLUS</span> | Daily Progress Report</h1>
+        </div>
+        <div class="info-bar">
+          <p style="margin: 0; color: #0369a1;"><strong>End of Day Update:</strong> Summary of jobs currently being performed or accepted for today.</p>
+        </div>
+        <div class="stats">
+          <div class="stat-box">
+            <div class="stat-value">${jobs.length}</div>
+            <div class="stat-label">Active Jobs</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value">${reportDate}</div>
+            <div class="stat-label">Report Date</div>
+          </div>
+        </div>
+        ${jobs.length > 0 ? `
+          <table>
+            <thead>
+              <tr>
+                <th>LPO</th>
+                <th>Customer</th>
+                <th>Status</th>
+                <th>Job Reference</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${jobRows}
+            </tbody>
+          </table>
+        ` : `<p style="text-align: center; padding: 40px; background: #fdfdfd; border: 1px dashed #ccc; border-radius: 8px;">No active jobs remaining for today.</p>`}
+        <div style="text-align: center; margin-top: 30px;">
+          <a href="https://lpo.plus/dashboard" style="background: #1A3D33; color: white; padding: 12px 25px; text-decoration: none; border-radius: 6px; font-weight: bold;">VIEW JOB MANAGER</a>
+        </div>
+        <div class="footer">
+          <p>This is an automated system notification from LPO.PLUS</p>
+          <p>&copy; ${new Date().getFullYear()} LPO.PLUS | Premium Logistics Solutions</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const metadata = {
+    type: 'daily_report_in_progress',
+    date: todayStr,
+    jobCount: jobs.length
+  };
+
+  const taggedHtml = injectMetadataTag(html, metadata);
+
+  const mailOptions = {
+    from: '"LPO.PLUS Manifest" <bookings@lpo.plus>',
+    to: recipient,
+    subject: `Daily Manifest Update: Active Jobs (${todayStr})`,
+    html: taggedHtml,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`[Daily Report] In-progress report sent to ${recipient}`);
+    
+    // Log to communications
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: recipient,
+      subject: mailOptions.subject,
+      body: taggedHtml,
+      type: 'sent',
+      metadata: metadata
+    });
+  } catch (error) {
+    console.error("[Daily Report Error] Failed to send in-progress report:", error);
+  }
+});
+
+/**
+ * DAILY PERFORMANCE REPORT: 6:00 AM Sydney Time (Daily)
+ * Summarizes the previous day's performance for each LPO.
+ */
+export const sendDailyPerformanceReport = onSchedule({
+  schedule: "0 6 * * *",
+  timeZone: "Australia/Sydney",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  const db = getDB();
+  
+  // 1. Calculate Yesterday in Sydney
+  const sydneyTimeFormatter = new Intl.DateTimeFormat('en-AU', {
+    timeZone: 'Australia/Sydney',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  
+  const now = new Date();
+  const parts = sydneyTimeFormatter.formatToParts(now);
+  let y = '', m = '', d = '';
+  for (const part of parts) {
+    if (part.type === 'year') y = part.value;
+    if (part.type === 'month') m = part.value;
+    if (part.type === 'day') d = part.value;
+  }
+  
+  const todayInSydney = new Date(`${y}-${m}-${d}T00:00:00`);
+  const yesterdayDate = new Date(todayInSydney);
+  yesterdayDate.setDate(todayInSydney.getDate() - 1);
+  
+  const yParts = sydneyTimeFormatter.formatToParts(yesterdayDate);
+  let yy = '', mm = '', dd = '';
+  for (const part of yParts) {
+    if (part.type === 'year') yy = part.value;
+    if (part.type === 'month') mm = part.value;
+    if (part.type === 'day') dd = part.value;
+  }
+  const yesterdayStr = `${yy}-${mm}-${dd}`;
+  const displayDate = yesterdayDate.toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  console.log(`[Performance Report] Generating for ${yesterdayStr}`);
+
+  // 2. Fetch all jobs for yesterday
+  const jobsSnapshot = await db.collection('jobs').where('date', '==', yesterdayStr).get();
+  const jobsByLpo: { [key: string]: any[] } = {};
+  
+  jobsSnapshot.forEach(doc => {
+    const data = doc.data();
+    const lpoId = data.lpo_id;
+    if (!lpoId) return;
+    if (!jobsByLpo[lpoId]) jobsByLpo[lpoId] = [];
+    jobsByLpo[lpoId].push({ id: doc.id, ...data });
+  });
+
+  // 3. Fetch all users to know who to notify
+  const usersSnapshot = await db.collection('users').get();
+  const usersByLpo: { [key: string]: string[] } = {};
+  
+  usersSnapshot.forEach(doc => {
+    const data = doc.data();
+    const lpoId = data.lpo_id;
+    const email = data.email;
+    if (lpoId && email) {
+      if (!usersByLpo[lpoId]) usersByLpo[lpoId] = [];
+      usersByLpo[lpoId].push(email);
+    }
+  });
+
+  // 4. Fetch LPO names for better reporting
+  const lpoSnapshot = await db.collection('lpo').get();
+  const lpoNames: { [key: string]: string } = {};
+  lpoSnapshot.forEach(doc => {
+    lpoNames[doc.id] = doc.data()?.name || "Unknown LPO";
+  });
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "bookings@lpo.plus",
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  const headOfficeCC = ["dispatcher@mailplus.com.au", "michael.mcdaid@mailplus.com.au", "kerry.oneill@mailplus.com.au"];
+
+  // 5. Generate and Send Reports
+  for (const lpoId in usersByLpo) {
+    const recipientList = usersByLpo[lpoId];
+    const lpoJobs = jobsByLpo[lpoId] || [];
+    const lpoName = lpoNames[lpoId] || "Your LPO";
+
+    if (recipientList.length === 0 || lpoJobs.length === 0) continue;
+
+    // Calculate Summary Stats
+    const stats = {
+      completed: lpoJobs.filter(j => j.status === 'completed').length,
+      cancelled: lpoJobs.filter(j => j.status === 'cancelled').length,
+      scheduled: lpoJobs.filter(j => j.status === 'scheduled').length,
+      inProgress: lpoJobs.filter(j => j.status === 'in-progress').length,
+    };
+
+    let detailRows = "";
+    lpoJobs.forEach(j => {
+      const statusColor = j.status === 'completed' ? '#15803d' : (j.status === 'cancelled' ? '#dc2626' : '#92400e');
+      detailRows += `
+        <tr>
+          <td style="padding: 10px; border-bottom: 1px solid #eee;">${j.customer?.company || 'Unknown'}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-transform: capitalize;">${j.service?.replace(/-/g, ' ')}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; color: ${statusColor}; font-weight: bold;">${j.status.toUpperCase()}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; font-family: monospace;">#${j.id.substring(0, 8).toUpperCase()}</td>
+        </tr>
+      `;
+    });
+
+    const html = `
+      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333;">
+        <div style="background-color: #1A3D33; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">LPO.PLUS | Performance Summary</h1>
+          <p style="color: #EAF044; margin: 5px 0 0 0; font-weight: bold;">${lpoName}</p>
+        </div>
+        
+        <div style="padding: 30px; background: white; border: 1px solid #eee;">
+          <h2 style="margin-top: 0; color: #1A3D33; font-size: 18px;">Performance Review: ${displayDate}</h2>
+          
+          <div style="display: flex; gap: 10px; margin: 20px 0;">
+            <div style="flex: 1; background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #dcfce7; text-align: center;">
+              <div style="font-size: 20px; font-weight: bold; color: #15803d;">${stats.completed}</div>
+              <div style="font-size: 11px; color: #15803d; text-transform: uppercase;">Completed</div>
+            </div>
+            <div style="flex: 1; background: #fef2f2; padding: 15px; border-radius: 8px; border: 1px solid #fee2e2; text-align: center;">
+              <div style="font-size: 20px; font-weight: bold; color: #dc2626;">${stats.cancelled}</div>
+              <div style="font-size: 11px; color: #dc2626; text-transform: uppercase;">Cancelled</div>
+            </div>
+            <div style="flex: 1; background: #fffbeb; padding: 15px; border-radius: 8px; border: 1px solid #fef3c7; text-align: center;">
+              <div style="font-size: 20px; font-weight: bold; color: #92400e;">${stats.scheduled + stats.inProgress}</div>
+              <div style="font-size: 11px; color: #92400e; text-transform: uppercase;">Unfinished</div>
+            </div>
+          </div>
+
+          <h3 style="font-size: 14px; color: #666; text-transform: uppercase; margin-top: 30px; border-bottom: 2px solid #EAF044; padding-bottom: 5px;">Daily Activity Log</h3>
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px;">
+            <thead style="background: #f8fafb;">
+              <tr>
+                <th style="text-align: left; padding: 10px;">Customer</th>
+                <th style="text-align: left; padding: 10px;">Service</th>
+                <th style="text-align: left; padding: 10px;">Status</th>
+                <th style="text-align: left; padding: 10px;">Ref</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${detailRows || '<tr><td colspan="4" style="padding: 30px; text-align: center; color: #999;">No jobs recorded for this period.</td></tr>'}
+            </tbody>
+          </table>
+          
+          <div style="text-align: center; margin-top: 40px;">
+            <a href="https://lpo.plus/dashboard" style="background: #1A3D33; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">GO TO JOB MANAGER</a>
+          </div>
+        </div>
+
+        <div style="padding: 30px; text-align: center; font-size: 12px; color: #999; background: #f4f7f8; border-radius: 0 0 12px 12px;">
+          <p>This report was automatically generated by LPO.PLUS for ${lpoName} users.</p>
+          <p>&copy; ${new Date().getFullYear()} LPO.PLUS | Premium Logistics Solutions</p>
+        </div>
+      </div>
+    `;
+
+    const metadata = {
+      type: 'daily_performance_report',
+      lpoId: lpoId,
+      lpoName: lpoName,
+      date: yesterdayStr,
+      stats: stats
+    };
+
+    const taggedHtml = injectMetadataTag(html, metadata);
+
+    const mailOptions = {
+      from: '"LPO.PLUS Reports" <bookings@lpo.plus>',
+      to: recipientList.join(","),
+      cc: headOfficeCC.join(","),
+      subject: `Daily Performance Report: ${lpoName} (${yesterdayStr})`,
+      html: taggedHtml,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log(`[Performance Report] Sent to ${lpoName} (${recipientList.length} users)`);
+      
+      // Log to communications
+      await logCommunication({
+        from: "bookings@lpo.plus",
+        to: recipientList.join(","),
+        subject: mailOptions.subject,
+        body: taggedHtml,
+        type: 'sent',
+        metadata: metadata
+      });
+    } catch (error) {
+      console.error(`[Performance Report Error] Failed for ${lpoName}:`, error);
+    }
+  }
+});
+
+/**
+ * TEST TRIGGER: Manually trigger reports for verification.
+ * Visit: .../testReports?type=scheduled|progress|performance
+ */
+export const testReports = onRequest({
+  secrets: [gmailAppPassword],
+  cors: true,
+}, async (req, res) => {
+  const { type } = req.query;
+  
+  try {
+    if (type === 'scheduled') {
+      // @ts-ignore - Triggering the internal handler
+      await sendScheduledJobsReport({});
+      res.send("Scheduled Jobs Report triggered. Check dispatcher@mailplus.com.au");
+    } else if (type === 'progress') {
+      // @ts-ignore - Triggering the internal handler
+      await sendInProgressJobsReport({});
+      res.send("In-Progress Jobs Report triggered. Check dispatcher@mailplus.com.au");
+    } else if (type === 'performance') {
+      // @ts-ignore - Triggering the internal handler
+      await sendDailyPerformanceReport({});
+      res.send("Daily Performance Report triggered. Check LPO user emails and CC list.");
+    } else {
+      res.status(400).send("Provide ?type=scheduled, ?type=progress, or ?type=performance");
+    }
+  } catch (error: any) {
+    res.status(500).send(`Error triggering report: ${error.message}`);
   }
 });

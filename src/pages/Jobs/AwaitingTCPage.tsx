@@ -22,6 +22,7 @@ import { sortStops } from '../../utils/stops';
 
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
+import CustomSelect from '../../components/CustomSelect';
 
 const AwaitingTCPage: React.FC = () => {
   const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
@@ -160,22 +161,15 @@ const AwaitingTCPage: React.FC = () => {
             {/* Filter Bar */}
             <div className="glass-card filter-bar">
               {isAdmin && (
-                <div className="admin-lpo-selector glass" style={{ marginRight: '12px' }}>
-                  <div className="selector-label">
-                    <MapPin size={14} />
-                    <span>LPO:</span>
-                  </div>
-                  <select 
-                    value={selectedLpoId} 
-                    onChange={(e) => setSelectedLpoId(e.target.value)}
-                    className="lpo-select-dropdown"
-                  >
-                    <option value="all">All Accounts</option>
-                    {allLpos.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
-                  </select>
-                </div>
+                <CustomSelect 
+                  value={selectedLpoId}
+                  onChange={(val) => setSelectedLpoId(val)}
+                  options={[
+                    { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
+                    ...allLpos.map(l => ({ value: l.id, label: l.name, icon: <MapPin size={14} /> }))
+                  ]}
+                  className="lpo-select-custom"
+                />
               )}
               <div className="search-pill">
                 <Search size={18} />
@@ -358,34 +352,9 @@ const AwaitingTCPage: React.FC = () => {
         .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
         .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
-        .admin-lpo-selector {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 16px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        .selector-label {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: var(--ink-soft);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .lpo-select-dropdown {
-          background: transparent;
-          border: none;
-          font-weight: 700;
-          color: var(--ink);
-          font-size: 0.9rem;
-          cursor: pointer;
-          outline: none;
-          padding-right: 20px;
+        .lpo-select-custom {
+          margin-right: 12px;
+          min-width: 200px;
         }
 
         .filter-bar {

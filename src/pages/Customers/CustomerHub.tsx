@@ -4,19 +4,23 @@ import {
   Search, 
   MapPin, 
   Phone, 
-  ChevronRight,
   Filter,
   Plus,
   Mail,
   CreditCard,
   Rocket,
   User,
-  Building2
+  Building2,
+  Edit2,
+  UserMinus
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
+import EditCustomerModal from '../../components/EditCustomerModal';
+import CancelCustomerModal from '../../components/CancelCustomerModal';
 import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
+import CustomSelect from '../../components/CustomSelect';
 
 const CustomerHub: React.FC = () => {
   const { lpo, isAdmin, allLpos, selectedLpoId, setSelectedLpoId } = useLpo();
@@ -26,6 +30,10 @@ const CustomerHub: React.FC = () => {
   const [serviceFilter, setServiceFilter] = useState('all');
   const [billingFilter, setBillingFilter] = useState('all');
   const [jobTypeFilter, setJobTypeFilter] = useState('all');
+  const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [cancellingCustomer, setCancellingCustomer] = useState<any | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -161,22 +169,15 @@ const CustomerHub: React.FC = () => {
            </div>
            <div className="header-right">
               {isAdmin && (
-                <div className="admin-lpo-selector glass" style={{ marginRight: '16px' }}>
-                  <div className="selector-label">
-                    <Building2 size={14} />
-                    <span>LPO:</span>
-                  </div>
-                  <select 
-                    value={selectedLpoId} 
-                    onChange={(e) => setSelectedLpoId(e.target.value)}
-                    className="lpo-select-dropdown"
-                  >
-                    <option value="all">All Accounts</option>
-                    {allLpos.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
-                  </select>
-                </div>
+                <CustomSelect 
+                  value={selectedLpoId}
+                  onChange={(val) => setSelectedLpoId(val)}
+                  options={[
+                    { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
+                    ...allLpos.map(l => ({ value: l.id, label: l.name, icon: <MapPin size={14} /> }))
+                  ]}
+                  className="lpo-select-custom"
+                />
               )}
               <button className="btn-premium-action" onClick={() => window.location.href = '/new-job'}>
                 <Plus size={20} />
@@ -210,7 +211,6 @@ const CustomerHub: React.FC = () => {
                 <select value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
                   <option value="all">All Billing</option>
                   <option value="customer">Customer</option>
-                  <option value="split">Split</option>
                   <option value="lpo">LPO Paid</option>
                 </select>
               </div>
@@ -257,7 +257,33 @@ const CustomerHub: React.FC = () => {
                                </div>
                              )}
                           </div>
-                          <div className={`status-badge-premium ${customer.status === 'Active' ? 'active' : 'awaiting'}`}>{customer.status === 'Active' ? 'ACTIVE' : 'AWAITING T&C'}</div>
+                          <div className="card-actions">
+                             <div className={`status-badge-premium ${customer.status === 'Active' ? 'active' : customer.status === 'cancelled' ? 'cancelled' : 'awaiting'}`}>
+                               {customer.status === 'Active' ? 'ACTIVE' : customer.status === 'cancelled' ? 'CANCELLED' : 'AWAITING T&C'}
+                             </div>
+                             <button 
+                               className="edit-customer-btn" 
+                               onClick={() => {
+                                 setEditingCustomer(customer);
+                                 setIsEditModalOpen(true);
+                               }}
+                               title="Edit Contact Details"
+                             >
+                                <Edit2 size={14} />
+                             </button>
+                             {customer.status !== 'cancelled' && (
+                               <button 
+                                 className="edit-customer-btn cancel-btn" 
+                                 onClick={() => {
+                                   setCancellingCustomer(customer);
+                                   setIsCancelModalOpen(true);
+                                 }}
+                                 title="Cancel Customer"
+                               >
+                                  <UserMinus size={14} />
+                               </button>
+                             )}
+                          </div>
                        </div>
 
                        <div className="card-body">
@@ -319,8 +345,8 @@ const CustomerHub: React.FC = () => {
                              <span>{customer.lastJobDate ? (customer.lastJobDate.includes('-') ? customer.lastJobDate.split('-').reverse().join('/') : new Date(customer.lastJobDate).toLocaleDateString()) : 'N/A'}</span>
                             </div>
                          </div>
-                         <button className="view-details" onClick={() => window.location.href = `/new-job?rebook=true&customerId=${customer.id}`}>
-                            <ChevronRight size={18} />
+                         <button className="view-details" onClick={() => window.location.href = `/new-job?rebook=true&customerId=${customer.id}`} title="Book New Job">
+                            <Plus size={18} />
                          </button>
                       </div>
                    </div>
@@ -330,6 +356,24 @@ const CustomerHub: React.FC = () => {
         </div>
       </div>
 
+      <EditCustomerModal 
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        customer={editingCustomer}
+        onUpdate={(updatedCust) => {
+          setCustomers(prev => prev.map(c => c.id === updatedCust.id ? updatedCust : c));
+        }}
+      />
+
+      <CancelCustomerModal 
+        isOpen={isCancelModalOpen}
+        onClose={() => setIsCancelModalOpen(false)}
+        customer={cancellingCustomer}
+        onUpdate={(updatedCust) => {
+          setCustomers(prev => prev.map(c => c.id === updatedCust.id ? updatedCust : c));
+        }}
+      />
+
       <style>{`
         .customer-hub-premium { min-height: 100vh; background: var(--offwhite); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
@@ -337,34 +381,9 @@ const CustomerHub: React.FC = () => {
         .blob-1 { top: -100px; right: -100px; }
         .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); }
 
-        .admin-lpo-selector {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 16px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        .selector-label {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: var(--ink-soft);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .lpo-select-dropdown {
-          background: transparent;
-          border: none;
-          font-weight: 700;
-          color: var(--ink);
-          font-size: 0.9rem;
-          cursor: pointer;
-          outline: none;
-          padding-right: 20px;
+        .lpo-select-custom {
+          margin-right: 16px;
+          min-width: 200px;
         }
 
         .lpo-tag { color: var(--gold); background: rgba(234, 240, 68, 0.1); padding: 2px 8px; border-radius: 6px; width: fit-content; margin-bottom: 4px; }
@@ -416,12 +435,23 @@ const CustomerHub: React.FC = () => {
 
         .card-top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; position: relative; }
         .avatar { width: 44px; height: 44px; background: var(--cream-warm); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 400; color: var(--ink); font-size: 1.2rem; font-family: var(--font-headings); }
-        .main-info h3 { margin: 0; font-size: 1.1rem; font-weight: 400; color: var(--ink); letter-spacing: -0.015em; font-family: var(--font-headings); }
+        .main-info { flex: 1; min-width: 0; }
+        .main-info h3 { margin: 0; font-size: 1.1rem; font-weight: 400; color: var(--ink); letter-spacing: -0.015em; font-family: var(--font-headings); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sub-info { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
         .franchisee-tag { color: var(--ink); background: rgba(26, 61, 51, 0.05); padding: 2px 8px; border-radius: 6px; width: fit-content; }
         .status-badge-premium { font-family: var(--font-ui); padding: 4px 10px; border-radius: 8px; font-size: 0.55rem; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; }
         .status-badge-premium.active { background: var(--cream-warm); color: var(--ink); }
         .status-badge-premium.awaiting { background: var(--cream-warm); color: var(--gold); }
+        .status-badge-premium.cancelled { background: #fee2e2; color: #dc2626; }
+
+        .card-actions { display: flex; align-items: center; gap: 8px; }
+        .edit-customer-btn {
+          width: 30px; height: 30px; border-radius: 8px; background: rgba(0,0,0,0.05);
+          border: none; color: var(--ink-soft); cursor: pointer; display: flex;
+          align-items: center; justify-content: center; transition: all 0.2s;
+        }
+        .edit-customer-btn:hover { background: var(--ink); color: white; }
+        .edit-customer-btn.cancel-btn:hover { background: #dc2626; color: white; }
 
         .card-body { border-top: 1px solid var(--cream-warm); border-bottom: 1px solid var(--cream-warm); padding: 16px 0; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
         .contact-item { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 0.85rem; font-weight: 600; }

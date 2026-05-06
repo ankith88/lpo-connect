@@ -35,7 +35,7 @@ import { requestNotificationPermission, saveTokenToFirestore, onForegroundMessag
 
 const RequestPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { lpo, loading: lpoLoading } = useLpo();
+  const { lpo, userData, loading: lpoLoading } = useLpo();
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState('');
@@ -91,10 +91,8 @@ const RequestPage: React.FC = () => {
     const setupNotifications = async () => {
       const token = await requestNotificationPermission();
       if (token) {
-        if (isLpoUser && lpo?.id) {
-          // If operator is logged in, we save to user doc (handled in LpoContext usually, but here for safety)
-          // Actually, let's just save to current session
-          saveTokenToFirestore(token, 'operator', lpo.id); 
+        if (isLpoUser && userData?.uid) {
+          saveTokenToFirestore(token, 'operator', userData.uid); 
         } else if (id) {
           saveTokenToFirestore(token, 'customer', id);
         }
@@ -346,7 +344,12 @@ const RequestPage: React.FC = () => {
           const params2536 = new URLSearchParams({
             job_id: finalJobId,
             lpo_id: lpoId,
-            customer_id: netsuiteCustomerId
+            customer_id: netsuiteCustomerId,
+            email: request.customer?.email || "",
+            firstName: request.customer?.firstName || "",
+            service: request.service || "",
+            date: request.date || "null",
+            frequency: request.jobType === 'scheduled' ? (request.frequency?.join(',') || "null") : "null"
           });
 
           console.log("Triggering NetSuite 2536 with:", Object.fromEntries(params2536));
@@ -605,12 +608,16 @@ const RequestPage: React.FC = () => {
                        <strong>{request.customer.company}</strong>
                     </div>
                     <div className="info-row">
+                       <UserIcon size={14} />
+                       <span>{request.customer.firstName} {request.customer.lastName}</span>
+                    </div>
+                    <div className="info-row">
                        <Phone size={14} />
                        <span>{request.customer.phone}</span>
                     </div>
                     <div className="info-row">
                        <Mail size={14} />
-                       <span>{request.customer.contact}</span>
+                       <span>{request.customer.email}</span>
                     </div>
                  </div>
               </div>
@@ -644,6 +651,12 @@ const RequestPage: React.FC = () => {
                        <label>Date</label>
                        <span>{parseLocalDate(request.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                     </div>
+                    {request.jobType === 'scheduled' && request.frequency && (
+                       <div className="log-item">
+                          <label>Frequency</label>
+                          <span style={{ textTransform: 'capitalize' }}>{request.frequency.join(', ')}</span>
+                       </div>
+                    )}
                  </div>
                  {request.preferredTime && (
                      <div className="time-highlight-banner">
@@ -756,7 +769,7 @@ const RequestPage: React.FC = () => {
                        }
                        return (
                           <div key={idx} className={`message-bubble ${msg.sender}`}>
-                             <div className="sender-label">{msg.sender === 'operator' ? 'MailPlus Operator' : 'Franchisee'}</div>
+                             <div className="sender-label">{msg.sender === 'operator' ? 'LPO' : 'Franchisee'}</div>
                              <div className="message-content">{msg.text}</div>
                              <div className="message-time">
                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

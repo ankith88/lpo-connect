@@ -14,11 +14,43 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   console.log('Received background message ', payload);
-  const notificationTitle = payload.notification.title;
+  
+  // Use data payload exclusively to prevent OS double-notifications
+  const notificationTitle = payload.data?.title || payload.notification?.title || 'New Message';
   const notificationOptions = {
-    body: payload.notification.body,
-    icon: '/favicon.svg'
+    body: payload.data?.body || payload.notification?.body,
+    icon: '/favicon.svg',
+    data: {
+      url: payload.data?.link || payload.fcmOptions?.link || '/'
+    }
   };
 
   self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const urlToOpen = event.notification.data.url;
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // 1. Check if the specific URL is already open in a tab
+      for (let i = 0; i < windowClients.length; i++) {
+        const client = windowClients[i];
+        if (client.url === urlToOpen && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // 2. If not, but any app window is open, just focus and navigate it
+      if (windowClients.length > 0) {
+        if (windowClients[0].navigate) {
+          return windowClients[0].navigate(urlToOpen).then(c => c.focus());
+        }
+      }
+      // 3. If no windows are open at all, open a new one
+      if (clients.openWindow) {
+        return clients.openWindow(urlToOpen);
+      }
+    })
+  );
 });

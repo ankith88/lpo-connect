@@ -15,6 +15,7 @@ import {
 import { collection, query, getDocs, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
+import CustomSelect from '../../components/CustomSelect';
 
 const Reports: React.FC = () => {
   const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
@@ -173,22 +174,15 @@ const Reports: React.FC = () => {
           </div>
           <div className="header-right">
             {isAdmin && (
-              <div className="admin-lpo-selector glass" style={{ marginRight: '12px' }}>
-                <div className="selector-label">
-                  <MapPin size={14} />
-                  <span>LPO:</span>
-                </div>
-                <select 
-                  value={selectedLpoId} 
-                  onChange={(e) => setSelectedLpoId(e.target.value)}
-                  className="lpo-select-dropdown"
-                >
-                  <option value="all">All Accounts</option>
-                  {allLpos.map(l => (
-                    <option key={l.id} value={l.id}>{l.name}</option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect 
+                value={selectedLpoId}
+                onChange={(val) => setSelectedLpoId(val)}
+                options={[
+                  { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
+                  ...allLpos.map(l => ({ value: l.id, label: l.name, icon: <MapPin size={14} /> }))
+                ]}
+                className="lpo-select-custom"
+              />
             )}
             <div className="date-range-glass">
               <Calendar size={16} />
@@ -392,34 +386,9 @@ const Reports: React.FC = () => {
         .blob-1 { top: -100px; right: -100px; }
         .blob-2 { bottom: -100px; left: -100px; background: var(--cream-warm); }
 
-        .admin-lpo-selector {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 16px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        .selector-label {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: var(--ink-soft);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .lpo-select-dropdown {
-          background: transparent;
-          border: none;
-          font-weight: 700;
-          color: var(--ink);
-          font-size: 0.9rem;
-          cursor: pointer;
-          outline: none;
-          padding-right: 20px;
+        .lpo-select-custom {
+          margin-right: 12px;
+          min-width: 200px;
         }
 
         .content-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; }

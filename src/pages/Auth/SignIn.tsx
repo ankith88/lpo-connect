@@ -87,7 +87,11 @@ const SignIn: React.FC = () => {
     setMessage('');
 
     try {
-      await sendPasswordResetEmail(auth, identifier);
+      const actionCodeSettings = {
+        url: `${window.location.origin}/signin`,
+        handleCodeInApp: false,
+      };
+      await sendPasswordResetEmail(auth, identifier, actionCodeSettings);
       setMessage('Password reset email sent! Please check your inbox.');
     } catch (err: any) {
       console.error("Reset error:", err);

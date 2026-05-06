@@ -22,10 +22,12 @@ import {
   CheckCircle2,
   User,
   Mail,
-  Phone
+  Phone,
+  Repeat
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
+import CancelJobModal from '../../components/CancelJobModal';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
@@ -39,11 +41,13 @@ const Dashboard: React.FC = () => {
   const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
   const [jobs, setJobs] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
+  const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'in-progress' | 'history' | 'declined'>('in-progress');
   const [serviceFilter, setServiceFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
   
   const [isCommModalOpen, setIsCommModalOpen] = useState(false);
@@ -59,6 +63,10 @@ const Dashboard: React.FC = () => {
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [supportJobId, setSupportJobId] = useState('');
   const [supportMetadata, setSupportMetadata] = useState<any>(null);
+
+  // Cancellation Modal State
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [selectedJobForCancel, setSelectedJobForCancel] = useState<any>(null);
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -95,6 +103,12 @@ const Dashboard: React.FC = () => {
         const reqSnapshot = await getDocs(reqQ);
         setRequests(reqSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
 
+        // Fetch Schedules
+        let schedBaseQ = collection(db, 'scheduled_jobs');
+        const schedQ = selectedLpoId !== 'all' ? query(schedBaseQ, where('lpo_id', '==', selectedLpoId)) : schedBaseQ;
+        const schedSnapshot = await getDocs(schedQ);
+        setSchedules(schedSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
+
       } catch (error) {
         console.error("Error fetching data:", error);
         // Fallback for missing indexes
@@ -108,6 +122,10 @@ const Dashboard: React.FC = () => {
         const reqQ = selectedLpoId !== 'all' ? query(reqBaseQ, where('lpo_id', '==', selectedLpoId)) : reqBaseQ;
         const reqSnapshot = await getDocs(reqQ as any);
         setRequests(reqSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
+
+        const schedQ = selectedLpoId !== 'all' ? query(collection(db, 'scheduled_jobs'), where('lpo_id', '==', selectedLpoId)) : collection(db, 'scheduled_jobs');
+        const schedSnapshot = await getDocs(schedQ);
+        setSchedules(schedSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
       } finally {
         setLoading(false);
       }
@@ -170,7 +188,8 @@ const Dashboard: React.FC = () => {
                          item.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesService = serviceFilter === 'all' || item.service === serviceFilter;
     const matchesDate = !dateFilter || item.date === dateFilter;
-    return matchesSearch && matchesService && matchesDate;
+    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+    return matchesSearch && matchesService && matchesDate && matchesStatus;
   };
 
   const globalFilteredJobs = jobs.filter(applyGlobalFilters);
@@ -186,24 +205,25 @@ const Dashboard: React.FC = () => {
     const isOneOff = j.jobType === 'one-off';
 
     const checkTab = (tab: string) => {
-      if (tab === 'pending') {
-        return j.status === 'pending' && (!isOneOff || j.date >= today); 
-      } else if (tab === 'in-progress') {
-        return j.date === today;
-      } else if (tab === 'upcoming') {
-        return j.date > today;
-      } else if (tab === 'history') {
-        return j.date < today;
-      } else if (tab === 'declined') {
-        return j.status === 'rejected';
+      switch (tab) {
+        case 'pending':
+          return j.status === 'pending' && (!isOneOff || j.date >= today); 
+        case 'in-progress':
+          return j.date === today && j.status !== 'cancelled' && j.status !== 'rejected';
+        case 'upcoming':
+          return j.date > today && j.status !== 'cancelled' && j.status !== 'rejected';
+        case 'history':
+          return j.date < today;
+        case 'declined':
+          return j.status === 'rejected' || j.status === 'cancelled';
+        default:
+          return false;
       }
-      return false;
-    }
+    };
 
     return checkTab(activeTab);
   });
 
-  // Group jobs by date for the timeline
   const groupedJobs = filteredJobs.reduce((acc: any[], job) => {
     const date = job.date;
     const existingGroup = acc.find(g => g.date === date);
@@ -249,7 +269,15 @@ const Dashboard: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     const job = jobs.find(j => j.id === id);
-    if (job && (job.status === 'accepted' || job.status === 'scheduled' || job.status === 'in-progress' || job.status === 'completed')) {
+    
+    // If job is scheduled, open the cancellation modal
+    if (job && job.status === 'scheduled') {
+      setSelectedJobForCancel(job);
+      setIsCancelModalOpen(true);
+      return;
+    }
+
+    if (job && (job.status === 'accepted' || job.status === 'in-progress' || job.status === 'completed')) {
       alert("This job has already been accepted and cannot be cancelled.");
       return;
     }
@@ -334,8 +362,8 @@ const Dashboard: React.FC = () => {
   };
 
   const getTabCount = (tabId: string) => {
-    if (tabId === 'pending') return globalFilteredRequests.filter(r => r.status === 'pending').length;
-    if (tabId === 'declined') return globalFilteredRequests.filter(r => r.status === 'rejected').length;
+    if (tabId === 'pending') return globalFilteredRequests.filter(r => r.status === 'pending' && (r.jobType !== 'one-off' || r.date >= today)).length;
+    if (tabId === 'declined') return globalFilteredRequests.filter(r => r.status === 'rejected' || r.status === 'cancelled').length + globalFilteredJobs.filter(j => j.status === 'cancelled').length;
     
     return globalFilteredJobs.filter(j => {
       if (tabId === 'in-progress') return j.date === today;
@@ -343,6 +371,12 @@ const Dashboard: React.FC = () => {
       if (tabId === 'history') return j.date < today;
       return false;
     }).length;
+  };
+
+  const getRecurringCustomerCount = () => {
+    const activeSchedules = schedules.filter(s => s.recurrenceStatus !== 'stopped');
+    const uniqueCustomers = new Set(activeSchedules.map(s => s.customer.company)).size;
+    return uniqueCustomers;
   };
 
   return (
@@ -377,7 +411,7 @@ const Dashboard: React.FC = () => {
            <div className="stats-row">
                {[
                   { label: 'Active Jobs', value: globalFilteredJobs.filter(j => j.date === today && j.status !== 'completed').length, icon: Calendar, color: 'var(--ink)' },
-                  { label: 'Pending Requests', value: globalFilteredRequests.filter(r => r.status === 'pending').length, icon: MessageSquare, color: 'var(--gold)' },
+                  { label: 'Pending Requests', value: globalFilteredRequests.filter(r => r.status === 'pending' && (r.jobType !== 'one-off' || r.date >= today)).length, icon: MessageSquare, color: 'var(--gold)' },
                   { label: 'Completed Jobs', value: globalFilteredJobs.filter(j => j.status === 'completed').length, icon: CheckCircle2, color: 'var(--ink)' }
                ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
@@ -394,41 +428,32 @@ const Dashboard: React.FC = () => {
 
             {/* Controls Row */}
             <div className="controls-row">
-              {isAdmin && (
-                <div className="admin-lpo-selector glass">
-                  <div className="selector-label">
-                    <MapPin size={14} />
-                    <span>Viewing LPO:</span>
-                  </div>
-                  <select 
-                    value={selectedLpoId} 
-                    onChange={(e) => setSelectedLpoId(e.target.value)}
-                    className="lpo-select-dropdown"
-                  >
-                    <option value="all">All LPO Accounts</option>
-                    {allLpos.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
+
 
               {/* Mobile Tabs Dropdown */}
               <div className="mobile-tabs-dropdown">
                 <select 
                   value={activeTab} 
-                  onChange={(e) => setActiveTab(e.target.value as any)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'recurring') {
+                      window.open('/schedules', '_blank');
+                    } else {
+                      setActiveTab(val as any);
+                    }
+                  }}
                   className="mobile-tab-select"
                 >
                   {[
                     { id: 'pending', label: 'Pending Requests' },
                     { id: 'in-progress', label: 'Active Today' },
-                    { id: 'upcoming', label: 'Upcoming' },
+                    { id: 'upcoming', label: 'Future One-Off' },
                     { id: 'history', label: 'History' },
-                    { id: 'declined', label: 'Declined' }
+                    { id: 'declined', label: 'Declined' },
+                    { id: 'recurring', label: 'Recurring Schedules' }
                   ].map(tab => (
                     <option key={tab.id} value={tab.id}>
-                      {tab.label} ({getTabCount(tab.id)})
+                      {tab.label} {tab.id === 'recurring' ? `(${getRecurringCustomerCount()})` : `(${getTabCount(tab.id)})`}
                     </option>
                   ))}
                 </select>
@@ -447,6 +472,17 @@ const Dashboard: React.FC = () => {
                 />
               </div>
                 <div className="filter-actions">
+                   {isAdmin && (
+                     <CustomSelect 
+                       value={selectedLpoId}
+                       onChange={(val) => setSelectedLpoId(val)}
+                       options={[
+                         { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
+                         ...allLpos.map(l => ({ value: l.id, label: l.name, icon: <MapPin size={14} /> }))
+                       ]}
+                       className="lpo-select-custom"
+                     />
+                   )}
                    <div className="custom-filter-date" style={{ position: 'relative', zIndex: 10 }}>
                      <CustomDatePicker 
                        value={dateFilter}
@@ -454,17 +490,32 @@ const Dashboard: React.FC = () => {
                        placeholder="All Dates"
                      />
                    </div>
-                   <CustomSelect 
-                     value={serviceFilter}
-                     onChange={(val) => setServiceFilter(val)}
-                     options={[
-                       { value: 'all', label: 'All Services' },
-                       { value: 'site-to-lpo', label: 'Site ➔ LPO' },
-                       { value: 'lpo-to-site', label: 'LPO ➔ Site' },
-                       { value: 'round-trip', label: 'Round Trip' }
-                     ]}
-                     className="service-select-custom"
-                   />
+                    <CustomSelect 
+                      value={serviceFilter}
+                      onChange={(val) => setServiceFilter(val)}
+                      options={[
+                        { value: 'all', label: 'All Services' },
+                        { value: 'site-to-lpo', label: 'Site ➔ LPO' },
+                        { value: 'lpo-to-site', label: 'LPO ➔ Site' },
+                        { value: 'round-trip', label: 'Round Trip' }
+                      ]}
+                      className="service-select-custom"
+                    />
+                    <CustomSelect 
+                      value={statusFilter}
+                      onChange={(val) => setStatusFilter(val)}
+                      options={[
+                        { value: 'all', label: 'All Statuses' },
+                        { value: 'pending', label: 'Pending' },
+                        { value: 'accepted', label: 'Accepted' },
+                        { value: 'scheduled', label: 'Scheduled' },
+                        { value: 'in-progress', label: 'In Progress' },
+                        { value: 'completed', label: 'Completed' },
+                        { value: 'rejected', label: 'Rejected' },
+                        { value: 'cancelled', label: 'Cancelled' }
+                      ]}
+                      className="status-select-custom"
+                    />
                   <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
                   <button className="btn-secondary-glass icon-only" onClick={exportJobsCSV} title="Export Jobs">
                     <Download size={18} />
@@ -475,26 +526,38 @@ const Dashboard: React.FC = () => {
             {/* Logistics Timeline */}
             <div className="dashboard-layout-with-sidebar">
               <aside className="dashboard-sidebar desktop-only">
-                <h3 className="sidebar-title">Views</h3>
+                <h3 className="sidebar-title">VIEWS</h3>
                 <nav className="vertical-tabs" id="tour-tabs">
                   {[
                     { id: 'pending', label: 'Pending Requests', icon: MessageSquare },
                     { id: 'in-progress', label: 'Active Today', icon: Clock },
-                    { id: 'upcoming', label: 'Upcoming', icon: Calendar },
+                    { id: 'upcoming', label: 'Future One-Off', icon: Calendar },
+                    { id: 'recurring', label: 'Recurring Schedules', icon: Repeat, external: true },
+                    { type: 'separator' },
                     { id: 'history', label: 'History', icon: RotateCcw },
-                    { id: 'declined', label: 'Declined', icon: XCircle }
-                  ].map(tab => (
-                    <button 
-                      key={tab.id}
-                      className={`vertical-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
-                      onClick={() => setActiveTab(tab.id as any)}
-                    >
-                      <tab.icon size={16} />
-                      <span>{tab.label}</span>
-                      <span className="count-badge">
-                        {getTabCount(tab.id)}
-                      </span>
-                    </button>
+                    { id: 'declined', label: 'Declined', icon: XCircle },
+                  ].map((tab: any, idx) => (
+                    tab.type === 'separator' ? (
+                      <div key={`sep-${idx}`} className="sidebar-separator" />
+                    ) : (
+                      <button 
+                        key={tab.id}
+                        className={`vertical-tab-btn ${tab.external ? '' : (activeTab === tab.id ? 'active' : '')}`}
+                        onClick={() => {
+                          if (tab.external) {
+                            window.open('/schedules', '_blank');
+                          } else {
+                            setActiveTab(tab.id as any);
+                          }
+                        }}
+                      >
+                        <tab.icon size={18} strokeWidth={1.5} />
+                        <span>{tab.label}</span>
+                        <span className="count-badge">
+                          {tab.id === 'recurring' ? getRecurringCustomerCount() : getTabCount(tab.id)}
+                        </span>
+                      </button>
+                    )
                   ))}
                 </nav>
               </aside>
@@ -629,20 +692,20 @@ const Dashboard: React.FC = () => {
                                    </div>
                                  )}
 
-                                 {activeTab === 'declined' && (
-                                   <div className="decline-details-card fade-in">
+                                 {(activeTab === 'declined' || job.status === 'cancelled') && (
+                                   <div className="decline-details-card fade-in" style={job.status === 'cancelled' ? { borderLeft: '4px solid var(--danger)' } : {}}>
                                       <div className="decline-reason-badge">
                                          <XCircle size={12} />
-                                         <span>{job.rejectionReason || 'Other Reason'}</span>
+                                         <span>{job.rejectionReason || job.cancellationReason || 'Other Reason'}</span>
                                       </div>
-                                      {job.rejectionNotes && (
+                                      {(job.rejectionNotes || job.cancellationNotes) && (
                                         <div className="decline-notes-content">
                                           <MessageSquare size={12} className="notes-icon" />
-                                          <p>{job.rejectionNotes}</p>
+                                          <p>{job.rejectionNotes || job.cancellationNotes}</p>
                                         </div>
                                       )}
                                    </div>
-                                 )}
+                                  )}
 
                                 <div className="card-meta">
                                    <div className="meta-pill">
@@ -703,8 +766,8 @@ const Dashboard: React.FC = () => {
                                              ) : (
                                                <>
                                                  <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
-                                                 {job.status !== 'accepted' && job.status !== 'scheduled' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed' && (
-                                                   <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> Cancel</button>
+                                                 {(job.status !== 'accepted' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed') && (
+                                                   <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> {job.status === 'scheduled' ? 'Cancel Job' : 'Cancel'}</button>
                                                  )}
                                                </>
                                              )}
@@ -788,6 +851,19 @@ const Dashboard: React.FC = () => {
         metadata={supportMetadata}
       />
 
+      <CancelJobModal 
+        isOpen={isCancelModalOpen}
+        onClose={() => setIsCancelModalOpen(false)}
+        job={selectedJobForCancel}
+        onSuccess={() => {
+          // Update local state to reflect cancellation
+          if (selectedJobForCancel) {
+            setJobs(jobs.map(j => j.id === selectedJobForCancel.id ? { ...j, status: 'cancelled' } : j));
+          }
+          alert("Job cancelled and dispatch notified.");
+        }}
+      />
+
       <style>{`
         .job-manager-premium {
           position: relative;
@@ -818,36 +894,7 @@ const Dashboard: React.FC = () => {
         .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
         .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
-        .admin-lpo-selector {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 16px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.5);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          margin-bottom: 20px;
-        }
-        .selector-label {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: var(--ink-soft);
-          text-transform: uppercase;
-          letter-spacing: 0.05em;
-        }
-        .lpo-select-dropdown {
-          background: transparent;
-          border: none;
-          font-weight: 700;
-          color: var(--ink);
-          font-size: 0.9rem;
-          cursor: pointer;
-          outline: none;
-          padding-right: 20px;
-        }
+
 
         .btn-premium-action {
           background: var(--ink);
@@ -879,7 +926,7 @@ const Dashboard: React.FC = () => {
           }
           .desktop-only { display: block; }
           .mobile-tabs-dropdown { display: none !important; }
-          .controls-row { display: none !important; }
+          .controls-row { display: none; }
         }
         
         @media (max-width: 1023px) {
@@ -921,40 +968,64 @@ const Dashboard: React.FC = () => {
           align-items: center;
           gap: 12px;
           width: 100%;
-          padding: 14px 16px;
+          padding: 12px 16px;
           border: none;
           background: transparent;
           color: var(--ink);
-          font-weight: 600;
-          font-size: 0.95rem;
+          font-weight: 500;
+          font-size: 1.05rem;
           border-radius: 12px;
           cursor: pointer;
           transition: all 0.2s ease;
           text-align: left;
+          margin-bottom: 4px;
         }
 
         .vertical-tab-btn:hover {
-          background: rgba(255, 255, 255, 0.6);
+          background: rgba(0, 0, 0, 0.02);
         }
 
         .vertical-tab-btn.active {
-          background: #fff;
-          color: var(--gold);
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+          background: rgba(224, 184, 107, 0.15);
+          color: #7d653a;
+          font-weight: 700;
+        }
+
+        .vertical-tab-btn svg {
+          color: inherit;
+          opacity: 0.8;
         }
 
         .vertical-tab-btn .count-badge {
           margin-left: auto;
-          background: rgba(0, 0, 0, 0.05);
-          padding: 2px 8px;
+          background: rgba(0, 0, 0, 0.04);
+          padding: 2px 10px;
           border-radius: 20px;
-          font-size: 0.75rem;
-          font-weight: 700;
-          color: var(--ink);
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: var(--ink-soft);
         }
         
         .vertical-tab-btn.active .count-badge {
-          background: rgba(234, 240, 68, 0.5);
+          background: rgba(0, 0, 0, 0.05);
+          color: #7d653a;
+        }
+
+        .sidebar-separator {
+          height: 1px;
+          background: rgba(0, 0, 0, 0.05);
+          margin: 12px 16px;
+        }
+
+        .sidebar-title {
+          font-family: var(--font-ui);
+          font-size: 0.75rem;
+          font-weight: 800;
+          color: var(--ink-soft);
+          opacity: 0.6;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          margin: 0 16px 20px;
         }
 
         .dashboard-grid { display: flex; flex-direction: column; gap: 24px; }
@@ -993,6 +1064,7 @@ const Dashboard: React.FC = () => {
         }
         .search-pill input { border: none; background: transparent; padding: 14px 0; width: 100%; font-weight: 500; font-size: 0.95rem; }
         .filter-actions { display: flex; gap: 8px; }
+        .lpo-select-custom { min-width: 200px; }
 
         .btn-secondary-glass {
           background: rgba(255, 255, 255, 0.8);
@@ -1037,6 +1109,7 @@ const Dashboard: React.FC = () => {
           box-shadow: 0 8px 20px rgba(26, 61, 51, 0.08); transition: all 0.3s;
         }
         .node-inner.pill-scheduled { border-color: var(--ink); color: var(--ink); }
+        .node-inner.pill-cancelled { border-color: var(--danger); color: var(--danger); }
 
         .timeline-content-card {
           flex: 1; padding: 20px 24px; border-radius: 24px; background: rgba(255,255,255,0.6);
@@ -1077,6 +1150,7 @@ const Dashboard: React.FC = () => {
         .status-tag.status-in-progress { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-completed { background: var(--ink); color: white; }
         .status-tag.status-rejected { background: var(--cream-warm); color: var(--danger); }
+        .status-tag.status-cancelled { background: var(--cream-warm); color: var(--danger); }
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); opacity: 0.6; text-transform: capitalize; }
@@ -1256,6 +1330,7 @@ const Dashboard: React.FC = () => {
           .search-pill { max-width: 100%; padding: 0 12px; }
           .filter-actions { flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
           .date-picker-glass, .select-glass { flex: 1; min-width: 110px; padding: 6px 10px; font-size: 0.8rem; }
+          .lpo-select-custom { flex: 1; min-width: 140px; }
         }
 
         @media (max-width: 700px) {

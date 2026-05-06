@@ -46,13 +46,24 @@ export const onForegroundMessage = () => {
   if (!messaging) return;
   
   onMessage(messaging, (payload: MessagePayload) => {
-    console.log('Foreground message received:', payload);
-    // You can use a toast or browser notification here
+    console.log('[FCM] Foreground message received:', payload);
+    
+    // Read from data if notification is missing (to prevent double notifications)
+    const title = payload.notification?.title || payload.data?.title || 'New Message';
+    const body = payload.notification?.body || payload.data?.body;
+    const link = payload.fcmOptions?.link || payload.data?.link || '/';
+
     if (Notification.permission === 'granted') {
-      new Notification(payload.notification?.title || 'New Message', {
-        body: payload.notification?.body,
-        icon: '/favicon.svg'
+      const notification = new Notification(title, {
+        body: body,
+        icon: '/favicon.svg',
       });
+
+      notification.onclick = (event) => {
+        event.preventDefault();
+        window.open(link, '_blank');
+        notification.close();
+      };
     }
   });
 };

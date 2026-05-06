@@ -81,7 +81,7 @@ const SupportEmailModal: React.FC<SupportEmailModalProps> = ({
                 <Send size={48} />
               </div>
               <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>Message Sent!</h3>
-              <p style={{ color: 'var(--ink-soft)' }}>Michael and Kerry will be in touch shortly.</p>
+              <p style={{ color: 'var(--ink-soft)' }}>The team will be in touch shortly.</p>
             </div>
           ) : (
             <>

@@ -12,13 +12,14 @@ import {
   Clock,
   Pin,
   PinOff,
-  UserCircle
+  UserCircle,
+  Mail
 } from 'lucide-react';
 import { auth } from '../firebase/config';
 import { useLpo } from '../context/LpoContext';
 
 const Sidebar: React.FC = () => {
-  const { isSidebarPinned, setIsSidebarPinned, lpo, isAdmin, userData } = useLpo();
+  const { isSidebarPinned, setIsSidebarPinned, lpo, isAdmin, userData, awaitingTcCount } = useLpo();
   const [isHovered, setIsHovered] = useState(false);
 
   // The sidebar is visually expanded if it's either pinned OR being hovered over
@@ -37,6 +38,7 @@ const Sidebar: React.FC = () => {
 
   const adminNavItems = [
     { name: 'User Management', icon: Users, path: '/admin/users' },
+    { name: 'Communications', icon: Mail, path: '/admin/communications' },
   ];
 
   const handleLogout = async () => {
@@ -81,13 +83,13 @@ const Sidebar: React.FC = () => {
           <NavLink to="/profile" className="user-profile-glass profile-link">
             <div className="avatar-ring">
               <div className="avatar-placeholder">
-                {userData?.role === 'admin' ? 'AD' : (lpo?.name?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'CK')}
+                {isAdmin ? 'AD' : (lpo?.name?.split(' ').map(n => n[0]).join('').substring(0, 2) || 'CK')}
               </div>
             </div>
             {isExpanded && (
               <div className="user-info">
                 <p className="user-name">{userData?.email.split('@')[0] || 'Clarke Kent'}</p>
-                <p className="lpo-name">{userData?.role === 'admin' ? 'Head Office Admin' : (lpo?.name || 'Rouse Hill LPO')}</p>
+                <p className="lpo-name">{isAdmin ? 'Head Office Admin' : (lpo?.name || 'Rouse Hill LPO')}</p>
               </div>
             )}
           </NavLink>
@@ -122,6 +124,11 @@ const Sidebar: React.FC = () => {
               >
                 <item.icon size={20} className="nav-icon" />
                 {isExpanded && <span>{item.name}</span>}
+                {item.name === 'Awaiting T&C' && awaitingTcCount > 0 && (
+                  <span className={`sidebar-badge ${!isExpanded ? 'collapsed-badge' : ''}`}>
+                    {awaitingTcCount}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>
@@ -408,6 +415,34 @@ const Sidebar: React.FC = () => {
         }
 
         .nav-item-glass.active .nav-icon { color: var(--gold); }
+
+        .sidebar-badge {
+          background: #ff4757;
+          color: white;
+          font-size: 0.65rem;
+          font-weight: 800;
+          padding: 2px 8px;
+          border-radius: 50px;
+          margin-left: auto;
+          box-shadow: 0 4px 10px rgba(255, 71, 87, 0.3);
+          animation: badgeIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .collapsed-badge {
+          position: absolute;
+          top: 6px;
+          right: 6px;
+          margin-left: 0;
+          padding: 2px 5px;
+          font-size: 0.6rem;
+          min-width: 18px;
+          text-align: center;
+        }
+
+        @keyframes badgeIn {
+          from { transform: scale(0); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
+        }
 
         .sidebar-footer {
           padding: 16px;

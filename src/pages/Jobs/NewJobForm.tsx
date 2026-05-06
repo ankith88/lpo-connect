@@ -28,7 +28,7 @@ import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimest
 import { db, googleMapsApiKey } from '../../firebase/config';
 
 type ServiceType = 'site-to-lpo' | 'lpo-to-site' | 'round-trip';
-type BillingOption = 'customer' | 'split' | 'lpo';
+type BillingOption = 'customer' | 'lpo';
 
 interface JobData {
   customer: {

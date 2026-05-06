@@ -8,10 +8,13 @@ import {
   Shield, 
   Building2, 
   Trash2, 
-  X
+  X,
+  Lock,
+  Key
 } from 'lucide-react';
-import { collection, query, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { collection, query, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import LoadingScreen from '../../components/LoadingScreen';
 
@@ -24,19 +27,27 @@ interface UserRecord {
 }
 
 const UserManagement: React.FC = () => {
-  const { allLpos, isAdmin } = useLpo();
+  const { allLpos, isAdmin, userData } = useLpo();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  const isSuperAdmin = userData?.role === 'superadmin' || userData?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
+
   // New User Form State
   const [newUser, setNewUser] = useState({
     email: '',
     role: 'operator',
-    lpo_id: ''
+    lpo_id: '',
+    password: ''
   });
+
+  // Reset Password State
+  const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
+  const [newPassword, setNewPassword] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -70,33 +81,64 @@ const UserManagement: React.FC = () => {
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUser.email || (newUser.role === 'operator' && !newUser.lpo_id)) {
-      alert("Please fill in all required fields.");
+    if (!newUser.email || !newUser.password || (newUser.role === 'operator' && !newUser.lpo_id)) {
+      alert("Please fill in all required fields including password.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // In a real production app, you'd use Firebase Admin SDK via Cloud Functions 
-      // to create the actual Auth user. For this prototype, we'll create the 
-      // Firestore record which the login flow can use to verify access.
-      // The user will still need to sign up/sign in with this email.
-      
-      const userRef = doc(db, 'users', newUser.email); // Use email as doc ID for fallback lookup
-      await setDoc(userRef, {
-        email: newUser.email,
-        role: newUser.role,
-        lpo_id: (newUser.role === 'admin' || newUser.role === 'superadmin') ? '' : newUser.lpo_id,
-        createdAt: new Date()
-      });
+      if (isSuperAdmin) {
+        const adminCreateUser = httpsCallable(functions, 'adminCreateUser');
+        await adminCreateUser({
+          email: newUser.email,
+          password: newUser.password,
+          role: newUser.role,
+          lpo_id: (newUser.role === 'admin' || newUser.role === 'superadmin') ? '' : newUser.lpo_id
+        });
+        alert("User account created successfully.");
+      } else {
+        // Fallback for regular admins (legacy behavior)
+        alert("Only Super Admins can create auth-enabled user accounts currently.");
+        setIsSubmitting(false);
+        return;
+      }
 
-      alert("User record created successfully. They can now sign in with this email.");
       setIsModalOpen(false);
-      setNewUser({ email: '', role: 'operator', lpo_id: '' });
+      setNewUser({ email: '', role: 'operator', lpo_id: '', password: '' });
       fetchUsers();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating user:", err);
-      alert("Failed to create user record.");
+      alert(`Failed to create user: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetTarget || !newPassword) return;
+
+    if (newPassword.length < 6) {
+      alert("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const adminResetPassword = httpsCallable(functions, 'adminResetPassword');
+      await adminResetPassword({
+        uid: resetTarget.uid,
+        newPassword: newPassword
+      });
+      
+      alert(`Password for ${resetTarget.email} has been reset successfully.`);
+      setIsResetModalOpen(false);
+      setResetTarget(null);
+      setNewPassword('');
+    } catch (err: any) {
+      console.error("Error resetting password:", err);
+      alert(`Failed to reset password: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -204,6 +246,18 @@ const UserManagement: React.FC = () => {
                     </td>
                     <td className="text-right">
                       <div className="table-actions">
+                        {isSuperAdmin && (
+                          <button 
+                            className="btn-icon-warning" 
+                            onClick={() => {
+                              setResetTarget(u);
+                              setIsResetModalOpen(true);
+                            }}
+                            title="Reset Password"
+                          >
+                            <Key size={18} />
+                          </button>
+                        )}
                         <button 
                           className="btn-icon-danger" 
                           onClick={() => handleDeleteUser(u.uid, u.email)}
@@ -252,6 +306,21 @@ const UserManagement: React.FC = () => {
                   value={newUser.email}
                   onChange={(e) => setNewUser({...newUser, email: e.target.value})}
                   required
+                />
+              </div>
+            </div>
+
+            <div className="form-section">
+              <label className="m-label">Initial Password</label>
+              <div className="input-wrapper-glass">
+                <Lock size={18} />
+                <input 
+                  type="password" 
+                  placeholder="Set account password" 
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                  required
+                  minLength={6}
                 />
               </div>
             </div>
@@ -318,6 +387,68 @@ const UserManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Reset Password Modal */}
+      <div className={`modal-overlay ${isResetModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass fade-in">
+          <div className="modal-header">
+            <div className="header-title">
+              <Key size={20} />
+              <h2>Reset Password</h2>
+            </div>
+            <button className="close-btn" onClick={() => {
+              setIsResetModalOpen(false);
+              setResetTarget(null);
+            }}>
+              <X size={20} />
+            </button>
+          </div>
+
+          <p className="modal-info-text">
+            Setting a new password for <strong>{resetTarget?.email}</strong>. 
+            The user will need to use this new password for their next sign in.
+          </p>
+
+          <form onSubmit={handleResetPassword} className="create-user-form">
+            <div className="form-section">
+              <label className="m-label">New Password</label>
+              <div className="input-wrapper-glass">
+                <Lock size={18} />
+                <input 
+                  type="password" 
+                  placeholder="Enter new password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button 
+                type="button" 
+                className="btn-secondary-glass" 
+                onClick={() => {
+                  setIsResetModalOpen(false);
+                  setResetTarget(null);
+                }}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary-glass"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Resetting...' : 'Update Password'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <style>{`
         .user-mgmt-premium { min-height: 100vh; background: var(--offwhite); position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
@@ -371,7 +502,12 @@ const UserManagement: React.FC = () => {
         .btn-icon-danger { background: transparent; border: none; color: var(--danger); opacity: 0.5; cursor: pointer; transition: all 0.2s; padding: 8px; border-radius: 8px; }
         .btn-icon-danger:hover { opacity: 1; background: #fff5f5; }
 
+        .btn-icon-warning { background: transparent; border: none; color: var(--gold); opacity: 0.5; cursor: pointer; transition: all 0.2s; padding: 8px; border-radius: 8px; }
+        .btn-icon-warning:hover { opacity: 1; background: #fffdf5; }
+
         .empty-row { text-align: center; padding: 60px !important; color: var(--ink-soft); font-style: italic; }
+
+        .modal-info-text { font-size: 0.9rem; color: var(--ink-soft); margin-bottom: 24px; line-height: 1.5; }
 
         /* Modal Redesign */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(26, 61, 51, 0.4); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 24px; }

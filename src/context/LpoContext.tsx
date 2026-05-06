@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { requestNotificationPermission, saveTokenToFirestore } from '../utils/notifications';
 
@@ -37,6 +37,7 @@ interface LpoContextType {
   selectedLpoId: string; // Used by admins to filter, defaults to own lpo_id or 'all'
   setSelectedLpoId: (id: string) => void;
   allLpos: LpoMetadata[];
+  awaitingTcCount: number;
 }
 
 const SUPER_ADMIN_ID = 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
@@ -55,6 +56,7 @@ const LpoContext = createContext<LpoContextType>({
   selectedLpoId: 'all',
   setSelectedLpoId: () => {},
   allLpos: [],
+  awaitingTcCount: 0,
 });
 
 export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -66,6 +68,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [hasCompletedTour, setHasCompletedTour] = useState(true);
   const [selectedLpoId, setSelectedLpoId] = useState<string>('all');
   const [allLpos, setAllLpos] = useState<LpoMetadata[]>([]);
+  const [awaitingTcCount, setAwaitingTcCount] = useState(0);
 
   const isAdmin = userData?.role === 'admin' || userData?.role === 'superadmin' || userData?.uid === SUPER_ADMIN_ID;
 
@@ -89,8 +92,10 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const lpoId = data.lpo_id;
             setHasCompletedTour(data.hasCompletedTour || false);
             
+            const isUserAdmin = data.role === 'admin' || data.role === 'superadmin' || user.uid === SUPER_ADMIN_ID;
+
             // Set initial filter to user's LPO if they are not an admin
-            if (data.role !== 'admin' && user.uid !== SUPER_ADMIN_ID) {
+            if (!isUserAdmin) {
               setSelectedLpoId(lpoId);
             }
 
@@ -145,6 +150,36 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => unsubscribe();
   }, []);
 
+  // Listen for Awaiting T&C Requests
+  useEffect(() => {
+    if (!user) {
+      setAwaitingTcCount(0);
+      return;
+    }
+
+    const reqRef = collection(db, 'requests');
+    let q;
+    
+    if (isAdmin) {
+      if (selectedLpoId === 'all') {
+        q = query(reqRef, where('status', '==', 'awaiting-activation'));
+      } else {
+        q = query(reqRef, where('status', '==', 'awaiting-activation'), where('lpo_id', '==', selectedLpoId));
+      }
+    } else if (userData?.lpo_id) {
+      q = query(reqRef, where('status', '==', 'awaiting-activation'), where('lpo_id', '==', userData.lpo_id));
+    } else {
+      setAwaitingTcCount(0);
+      return;
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setAwaitingTcCount(snapshot.size);
+    });
+
+    return () => unsubscribe();
+  }, [user, isAdmin, selectedLpoId, userData?.lpo_id]);
+
   const completeTour = async () => {
     if (!user) return;
     try {
@@ -185,7 +220,8 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isAdmin,
       selectedLpoId,
       setSelectedLpoId,
-      allLpos
+      allLpos,
+      awaitingTcCount
     }}>
       {children}
     </LpoContext.Provider>
