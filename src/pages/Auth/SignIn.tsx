@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, Phone, Lock, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  signInWithEmailAndPassword, 
-  sendPasswordResetEmail 
+  signInWithEmailAndPassword 
 } from 'firebase/auth';
 import { 
   collection, 
@@ -11,7 +10,8 @@ import {
   where, 
   getDocs 
 } from 'firebase/firestore';
-import { auth, db } from '../../firebase/config';
+import { httpsCallable } from 'firebase/functions';
+import { auth, db, functions } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import LoadingScreen from '../../components/LoadingScreen';
 
@@ -87,11 +87,11 @@ const SignIn: React.FC = () => {
     setMessage('');
 
     try {
-      const actionCodeSettings = {
-        url: `${window.location.origin}/signin`,
-        handleCodeInApp: false,
-      };
-      await sendPasswordResetEmail(auth, identifier, actionCodeSettings);
+      const requestPasswordReset = httpsCallable(functions, 'requestPasswordReset');
+      await requestPasswordReset({ 
+        email: identifier,
+        origin: window.location.origin
+      });
       setMessage('Password reset email sent! Please check your inbox.');
     } catch (err: any) {
       console.error("Reset error:", err);

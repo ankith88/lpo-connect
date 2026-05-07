@@ -22,7 +22,7 @@ export const googleMapsApiKey = "AIzaSyC3uWNpVJ7jFsGyWUKkzQGkDJGrW4yY-2o";
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, "lpoconnect");
-export const functions = getFunctions(app, 'australia-southeast1');
+export const functions = getFunctions(app, 'us-central1');
 export const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 export default app;

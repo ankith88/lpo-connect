@@ -3,6 +3,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { onCall, HttpsError, onRequest } from "firebase-functions/v2/https";
 import { onDocumentUpdated, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { setGlobalOptions } from "firebase-functions/v2";
 import { defineSecret } from "firebase-functions/params";
 import * as nodemailer from "nodemailer";
 import { connect, ImapSimple } from "imap-simple";
@@ -12,6 +13,9 @@ import { simpleParser } from "mailparser";
 if (admin.apps.length === 0) {
   admin.initializeApp();
 }
+
+// Set global options
+setGlobalOptions({ region: "us-central1" });
 
 // Database helper - Specify the named database if needed
 const getDB = () => getFirestore("lpoconnect");
@@ -53,12 +57,12 @@ const logCommunication = async (data: {
       const cid = metadata.customerId;
       const cidStr = cid.toString();
       const cidNum = parseInt(cidStr);
-      
+
       const custQuery = db.collection("lpo").doc(metadata.lpoId).collection("customers");
-      
+
       // Try companyId
       let custSnap = await custQuery.where("companyId", "in", [cidStr, cidNum]).limit(1).get();
-      
+
       // Try customerInternalId fallback
       if (custSnap.empty) {
         custSnap = await custQuery.where("customerInternalId", "in", [cidStr, cidNum]).limit(1).get();
@@ -97,198 +101,198 @@ export const onJobRequestCreated = onDocumentCreated({
   const snapshot = event.data;
   const requestId = event.params.requestId;
   console.log(`[Trigger Check] onJobRequestCreated triggered for ID: ${requestId}`);
-  
+
   if (!snapshot) {
     console.error(`[Trigger Error] No snapshot data for request ${requestId}`);
     return;
   }
   // const data = snapshot.data();
 
-/*
-  const customerEmail = data.customer?.email;
-  const companyName = data.customer?.company || "Unknown Company";
-  const firstName = data.customer?.firstName || "there";
-  const serviceType = data.service || "Standard Service";
-  const date = data.date || "To be confirmed";
-
-  if (!customerEmail) {
-    console.warn(`No customer email found for request ${requestId}. Skipping email confirmation.`);
-    return;
-  }
-
-  console.log(`[Email Automation] Preparing confirmation for ${customerEmail} (Request: ${requestId})`);
-
-  const transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      user: "bookings@lpo.plus",
-      pass: gmailAppPassword.value(),
-    },
-  });
-
-  // Format service name for display
-  const displayService = typeof serviceType === 'string' 
-    ? serviceType.replace(/-/g, ' ').toUpperCase() 
-    : "SERVICE REQUESTED";
-
-  const mailOptions = {
-    from: '"LPO.PLUS Bookings" <bookings@lpo.plus>',
-    to: customerEmail,
-    replyTo: "bookings@lpo.plus",
-    subject: `Booking Confirmation: ${companyName} (${displayService})`,
-    html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          .email-container {
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            background-color: #ffffff;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            border: 1px solid #f0f0f0;
-          }
-          .header {
-            background-color: #095c7b;
-            padding: 40px 20px;
-            text-align: center;
-          }
-          .header h1 {
-            color: #ffffff;
-            margin: 0;
-            font-size: 24px;
-            font-weight: 300;
-            letter-spacing: 1px;
-          }
-          .header span {
-            color: #EAF044;
-            font-weight: bold;
-          }
-          .content {
-            padding: 40px 30px;
-            color: #333333;
-            line-height: 1.6;
-          }
-          .greeting {
-            font-size: 18px;
-            margin-bottom: 20px;
-            color: #095c7b;
-          }
-          .job-details {
-            background-color: #f8fafb;
-            border-radius: 8px;
-            padding: 25px;
-            margin: 30px 0;
-            border-left: 4px solid #EAF044;
-          }
-          .detail-row {
-            margin-bottom: 12px;
-            display: flex;
-          }
-          .detail-label {
-            font-weight: bold;
-            width: 120px;
-            color: #666;
-            font-size: 13px;
-            text-transform: uppercase;
-          }
-          .detail-value {
-            color: #095c7b;
-            font-weight: 600;
-          }
-          .button-container {
-            text-align: center;
-            margin: 40px 0;
-          }
-          .btn-primary {
-            background-color: #EAF044;
-            color: #095c7b;
-            padding: 16px 32px;
-            text-decoration: none;
-            font-weight: bold;
-            border-radius: 8px;
-            display: inline-block;
-            transition: background 0.3s;
-            box-shadow: 0 4px 12px rgba(234, 240, 68, 0.3);
-          }
-          .footer {
-            background-color: #f4f7f8;
-            padding: 30px;
-            text-align: center;
-            font-size: 12px;
-            color: #999;
-          }
-          .footer p {
-            margin: 5px 0;
-          }
-          .social-links {
-            margin-top: 20px;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="email-container">
-          <div class="header">
-            <h1>LPO<span>.PLUS</span></h1>
-          </div>
-          <div class="content">
-            <div class="greeting">Booking Received</div>
-            <p>Hello ${firstName},</p>
-            <p>Thank you for choosing LPO.PLUS. We have received your job request for <strong>${companyName}</strong> and it is currently being processed by our dispatch team.</p>
-            
-            <div class="job-details">
-              <div class="detail-row">
-                <span class="detail-label">Reference:</span>
-                <span class="detail-value">#${requestId.substring(0, 8).toUpperCase()}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Service:</span>
-                <span class="detail-value">${displayService}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-label">Date:</span>
-                <span class="detail-value">${date}</span>
-              </div>
-            </div>
-
-            <p>You can track the live status of your request, view logistics details, or chat directly with your operator through our portal.</p>
-            
-            <!--
-            <div class="button-container">
-              <a href="https://mp-lpo-connect.web.app/request/${requestId}" class="btn-primary">
-                VIEW JOB DETAILS
-              </a>
-            </div>
-            -->
-
-            <p style="font-size: 14px; color: #666;">If you need to make any urgent changes, please reply to this email or use the chat feature in the portal.</p>
-          </div>
-          <div class="footer">
-            <p><strong>LPO.PLUS</strong> | Premium Logistics Solutions</p>
-            <p>Powered by MailPlus Australia</p>
-            <p style="margin-top: 15px;">&copy; ${new Date().getFullYear()} LPO.PLUS. All rights reserved.</p>
-          </div>
-        </div>
-      </body>
-      </html>
-    `,
-  };
-
-  try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[Email Success] Confirmation sent to ${customerEmail}. Message ID: ${info.messageId}`);
-  } catch (error) {
-    console.error(`[Email Error] Failed to send confirmation to ${customerEmail}:`, error);
-    // Log more details if it's an auth error
-    if (error instanceof Error && error.message.includes('Invalid login')) {
-      console.error("CRITICAL: Gmail SMTP Authentication failed. Please verify the GMAIL_APP_PASSWORD secret.");
+  /*
+    const customerEmail = data.customer?.email;
+    const companyName = data.customer?.company || "Unknown Company";
+    const firstName = data.customer?.firstName || "there";
+    const serviceType = data.service || "Standard Service";
+    const date = data.date || "To be confirmed";
+  
+    if (!customerEmail) {
+      console.warn(`No customer email found for request ${requestId}. Skipping email confirmation.`);
+      return;
     }
-  }
-*/
+  
+    console.log(`[Email Automation] Preparing confirmation for ${customerEmail} (Request: ${requestId})`);
+  
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+  
+    // Format service name for display
+    const displayService = typeof serviceType === 'string' 
+      ? serviceType.replace(/-/g, ' ').toUpperCase() 
+      : "SERVICE REQUESTED";
+  
+    const mailOptions = {
+      from: '"LPO.PLUS Bookings" <bookings@lpo.plus>',
+      to: customerEmail,
+      replyTo: "bookings@lpo.plus",
+      subject: `Booking Confirmation: ${companyName} (${displayService})`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            .email-container {
+              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+              max-width: 600px;
+              margin: 0 auto;
+              background-color: #ffffff;
+              border-radius: 12px;
+              overflow: hidden;
+              box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+              border: 1px solid #f0f0f0;
+            }
+            .header {
+              background-color: #095c7b;
+              padding: 40px 20px;
+              text-align: center;
+            }
+            .header h1 {
+              color: #ffffff;
+              margin: 0;
+              font-size: 24px;
+              font-weight: 300;
+              letter-spacing: 1px;
+            }
+            .header span {
+              color: #EAF044;
+              font-weight: bold;
+            }
+            .content {
+              padding: 40px 30px;
+              color: #333333;
+              line-height: 1.6;
+            }
+            .greeting {
+              font-size: 18px;
+              margin-bottom: 20px;
+              color: #095c7b;
+            }
+            .job-details {
+              background-color: #f8fafb;
+              border-radius: 8px;
+              padding: 25px;
+              margin: 30px 0;
+              border-left: 4px solid #EAF044;
+            }
+            .detail-row {
+              margin-bottom: 12px;
+              display: flex;
+            }
+            .detail-label {
+              font-weight: bold;
+              width: 120px;
+              color: #666;
+              font-size: 13px;
+              text-transform: uppercase;
+            }
+            .detail-value {
+              color: #095c7b;
+              font-weight: 600;
+            }
+            .button-container {
+              text-align: center;
+              margin: 40px 0;
+            }
+            .btn-primary {
+              background-color: #EAF044;
+              color: #095c7b;
+              padding: 16px 32px;
+              text-decoration: none;
+              font-weight: bold;
+              border-radius: 8px;
+              display: inline-block;
+              transition: background 0.3s;
+              box-shadow: 0 4px 12px rgba(234, 240, 68, 0.3);
+            }
+            .footer {
+              background-color: #f4f7f8;
+              padding: 30px;
+              text-align: center;
+              font-size: 12px;
+              color: #999;
+            }
+            .footer p {
+              margin: 5px 0;
+            }
+            .social-links {
+              margin-top: 20px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="email-container">
+            <div class="header">
+              <h1>LPO<span>.PLUS</span></h1>
+            </div>
+            <div class="content">
+              <div class="greeting">Booking Received</div>
+              <p>Hello ${firstName},</p>
+              <p>Thank you for choosing LPO.PLUS. We have received your job request for <strong>${companyName}</strong> and it is currently being processed by our dispatch team.</p>
+              
+              <div class="job-details">
+                <div class="detail-row">
+                  <span class="detail-label">Reference:</span>
+                  <span class="detail-value">#${requestId.substring(0, 8).toUpperCase()}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Service:</span>
+                  <span class="detail-value">${displayService}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Date:</span>
+                  <span class="detail-value">${date}</span>
+                </div>
+              </div>
+  
+              <p>You can track the live status of your request, view logistics details, or chat directly with your operator through our portal.</p>
+              
+              <!--
+              <div class="button-container">
+                <a href="https://mp-lpo-connect.web.app/request/${requestId}" class="btn-primary">
+                  VIEW JOB DETAILS
+                </a>
+              </div>
+              -->
+  
+              <p style="font-size: 14px; color: #666;">If you need to make any urgent changes, please reply to this email or use the chat feature in the portal.</p>
+            </div>
+            <div class="footer">
+              <p><strong>LPO.PLUS</strong> | Premium Logistics Solutions</p>
+              <p>Powered by MailPlus Australia</p>
+              <p style="margin-top: 15px;">&copy; ${new Date().getFullYear()} LPO.PLUS. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+  
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`[Email Success] Confirmation sent to ${customerEmail}. Message ID: ${info.messageId}`);
+    } catch (error) {
+      console.error(`[Email Error] Failed to send confirmation to ${customerEmail}:`, error);
+      // Log more details if it's an auth error
+      if (error instanceof Error && error.message.includes('Invalid login')) {
+        console.error("CRITICAL: Gmail SMTP Authentication failed. Please verify the GMAIL_APP_PASSWORD secret.");
+      }
+    }
+  */
 });
 
 // Logic: onCustomerActive
@@ -386,7 +390,7 @@ export const onCustomerCancelled = onDocumentUpdated({
     console.log(`[Customer Cancellation] Triggered for ${newData.companyName} (${customerId})`);
 
     const db = getDB();
-    
+
     // Get LPO Name
     let lpoName = "Unknown LPO";
     try {
@@ -459,7 +463,7 @@ export const onCustomerCancelled = onDocumentUpdated({
     try {
       await transporter.sendMail(mailOptions);
       console.log(`[Email Success] Cancellation email sent for ${customerName}`);
-      
+
       // Log to communications
       await logCommunication({
         from: "bookings@lpo.plus",
@@ -626,7 +630,7 @@ export const onChatMessageSent = onDocumentUpdated({
 
         const response = await messaging.sendEachForMulticast(payload);
         console.log(`Successfully sent ${response.successCount} operator notifications.`);
-        
+
         if (response.failureCount > 0) {
           console.error(`Failed to send ${response.failureCount} operator notifications.`);
           response.responses.forEach((resp, idx) => {
@@ -662,7 +666,7 @@ export const onChatMessageSent = onDocumentUpdated({
 
         const response = await messaging.sendEachForMulticast(payload);
         console.log(`Successfully sent ${response.successCount} customer notifications.`);
-        
+
         if (response.failureCount > 0) {
           console.error(`Failed to send ${response.failureCount} customer notifications.`);
           response.responses.forEach((resp, idx) => {
@@ -857,7 +861,7 @@ export const sendSupportEmail = onCall({
   secrets: [gmailAppPassword],
 }, async (request) => {
   console.log("[Support Email] Function triggered");
-  
+
   if (!request.auth) {
     console.warn("[Support Email] Unauthenticated request");
     throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
@@ -881,7 +885,7 @@ export const sendSupportEmail = onCall({
     });
 
     const recipients = ["michael.mcdaid@mailplus.com.au", "kerry.oneill@mailplus.com.au", "dispatcher@mailplus.com.au"];
-    
+
     // Build metadata section
     let metadataHtml = "";
     if (metadata) {
@@ -954,7 +958,7 @@ export const cancelJob = onCall({
   secrets: [gmailAppPassword],
 }, async (request) => {
   console.log("[Cancel Job] Function triggered");
-  
+
   if (!request.auth) {
     console.warn("[Cancel Job] Unauthenticated request");
     throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
@@ -969,21 +973,21 @@ export const cancelJob = onCall({
   }
 
   const db = getDB();
-  
+
   try {
     // 1. Update Firestore
     const jobRef = db.collection('jobs').doc(jobId);
     const jobSnap = await jobRef.get();
-    
+
     if (!jobSnap.exists) {
       // Check scheduled_jobs if not in jobs
       const schedRef = db.collection('scheduled_jobs').doc(jobId);
       const schedSnap = await schedRef.get();
-      
+
       if (!schedSnap.exists) {
         throw new HttpsError("not-found", "Job not found in active jobs or schedules.");
       }
-      
+
       await schedRef.update({
         status: 'cancelled',
         cancellationReason: reason,
@@ -1012,14 +1016,14 @@ export const cancelJob = onCall({
 
     const recipient = "dispatcher@mailplus.com.au";
     const userEmail = request.auth.token.email || "Unknown User";
-    
+
     const mailOptions = {
       from: '"LPO.PLUS Bookings" <bookings@lpo.plus>',
       to: recipient,
       replyTo: "bookings@lpo.plus",
       subject: `JOB CANCELLATION: [Ref: ${jobId}] ${metadata?.companyName || 'Job'}`,
       html: `
-        <div style="font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
+        <div style="font-family: 'Fraunces', serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; border: 1px solid #eee; border-radius: 12px; overflow: hidden;">
           <div style="background: #ff4757; color: white; padding: 20px; text-align: center;">
             <h1 style="margin: 0; font-size: 24px;">Job Cancellation Notice</h1>
           </div>
@@ -1119,7 +1123,7 @@ export const adminCreateUser = onCall(async (request) => {
 
   try {
     console.log(`[Admin] Creating user: ${email} with role: ${role}`);
-    
+
     // 1. Create user in Firebase Auth
     const userRecord = await admin.auth().createUser({
       email,
@@ -1157,7 +1161,7 @@ export const adminResetPassword = onCall(async (request) => {
 
   try {
     console.log(`[Admin] Resetting password for user UID: ${uid}`);
-    
+
     await admin.auth().updateUser(uid, {
       password: newPassword
     });
@@ -1166,6 +1170,99 @@ export const adminResetPassword = onCall(async (request) => {
   } catch (error: any) {
     console.error("[Admin Reset Password Error]:", error);
     throw new HttpsError("internal", error.message || "Failed to reset password.");
+  }
+});
+
+// Logic: requestPasswordReset
+export const requestPasswordReset = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
+  const { email } = request.data;
+
+  if (!email) {
+    throw new HttpsError("invalid-argument", "The function must be called with an email address.");
+  }
+
+  try {
+    // 1. Generate the reset link
+    const actionCodeSettings = {
+      // Use the origin if provided, otherwise fallback to production URL
+      url: request.data.origin ? `${request.data.origin}/signin` : 'https://mp-lpo-connect.web.app/signin',
+      handleCodeInApp: true,
+    };
+
+    console.log(`[Auth] Generating password reset link for: ${email}`);
+    const link = await admin.auth().generatePasswordResetLink(email, actionCodeSettings);
+
+    // 2. Prepare the custom email
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+
+    const mailOptions = {
+      from: '"LPO.PLUS" <bookings@lpo.plus>',
+      to: email,
+      subject: "Reset your LPO.PLUS password",
+      html: `
+        <div style="font-family: 'Fraunces', serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; border: 1px solid #333;">
+          <!-- Header -->
+          <div style="background-color: #095c7b; padding: 40px 20px; text-align: center;">
+            <h1 style="margin: 0; font-size: 32px; letter-spacing: 2px;">
+              <span style="color: #ffffff;">LPO</span><span style="color: #EAF044;">.PLUS</span>
+            </h1>
+          </div>
+
+          <!-- Body -->
+          <div style="padding: 40px 30px; text-align: center;">
+            <h2 style="color: #a5d6a7; font-size: 24px; margin-bottom: 20px;">Password Reset Request</h2>
+            <p style="color: #cccccc; font-size: 16px; line-height: 1.6; margin-bottom: 30px;">
+              We received a request to reset the password for your LPO.PLUS account. Click the button below to choose a new password.
+            </p>
+            
+            <div style="margin: 40px 0;">
+              <a href="${link}" style="background-color: #095c7b; color: #EAF044; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; border: 1px solid #EAF044;">
+                RESET MY PASSWORD
+              </a>
+            </div>
+
+            <div style="margin-top: 40px; color: #888888; font-size: 15px; line-height: 1.6;">
+              <p>If you didn't request this, you can safely ignore this email. Your password will not change until you access the link above and create a new one.</p>
+              <p style="margin-top: 20px; font-size: 14px; color: #666666;">This link will expire in 1 hour.</p>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="background-color: #1c1c1e; padding: 30px 20px; text-align: center; border-top: 1px solid #333;">
+            <p style="margin: 0; color: #999999; font-size: 14px; font-weight: bold;">
+              LPO.PLUS | Premium Logistics Solutions
+            </p>
+            <p style="margin: 5px 0 20px 0; color: #666666; font-size: 13px;">
+              Powered by MailPlus Australia
+            </p>
+            <p style="margin: 0; color: #444444; font-size: 12px;">
+              © 2026 LPO.PLUS. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+    };
+
+    // 3. Send the email
+    await transporter.sendMail(mailOptions);
+    console.log(`[Auth] Custom password reset email sent to: ${email}`);
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Request Password Reset Error]:", error);
+    // For security, don't reveal if user-not-found, but log it
+    if (error.code === 'auth/user-not-found') {
+      return { success: true };
+    }
+    throw new HttpsError("internal", error.message || "Failed to generate password reset link.");
   }
 });
 
@@ -1196,15 +1293,15 @@ const processIncomingEmails = async () => {
 
     const messages = await connection.search(searchCriteria, fetchOptions);
     console.log(`[IMAP Polling] Found ${messages.length} unread messages.`);
-    
+
     for (const msg of messages) {
       const all = msg.parts.find(part => part.which === '');
       const id = msg.attributes.uid;
-      
+
       if (all) {
         const parsed = await simpleParser(all.body);
         const html = parsed.html || parsed.textAsHtml || parsed.text || "";
-        
+
         // Extract Metadata from hidden tag if it exists
         const metadataMatch = html.match(/<!-- LPO_CONNECT_METADATA: (.*?) -->/);
         let metadata = {};
@@ -1260,7 +1357,7 @@ export const syncRecentEmails = onCall({
   secrets: [gmailAppPassword],
 }, async (request) => {
   await validateSuperAdmin(request.auth);
-  
+
   try {
     const config = {
       imap: {
@@ -1275,12 +1372,12 @@ export const syncRecentEmails = onCall({
     };
 
     const connection: ImapSimple = await connect(config);
-    
+
     // 1. Sync Inbox
     await connection.openBox('INBOX');
     const inboxMessages = await connection.search(['ALL'], { bodies: ['HEADER', 'TEXT', ''], struct: true });
     const recentInbox = inboxMessages.slice(-50);
-    
+
     for (const msg of recentInbox) {
       const all = msg.parts.find(part => part.which === '');
       if (all) {
@@ -1288,7 +1385,7 @@ export const syncRecentEmails = onCall({
         const html = parsed.html || parsed.textAsHtml || parsed.text || "";
         const metadataMatch = html.match(/<!-- LPO_CONNECT_METADATA: (.*?) -->/);
         let metadata = {};
-        if (metadataMatch) { try { metadata = JSON.parse(metadataMatch[1]); } catch (e) {} }
+        if (metadataMatch) { try { metadata = JSON.parse(metadataMatch[1]); } catch (e) { } }
 
         await logCommunication({
           from: parsed.from?.text || "Unknown",
@@ -1308,7 +1405,7 @@ export const syncRecentEmails = onCall({
       await connection.openBox('[Gmail]/Sent Mail');
       const sentMessages = await connection.search(['ALL'], { bodies: ['HEADER', 'TEXT', ''], struct: true });
       const recentSent = sentMessages.slice(-50);
-      
+
       for (const msg of recentSent) {
         const all = msg.parts.find(part => part.which === '');
         if (all) {
@@ -1316,7 +1413,7 @@ export const syncRecentEmails = onCall({
           const html = parsed.html || parsed.textAsHtml || parsed.text || "";
           const metadataMatch = html.match(/<!-- LPO_CONNECT_METADATA: (.*?) -->/);
           let metadata = {};
-          if (metadataMatch) { try { metadata = JSON.parse(metadataMatch[1]); } catch (e) {} }
+          if (metadataMatch) { try { metadata = JSON.parse(metadataMatch[1]); } catch (e) { } }
 
           await logCommunication({
             from: 'bookings@lpo.plus',
@@ -1347,7 +1444,7 @@ export const respondToCommunication = onCall({
   secrets: [gmailAppPassword],
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
-  
+
   const { to, subject, body, metadata, threadId } = request.data;
   if (!to || !subject || !body) {
     throw new HttpsError("invalid-argument", "Missing required fields (to, subject, body).");
@@ -1405,7 +1502,7 @@ export const summarizeCommunication = onCall({
   secrets: [geminiApiKey],
 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Auth required.");
-  
+
   const { communicationId, text } = request.data;
   if (!text) throw new HttpsError("invalid-argument", "Text required.");
 
@@ -1453,7 +1550,7 @@ async function fetchDailyJobReportData(statuses: string[]) {
     month: '2-digit',
     day: '2-digit'
   });
-  
+
   const parts = sydneyTimeFormatter.formatToParts(new Date());
   let year = '', month = '', day = '';
   for (const part of parts) {
@@ -1462,21 +1559,21 @@ async function fetchDailyJobReportData(statuses: string[]) {
     if (part.type === 'day') day = part.value;
   }
   const todayStr = `${year}-${month}-${day}`;
-  
+
   console.log(`[Daily Report] Fetching jobs for ${todayStr} with statuses: ${statuses.join(', ')}`);
-  
+
   const jobsSnapshot = await db.collection('jobs')
     .where('date', '==', todayStr)
     .where('status', 'in', statuses)
     .get();
-    
+
   const jobsData = [];
-  const lpoCache: {[key: string]: string} = {};
-  
+  const lpoCache: { [key: string]: string } = {};
+
   for (const doc of jobsSnapshot.docs) {
     const data = doc.data();
     let lpoName = data.lpo_name;
-    
+
     if (!lpoName && data.lpo_id) {
       if (lpoCache[data.lpo_id]) {
         lpoName = lpoCache[data.lpo_id];
@@ -1486,7 +1583,7 @@ async function fetchDailyJobReportData(statuses: string[]) {
         lpoCache[data.lpo_id] = lpoName;
       }
     }
-    
+
     jobsData.push({
       id: doc.id,
       lpoName: lpoName || "N/A",
@@ -1497,7 +1594,7 @@ async function fetchDailyJobReportData(statuses: string[]) {
       lpoId: data.lpo_id
     });
   }
-  
+
   return { todayStr, jobs: jobsData };
 }
 
@@ -1511,7 +1608,7 @@ export const sendScheduledJobsReport = onSchedule({
   secrets: [gmailAppPassword],
 }, async (event) => {
   const { todayStr, jobs } = await fetchDailyJobReportData(['scheduled']);
-  
+
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -1522,7 +1619,7 @@ export const sendScheduledJobsReport = onSchedule({
 
   const reportDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const recipient = "dispatcher@mailplus.com.au";
-  
+
   let jobRows = "";
   jobs.forEach(job => {
     jobRows += `
@@ -1541,7 +1638,7 @@ export const sendScheduledJobsReport = onSchedule({
     <head>
       <meta charset="utf-8">
       <style>
-        .container { font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333; }
+        .container { font-family: 'Fraunces', serif; max-width: 700px; margin: 0 auto; color: #333; }
         .header { background-color: #095c7b; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; }
         .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 300; }
         .header span { color: #EAF044; font-weight: bold; }
@@ -1618,7 +1715,7 @@ export const sendScheduledJobsReport = onSchedule({
   try {
     await transporter.sendMail(mailOptions);
     console.log(`[Daily Report] Scheduled jobs report sent to ${recipient}`);
-    
+
     // Log to communications
     await logCommunication({
       from: "bookings@lpo.plus",
@@ -1643,7 +1740,7 @@ export const sendInProgressJobsReport = onSchedule({
   secrets: [gmailAppPassword],
 }, async (event) => {
   const { todayStr, jobs } = await fetchDailyJobReportData(['accepted', 'in-progress']);
-  
+
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
@@ -1654,7 +1751,7 @@ export const sendInProgressJobsReport = onSchedule({
 
   const reportDate = new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const recipient = "dispatcher@mailplus.com.au";
-  
+
   let jobRows = "";
   jobs.forEach(job => {
     const statusPill = `<span style="background: ${job.status === 'in-progress' ? '#e0f2fe' : '#f0fdf4'}; color: ${job.status === 'in-progress' ? '#0369a1' : '#15803d'}; padding: 2px 8px; border-radius: 12px; font-size: 11px; text-transform: uppercase; font-weight: bold;">${job.status}</span>`;
@@ -1674,7 +1771,7 @@ export const sendInProgressJobsReport = onSchedule({
     <head>
       <meta charset="utf-8">
       <style>
-        .container { font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333; }
+        .container { font-family: 'Fraunces', serif; max-width: 700px; margin: 0 auto; color: #333; }
         .header { background-color: #1A3D33; padding: 30px; border-radius: 12px 12px 0 0; text-align: center; }
         .header h1 { color: #ffffff; margin: 0; font-size: 24px; font-weight: 300; }
         .header span { color: #EAF044; font-weight: bold; }
@@ -1751,7 +1848,7 @@ export const sendInProgressJobsReport = onSchedule({
   try {
     await transporter.sendMail(mailOptions);
     console.log(`[Daily Report] In-progress report sent to ${recipient}`);
-    
+
     // Log to communications
     await logCommunication({
       from: "bookings@lpo.plus",
@@ -1776,13 +1873,13 @@ export const sendDailyPerformanceReport = onSchedule({
   secrets: [gmailAppPassword],
 }, async (event) => {
   const db = getDB();
-  
+
   // 1. Calculate Yesterday in Sydney
   const sydneyTimeFormatter = new Intl.DateTimeFormat('en-AU', {
     timeZone: 'Australia/Sydney',
     year: 'numeric', month: '2-digit', day: '2-digit'
   });
-  
+
   const now = new Date();
   const parts = sydneyTimeFormatter.formatToParts(now);
   let y = '', m = '', d = '';
@@ -1791,11 +1888,11 @@ export const sendDailyPerformanceReport = onSchedule({
     if (part.type === 'month') m = part.value;
     if (part.type === 'day') d = part.value;
   }
-  
+
   const todayInSydney = new Date(`${y}-${m}-${d}T00:00:00`);
   const yesterdayDate = new Date(todayInSydney);
   yesterdayDate.setDate(todayInSydney.getDate() - 1);
-  
+
   const yParts = sydneyTimeFormatter.formatToParts(yesterdayDate);
   let yy = '', mm = '', dd = '';
   for (const part of yParts) {
@@ -1811,7 +1908,7 @@ export const sendDailyPerformanceReport = onSchedule({
   // 2. Fetch all jobs for yesterday
   const jobsSnapshot = await db.collection('jobs').where('date', '==', yesterdayStr).get();
   const jobsByLpo: { [key: string]: any[] } = {};
-  
+
   jobsSnapshot.forEach(doc => {
     const data = doc.data();
     const lpoId = data.lpo_id;
@@ -1823,7 +1920,7 @@ export const sendDailyPerformanceReport = onSchedule({
   // 3. Fetch all users to know who to notify
   const usersSnapshot = await db.collection('users').get();
   const usersByLpo: { [key: string]: string[] } = {};
-  
+
   usersSnapshot.forEach(doc => {
     const data = doc.data();
     const lpoId = data.lpo_id;
@@ -1881,7 +1978,7 @@ export const sendDailyPerformanceReport = onSchedule({
     });
 
     const html = `
-      <div style="font-family: 'Helvetica Neue', Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #333;">
+      <div style="font-family: 'Fraunces', serif; max-width: 700px; margin: 0 auto; color: #333;">
         <div style="background-color: #1A3D33; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
           <h1 style="color: white; margin: 0; font-size: 24px;">LPO.PLUS | Performance Summary</h1>
           <p style="color: #EAF044; margin: 5px 0 0 0; font-weight: bold;">${lpoName}</p>
@@ -1953,7 +2050,7 @@ export const sendDailyPerformanceReport = onSchedule({
     try {
       await transporter.sendMail(mailOptions);
       console.log(`[Performance Report] Sent to ${lpoName} (${recipientList.length} users)`);
-      
+
       // Log to communications
       await logCommunication({
         from: "bookings@lpo.plus",
@@ -1978,7 +2075,7 @@ export const testReports = onRequest({
   cors: true,
 }, async (req, res) => {
   const { type } = req.query;
-  
+
   try {
     if (type === 'scheduled') {
       // @ts-ignore - Triggering the internal handler
