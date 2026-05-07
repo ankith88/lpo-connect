@@ -16,7 +16,7 @@ import Schedules from './pages/Jobs/Schedules';
 import AwaitingTCPage from './pages/Jobs/AwaitingTCPage';
 import Reports from './pages/Admin/Reports';
 import SupportCenter from './pages/Help/SupportCenter';
-import InductionPack from './pages/Help/InductionPack';
+
 import Profile from './pages/Auth/Profile';
 import ResetPassword from './pages/Auth/ResetPassword';
 import UserManagement from './pages/Admin/UserManagement';
@@ -142,11 +142,7 @@ const App: React.FC = () => {
             </PrivateRoute>
           } />
           
-          <Route path="/induction" element={
-            <PrivateRoute>
-              <InductionPack />
-            </PrivateRoute>
-          } />
+
 
           <Route path="/profile" element={
             <PrivateRoute>

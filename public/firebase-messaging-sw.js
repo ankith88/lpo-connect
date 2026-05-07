@@ -14,23 +14,19 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   console.log('Received background message ', payload);
-  
-  // Use data payload exclusively to prevent OS double-notifications
-  const notificationTitle = payload.data?.title || payload.notification?.title || 'New Message';
-  const notificationOptions = {
-    body: payload.data?.body || payload.notification?.body,
-    icon: '/favicon.svg',
-    data: {
-      url: payload.data?.link || payload.fcmOptions?.link || '/'
-    }
-  };
-
-  self.registration.showNotification(notificationTitle, notificationOptions);
+  // We do NOT call showNotification here because the browser will now 
+  // automatically show the formal 'notification' block we added to the backend.
+  // This prevents the 'double notification' issue.
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const urlToOpen = event.notification.data.url;
+  
+  // Try to get the URL from the formal link field or our custom data fallback
+  const urlToOpen = event.notification.data?.url || 
+                    event.notification.data?.link || 
+                    event.notification.click_action || 
+                    '/';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {

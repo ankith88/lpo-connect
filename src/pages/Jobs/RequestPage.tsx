@@ -24,7 +24,8 @@ import {
   CheckCircle2,
   Phone,
   Mail,
-  User as UserIcon
+  User as UserIcon,
+  Zap
 } from 'lucide-react';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import LoadingScreen from '../../components/LoadingScreen';
@@ -44,7 +45,9 @@ const RequestPage: React.FC = () => {
   const [acceptStatus, setAcceptStatus] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [hasNewMessage, setHasNewMessage] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   
   // Rejection Modal State
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -64,6 +67,9 @@ const RequestPage: React.FC = () => {
   const isLpoUser = !!lpo;
   const isExternalUser = !lpo;
 
+  const today = formatDateForInput(new Date());
+  const isHistory = request?.date < today;
+
   useEffect(() => {
     if (!id) return;
 
@@ -71,12 +77,7 @@ const RequestPage: React.FC = () => {
     const unsubscribe = onSnapshot(doc(db, 'requests', id), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        // Only set error for customers if job is already accepted/scheduled
-        if (!lpo && (data.status === 'accepted' || data.status === 'scheduled')) {
-          setError("This job has already been accepted and is being performed. It can no longer be cancelled via this coordination link.");
-        } else {
-          setRequest({ id: docSnap.id, ...data });
-        }
+        setRequest({ id: docSnap.id, ...data });
       } else {
         setError("Request not found or has been deleted.");
       }
@@ -105,7 +106,64 @@ const RequestPage: React.FC = () => {
 
     setupNotifications();
     onForegroundMessage();
-  }, [id, isLpoUser, lpo?.id]);
+
+    // Setup audio
+    audioRef.current = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+    audioRef.current.volume = 0.5;
+
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, [id, isLpoUser, userData, lpo]);
+
+  // Tab Title Pulsing Logic
+  useEffect(() => {
+    let interval: any;
+    if (hasNewMessage && document.hidden) {
+      const originalTitle = document.title;
+      let showAlt = false;
+      interval = setInterval(() => {
+        document.title = showAlt ? `(1) New Message!` : originalTitle;
+        showAlt = !showAlt;
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+      document.title = "LPO.PLUS | Job Coordination";
+    };
+  }, [hasNewMessage]);
+
+  // Clear new message state when user clicks on page
+  useEffect(() => {
+    const handleFocus = () => {
+      setHasNewMessage(false);
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, []);
+
+  // Play sound when chat length increases (if not the sender)
+  useEffect(() => {
+    if (!request?.chat) return;
+    const lastMsg = request.chat[request.chat.length - 1];
+    if (!lastMsg) return;
+
+    // If a new message arrived from the OTHER person
+    const isFromOther = (isLpoUser && lastMsg.sender === 'user') || (!isLpoUser && lastMsg.sender === 'operator');
+    
+    if (isFromOther) {
+      if (audioRef.current) {
+        audioRef.current.play().catch(e => console.log("Audio play blocked by browser", e));
+      }
+      if (document.hidden) {
+        setHasNewMessage(true);
+      }
+    }
+  }, [request?.chat?.length, isLpoUser]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -260,7 +318,11 @@ const RequestPage: React.FC = () => {
             serviceInternalId,
             serviceRate,
             createdAt: new Date(),
-            originalRequestId: request.id
+            originalRequestId: request.id,
+            operatorNetSuiteId: null,
+            operatorName: null,
+            operatorEmail: null,
+            operatorPhone: null
           });
           
           console.log("Created scheduled_jobs template:", templateRef.id);
@@ -281,7 +343,11 @@ const RequestPage: React.FC = () => {
               jobType: 'scheduled_instance',
               scheduledJobId: templateRef.id,
               date: today,
-              originalRequestId: request.id
+              originalRequestId: request.id,
+              operatorNetSuiteId: null,
+              operatorName: null,
+              operatorEmail: null,
+              operatorPhone: null
             });
             console.log("Created immediate job instance:", jobDocRef.id);
             finalJobId = jobDocRef.id;
@@ -315,7 +381,7 @@ const RequestPage: React.FC = () => {
           }
 
           setAcceptProgress(45);
-          setAcceptStatus("Creating job record in Firestore...");
+          setAcceptStatus("Creating job record...");
 
           const { id: _, ...requestData } = request;
           jobDocRef = await addDoc(collection(db, 'jobs'), {
@@ -325,7 +391,11 @@ const RequestPage: React.FC = () => {
             serviceInternalId,
             serviceRate,
             createdAt: new Date(),
-            originalRequestId: request.id
+            originalRequestId: request.id,
+            operatorNetSuiteId: null,
+            operatorName: null,
+            operatorEmail: null,
+            operatorPhone: null
           });
           console.log("Created one-off job:", jobDocRef.id);
           finalJobId = jobDocRef.id;
@@ -334,7 +404,7 @@ const RequestPage: React.FC = () => {
         // 1.5 Sync with NetSuite if same-day job instance was created
         if (request.date === today && jobDocRef) {
           setAcceptProgress(65);
-          setAcceptStatus("Syncing instance with NetSuite...");
+          setAcceptStatus("Syncing instance...");
           const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
           
           const params = new URLSearchParams({
@@ -364,7 +434,7 @@ const RequestPage: React.FC = () => {
         const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2536&deploy=1&compid=1048144&ns-at=AAEJ7tMQhaB4QYR7Pw-EtSlrxcIMl2il8br6cxfmm6xmf7VP-1w";
         if (finalJobId) {
           setAcceptProgress(85);
-          setAcceptStatus("Sending confirmation to NetSuite...");
+          setAcceptStatus("Sending confirmation...");
           const params2536 = new URLSearchParams({
             job_id: finalJobId,
             lpo_id: lpoId,
@@ -573,6 +643,7 @@ const RequestPage: React.FC = () => {
                 {request.status === 'scheduled' ? 'Job Scheduled' : 
                  request.status === 'awaiting-activation' ? 'Awaiting Activation' : 
                  request.status === 'cancelled' ? 'Cancelled' :
+                 request.status === 'rejected' ? 'Request Declined' :
                  request.status === 'new-time-proposed' ? 'New Time Proposed' :
                  'Coordination Phase'}
               </div>
@@ -721,68 +792,71 @@ const RequestPage: React.FC = () => {
               )}
            </aside>
 
-           {/* Right: Chat Coordination OR Rejection State */}
+           {/* Right: Chat Coordination */}
            <main className="chat-interface glass-card">
-             {request.status === 'rejected' ? (
-                <div className="rejection-view">
-                   <div className="rejection-header">
-                      <XCircle size={48} color="#ff4757" />
-                      <h2>Request Declined</h2>
-                      <p>This request has been declined by the operator.</p>
-                   </div>
-                   
-                   <div className="rejection-details">
-                      <div className="rejection-item">
-                         <label>Reason for decline</label>
-                         <p className="reason-pill">{request.rejectionReason || 'Other'}</p>
-                      </div>
-                      <div className="rejection-item">
-                         <label>Operator Notes</label>
-                         <div className="notes-box">{request.rejectionNotes || 'No additional notes provided.'}</div>
-                      </div>
-                   </div>
+              {isExternalUser && request.status === 'scheduled' && !isHistory && (
+                 <div className="guest-connection-banner fade-in">
+                    <div className="banner-icon pulse">
+                       <Zap size={18} />
+                    </div>
+                    <div className="banner-text">
+                       <strong>Keep this page open!</strong>
+                       <p>We'll notify you here with a sound when the LPO responds.</p>
+                    </div>
+                    {Notification.permission !== 'granted' && (
+                       <button className="btn-enable-alerts" onClick={async () => {
+                          const token = await requestNotificationPermission();
+                          if (token && id) {
+                             await saveTokenToFirestore(token, 'customer', id);
+                             alert("Notifications enabled! You'll get popups even if you're in another tab.");
+                          }
+                       }}>
+                          ENABLE ALERTS
+                       </button>
+                    )}
+                 </div>
+              )}
 
-                    {!isLpoUser && (
-                       <div className="reprocess-section">
-                         <h3>Submit a new proposed time</h3>
-                         <p>If you'd like the operator to review this again, pick a new date and time.</p>
-                         <form className="reprocess-form" onSubmit={handleReprocess}>
-                            <div className="form-row">
-                               <div className="input-group">
-                                  <label>New Date</label>
-                                   <div className="custom-reprocess-date">
-                                      <CustomDatePicker 
-                                         value={newDate}
-                                         onChange={(val) => setNewDate(val)}
-                                         min={formatDateForInput(new Date())}
-                                      />
-                                   </div>
-                               </div>
-                               <div className="input-group">
-                                  <label>Preferred Time</label>
-                                  <input 
-                                     type="time" 
-                                     value={newTime}
-                                     onChange={(e) => setNewTime(e.target.value)}
-                                  />
-                               </div>
-                            </div>
-                            <button type="submit" className="btn-reprocess">
-                               RESUBMIT REQUEST
-                            </button>
-                         </form>
-                      </div>
-                   )}
-                </div>
-             ) : (
-                <>
-                  <div className="chat-header">
-                     <MessageSquare size={20} />
-                     <h2>Coordination Chat</h2>
-                     <span className="live-indicator">LIVE</span>
-                  </div>
+              {request.status === 'rejected' && (
+                 <div className="rejection-banner-inline">
+                    <div className="banner-top">
+                       <XCircle size={20} color="#ff4757" />
+                       <h4>Request Declined</h4>
+                    </div>
+                    <div className="banner-body">
+                       <div className="banner-item">
+                          <label>Reason</label>
+                          <span>{request.rejectionReason || 'Other'}</span>
+                       </div>
+                       {request.rejectionNotes && (
+                          <div className="banner-item">
+                             <label>Notes</label>
+                             <p>{request.rejectionNotes}</p>
+                          </div>
+                       )}
+                    </div>
+                    
+                    {!isLpoUser && !isHistory && (
+                       <div className="reprocess-mini">
+                          <button className="btn-show-reprocess" onClick={() => {
+                             // Toggle a local state or just scroll to a form
+                             const el = document.getElementById('reprocess-form-anchor');
+                             el?.scrollIntoView({ behavior: 'smooth' });
+                          }}>
+                             PROPOSE NEW TIME
+                          </button>
+                       </div>
+                    )}
+                 </div>
+              )}
 
-                  <div className="chat-messages">
+              <div className="chat-header">
+                 <MessageSquare size={20} />
+                 <h2>Coordination Chat</h2>
+                 <span className="live-indicator">{isHistory ? 'ARCHIVED' : 'LIVE'}</span>
+              </div>
+
+              <div className="chat-messages">
                  {(!request.chat || request.chat.length === 0) ? (
                     <div className="empty-chat">
                        <MessageSquare size={48} />
@@ -818,19 +892,58 @@ const RequestPage: React.FC = () => {
                  <div ref={chatEndRef} />
               </div>
 
-              <form className="chat-input-area" onSubmit={handleSendMessage}>
-                 <input 
-                   type="text" 
-                   placeholder="Type your message here..."
-                   value={message}
-                   onChange={(e) => setMessage(e.target.value)}
-                 />
-                 <button type="submit" className="send-btn" disabled={!message.trim()}>
-                    <Send size={18} />
-                 </button>
-              </form>
-              </>
-             )}
+              {isHistory ? (
+                <div className="history-notice">
+                   <Clock size={16} />
+                   <span>This job has moved to history. Chat is now read-only.</span>
+                </div>
+              ) : (
+                <form className="chat-input-area" onSubmit={handleSendMessage}>
+                   <input 
+                     type="text" 
+                     placeholder="Type your message here..."
+                     value={message}
+                     onChange={(e) => setMessage(e.target.value)}
+                   />
+                   <button type="submit" className="send-btn" disabled={!message.trim()}>
+                      <Send size={18} />
+                   </button>
+                </form>
+              )}
+
+              {request.status === 'rejected' && !isLpoUser && !isHistory && (
+                 <div id="reprocess-form-anchor" className="reprocess-section-inline">
+                    <div className="reprocess-header">
+                       <h3>Submit a new proposed time</h3>
+                       <p>If you'd like the operator to review this again, pick a new date and time.</p>
+                    </div>
+                    <form className="reprocess-form" onSubmit={handleReprocess}>
+                       <div className="form-row">
+                          <div className="input-group">
+                             <label>New Date</label>
+                             <div className="custom-reprocess-date">
+                                <CustomDatePicker 
+                                   value={newDate}
+                                   onChange={(val) => setNewDate(val)}
+                                   min={formatDateForInput(new Date())}
+                                />
+                             </div>
+                          </div>
+                          <div className="input-group">
+                             <label>Preferred Time</label>
+                             <input 
+                                type="time" 
+                                value={newTime}
+                                onChange={(e) => setNewTime(e.target.value)}
+                             />
+                          </div>
+                       </div>
+                       <button type="submit" className="btn-reprocess">
+                          RESUBMIT REQUEST
+                       </button>
+                    </form>
+                 </div>
+              )}
            </main>
         </div>
       </div>
@@ -1112,7 +1225,7 @@ const RequestPage: React.FC = () => {
            .request-page-premium { padding: 24px 16px 120px; }
            .request-grid { grid-template-columns: 1fr; }
            .details-sidebar { order: 2; }
-           .chat-interface { order: 1; height: 500px; margin-bottom: 32px; }
+           .chat-interface { order: 1; min-height: 600px; margin-bottom: 32px; }
            .request-header { flex-direction: column; align-items: flex-start; gap: 20px; margin-bottom: 32px; }
            .header-main h1 { font-size: 1.5rem; }
            
@@ -1141,6 +1254,36 @@ const RequestPage: React.FC = () => {
            .btn-accept { padding: 12px 16px; }
            .btn-reject { padding: 12px 16px; justify-content: center; }
         }
+
+        /* New Inline Styles */
+        .guest-connection-banner { background: var(--ink); color: white; margin: 20px; padding: 16px 20px; border-radius: 20px; display: flex; align-items: center; gap: 16px; box-shadow: 0 8px 24px rgba(26,61,51,0.15); border: 1px solid rgba(255,255,255,0.1); }
+        .banner-icon { width: 36px; height: 36px; background: rgba(255,255,255,0.1); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--gold); flex-shrink: 0; }
+        .banner-text { flex: 1; }
+        .banner-text strong { display: block; font-size: 0.95rem; margin-bottom: 2px; }
+        .banner-text p { margin: 0; font-size: 0.75rem; opacity: 0.7; font-weight: 500; }
+        .btn-enable-alerts { background: var(--gold); color: var(--ink); border: none; padding: 10px 16px; border-radius: 12px; font-size: 0.75rem; font-weight: 800; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .btn-enable-alerts:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(234,240,68,0.3); }
+        
+        .pulse { animation: pulse-shadow 2s infinite; }
+        @keyframes pulse-shadow {
+           0% { box-shadow: 0 0 0 0 rgba(234,240,68, 0.4); }
+           70% { box-shadow: 0 0 0 10px rgba(234,240,68, 0); }
+           100% { box-shadow: 0 0 0 0 rgba(234,240,68, 0); }
+        }
+
+        .rejection-banner-inline { background: #fff5f5; border: 1px solid #ffe3e3; border-radius: 20px; padding: 20px; margin: 20px; display: flex; flex-direction: column; gap: 12px; }
+        .banner-top { display: flex; align-items: center; gap: 8px; }
+        .banner-top h4 { margin: 0; color: #ff4757; font-size: 1rem; }
+        .banner-body { display: grid; grid-template-columns: 1fr 2fr; gap: 16px; }
+        .banner-item label { display: block; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 4px; }
+        .banner-item span { font-weight: 700; color: var(--ink); }
+        .banner-item p { margin: 0; font-size: 0.85rem; color: var(--ink-soft); font-weight: 500; }
+        .reprocess-mini { margin-top: 4px; }
+        .btn-show-reprocess { background: var(--ink); color: white; border: none; padding: 8px 16px; border-radius: 10px; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+        .reprocess-section-inline { padding: 32px; border-top: 1px dashed rgba(0,0,0,0.1); background: var(--offwhite); }
+        .reprocess-header h3 { margin: 0 0 4px; font-size: 1.1rem; }
+        .reprocess-header p { margin: 0 0 20px; font-size: 0.85rem; color: var(--ink-soft); font-weight: 500; }
+        .history-notice { display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--cream-warm); color: var(--gold); padding: 16px; border-radius: 20px; margin: 0 20px 20px; font-size: 0.85rem; font-weight: 600; }
       `}</style>
     </div>
   );

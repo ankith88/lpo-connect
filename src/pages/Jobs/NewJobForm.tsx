@@ -537,7 +537,7 @@ const NewJobForm: React.FC = () => {
       // 1. NetSuite API Integration (Stage 1) - Only for NEW customers
       if (!isExistingCustomer) {
         setProcessingProgress(25);
-        setProcessingMessage('Registering new customer in NetSuite...');
+        setProcessingMessage('Registering new customer...');
         const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2527&deploy=1&compid=1048144&ns-at=AAEJ7tMQJX8dMLsjS5TGMacB9-M8pUB6q50I_ptxbLYqKZ_HR3c";
         
         const params = new URLSearchParams({
@@ -568,7 +568,7 @@ const NewJobForm: React.FC = () => {
         console.log("NetSuite Script 2527 Response:", nsResult);
 
         if (!nsResult.success) {
-          setValidationError(nsResult.message || "Failed to create record in NetSuite.");
+          setValidationError(nsResult.message || "Failed to create customer record.");
           setIsProcessing(false);
           return;
         }
@@ -660,7 +660,7 @@ const NewJobForm: React.FC = () => {
       }
 
       setProcessingProgress(80);
-      setProcessingMessage('Synchronising job data with NetSuite...');
+      setProcessingMessage('Synchronising job data...');
 
       // 3. Second NetSuite API (Job Confirmation with Request ID)
       const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2528&deploy=1&compid=1048144&ns-at=AAEJ7tMQM_E8dKF2qjDMy9ESy5q883g7xrb8uKwfgGOku62wheU";
@@ -747,7 +747,7 @@ const NewJobForm: React.FC = () => {
               </div>
               <div className="success-text">
                 <h2>Booking your Job</h2>
-                <p>We're processing your request with NetSuite and our dispatch system. <strong>This can take a moment.</strong></p>
+                <p>We're processing your request and updating our dispatch system. <strong>This can take a moment.</strong></p>
               </div>
 
               <div className="progress-container-premium">

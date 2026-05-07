@@ -39,11 +39,11 @@ const AcceptingProgress: React.FC<AcceptingProgressProps> = ({ progress, statusT
           </div>
           <div className={`step ${progress >= 50 ? 'completed' : ''}`}>
              <div className="step-dot"></div>
-             <span>Firestore</span>
+             <span>Processing</span>
           </div>
           <div className={`step ${progress >= 80 ? 'completed' : ''}`}>
              <div className="step-dot"></div>
-             <span>NetSuite</span>
+             <span>Syncing</span>
           </div>
           <div className={`step ${progress >= 100 ? 'completed' : ''}`}>
              <div className="step-dot"></div>

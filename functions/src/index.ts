@@ -607,6 +607,10 @@ export const onChatMessageSent = onDocumentUpdated({
 
       if (uniqueTokens.length > 0) {
         const payload: admin.messaging.MulticastMessage = {
+          notification: {
+            title: `[Ref: #${refId}] New message from ${afterData.customer.company}`,
+            body: text,
+          },
           data: {
             title: `[Ref: #${refId}] New message from ${afterData.customer.company}`,
             body: text,
@@ -639,6 +643,10 @@ export const onChatMessageSent = onDocumentUpdated({
 
       if (uniqueTokens.length > 0) {
         const payload: admin.messaging.MulticastMessage = {
+          notification: {
+            title: `[Ref: #${refId}] Message from LPO`,
+            body: text,
+          },
           data: {
             title: `[Ref: #${refId}] Message from LPO`,
             body: text,
@@ -819,6 +827,10 @@ export const generateDailyScheduledJobs = onSchedule({
           status: 'scheduled',
           syncedWithNetSuite: false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          operatorNetSuiteId: null,
+          operatorName: null,
+          operatorEmail: null,
+          operatorPhone: null
         });
 
         generatedCount++;

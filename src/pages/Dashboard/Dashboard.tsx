@@ -747,10 +747,17 @@ const Dashboard: React.FC = () => {
                                       </div>
                                     ) : (
                                       <div className="messaging-group">
-                                        <button className="btn-primary-glass mini-chat" onClick={() => handleCommunication(job)}>
-                                           <MessageSquare size={16} />
-                                           <span>CONTACT OPERATOR</span>
-                                        </button>
+                                         {job.originalRequestId && job.date >= today ? (
+                                           <button className="btn-primary-glass mini-chat live-chat-highlight" onClick={() => window.open(`/request/${job.originalRequestId}`, '_blank')}>
+                                              <MessageSquare size={16} />
+                                              <span>LIVE CHAT</span>
+                                           </button>
+                                         ) : (
+                                           <button className="btn-primary-glass mini-chat" onClick={() => handleCommunication(job)}>
+                                              <MessageSquare size={16} />
+                                              <span>CONTACT OPERATOR</span>
+                                           </button>
+                                         )}
                                       </div>
                                     )}
                                     
@@ -1514,6 +1521,8 @@ const Dashboard: React.FC = () => {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
         }
+        .live-chat-highlight { background: var(--ink) !important; color: white !important; border: none !important; box-shadow: 0 4px 12px rgba(26, 61, 51, 0.2); }
+        .live-chat-highlight:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(26, 61, 51, 0.3); }
       `}</style>
     </div>
   );
