@@ -114,14 +114,23 @@ const Reports: React.FC = () => {
 
         // Fetch customers count
         let totalCustomers = 0;
-        if (selectedLpoId !== 'all') {
-          const custQ = query(collection(db, `lpo/${selectedLpoId}/customers`));
-          const custSnapshot = await getDocs(custQ);
-          totalCustomers = custSnapshot.size;
-        } else {
-          // For all LPOs, this might be expensive, so we just use unique customers from jobs or a simplified approach
-          // For now, let's just count unique customers in the jobs we fetched
-          totalCustomers = Object.keys(customerRevenue).length;
+        const lposToQuery = selectedLpoId === 'all' ? allLpos : allLpos.filter(l => l.id === selectedLpoId);
+        
+        // Ensure we have at least the current LPO if nothing else is selected/available
+        if (lposToQuery.length === 0 && lpo) {
+          lposToQuery.push(lpo);
+        }
+
+        if (lposToQuery.length > 0) {
+          const counts = await Promise.all(lposToQuery.map(async (targetLpo) => {
+            const custQ = query(
+              collection(db, `lpo/${targetLpo.id}/customers`),
+              where('status', '==', 'Active')
+            );
+            const snap = await getDocs(custQ);
+            return snap.size;
+          }));
+          totalCustomers = counts.reduce((acc, curr) => acc + curr, 0);
         }
 
         setStats({

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import LoadingScreen from '../../components/LoadingScreen';
+import AcceptingProgress from '../../components/AcceptingProgress';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { formatDateForInput, parseLocalDate, getDayName } from '../../utils/scheduling';
@@ -38,6 +39,9 @@ const RequestPage: React.FC = () => {
   const { lpo, userData, loading: lpoLoading } = useLpo();
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isAccepting, setIsAccepting] = useState(false);
+  const [acceptProgress, setAcceptProgress] = useState(0);
+  const [acceptStatus, setAcceptStatus] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -200,6 +204,10 @@ const RequestPage: React.FC = () => {
     }
 
     if (window.confirm("Accept this job request?")) {
+      setIsAccepting(true);
+      setAcceptProgress(5);
+      setAcceptStatus("Initializing acceptance flow...");
+
       try {
         // 1. Create Job or Scheduled Template
         let jobDocRef;
@@ -207,10 +215,15 @@ const RequestPage: React.FC = () => {
         let finalJobId = "";
         const netsuiteCustomerId = request.netsuiteCustomerId || request.customer?.netsuiteId || "";
         
+        setAcceptProgress(15);
+        setAcceptStatus("Analyzing service requirements...");
+
+        let serviceInternalId = '';
+        let serviceRate = '';
+
         if (request.jobType === 'scheduled') {
           // 1.1 Fetch Service Metadata from Customer Record
-          let serviceInternalId = '';
-          let serviceRate = '';
+          setAcceptStatus("Fetching customer service metadata...");
           
           try {
             const custQ = query(
@@ -235,6 +248,9 @@ const RequestPage: React.FC = () => {
             console.error("Error fetching customer service metadata:", err);
           }
 
+          setAcceptProgress(35);
+          setAcceptStatus("Generating recurring schedule template...");
+
           // Save template
           const { id: _, ...requestData } = request;
           const templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
@@ -253,6 +269,8 @@ const RequestPage: React.FC = () => {
           // Check if today matches frequency to immediately generate first instance
           const todayDayName = getDayName(new Date());
           if (request.date <= today && request.frequency?.includes(todayDayName)) {
+            setAcceptProgress(50);
+            setAcceptStatus("Creating first job instance...");
             jobDocRef = await addDoc(collection(db, 'jobs'), {
               ...requestData,
               lpo_id: lpoId,
@@ -271,8 +289,7 @@ const RequestPage: React.FC = () => {
         } else {
           // Normal one-off job
           // 1.2 Fetch Service Metadata for one-off job
-          let serviceInternalId = '';
-          let serviceRate = '';
+          setAcceptStatus("Fetching customer service metadata...");
           
           try {
             const custQ = query(
@@ -297,6 +314,9 @@ const RequestPage: React.FC = () => {
             console.error("Error fetching one-off service metadata:", err);
           }
 
+          setAcceptProgress(45);
+          setAcceptStatus("Creating job record in Firestore...");
+
           const { id: _, ...requestData } = request;
           jobDocRef = await addDoc(collection(db, 'jobs'), {
             ...requestData,
@@ -313,6 +333,8 @@ const RequestPage: React.FC = () => {
 
         // 1.5 Sync with NetSuite if same-day job instance was created
         if (request.date === today && jobDocRef) {
+          setAcceptProgress(65);
+          setAcceptStatus("Syncing instance with NetSuite...");
           const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
           
           const params = new URLSearchParams({
@@ -325,7 +347,7 @@ const RequestPage: React.FC = () => {
             request_id: request.id,
             preferred_time: request.preferredTime || "",
             service_name: request.service || "null",
-            service_internal_id: request.serviceInternalId || "null",
+            service_internal_id: serviceInternalId || "null",
             date: request.date || "null"
           });
 
@@ -341,6 +363,8 @@ const RequestPage: React.FC = () => {
         // 1.6 Secondary NetSuite Sync (Confirmation)
         const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2536&deploy=1&compid=1048144&ns-at=AAEJ7tMQhaB4QYR7Pw-EtSlrxcIMl2il8br6cxfmm6xmf7VP-1w";
         if (finalJobId) {
+          setAcceptProgress(85);
+          setAcceptStatus("Sending confirmation to NetSuite...");
           const params2536 = new URLSearchParams({
             job_id: finalJobId,
             lpo_id: lpoId,
@@ -366,14 +390,23 @@ const RequestPage: React.FC = () => {
         }
 
         // 2. Update Request Status
+        setAcceptProgress(95);
+        setAcceptStatus("Finalizing request status...");
         await updateDoc(doc(db, 'requests', request.id), {
           status: 'scheduled'
         });
 
-        alert("Job accepted successfully!");
+        setAcceptProgress(100);
+        setAcceptStatus("Job accepted successfully!");
+        
+        setTimeout(() => {
+          setIsAccepting(false);
+          setAcceptProgress(0);
+        }, 2000);
       } catch (err) {
         console.error("Error accepting job:", err);
         alert("Failed to accept job.");
+        setIsAccepting(false);
       }
     }
   };
@@ -524,6 +557,10 @@ const RequestPage: React.FC = () => {
         <div className="blob blob-1"></div>
         <div className="blob blob-2"></div>
       </div>
+
+      {isAccepting && (
+        <AcceptingProgress progress={acceptProgress} statusText={acceptStatus} />
+      )}
 
       <div className=" coordination-container">
         <header className="request-header">

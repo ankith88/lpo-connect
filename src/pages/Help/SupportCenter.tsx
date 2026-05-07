@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   User
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import SupportEmailModal from '../../components/SupportEmailModal';
 import { useLpo } from '../../context/LpoContext';
 
@@ -97,7 +98,7 @@ const SupportCenter: React.FC = () => {
               </div>
               <h4>User Documentation</h4>
               <p>Explore our guides and tutorials to master LPO.PLUS features.</p>
-              <button className="text-link">Browse Guides <ArrowRight size={14} /></button>
+              <Link to="/induction" target="_blank" rel="noopener noreferrer" className="text-link">Browse Guides <ArrowRight size={14} /></Link>
             </div>
 
             <div className="support-card small">

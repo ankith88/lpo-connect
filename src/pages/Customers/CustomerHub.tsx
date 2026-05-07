@@ -30,6 +30,7 @@ const CustomerHub: React.FC = () => {
   const [serviceFilter, setServiceFilter] = useState('all');
   const [billingFilter, setBillingFilter] = useState('all');
   const [jobTypeFilter, setJobTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('active');
   const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [cancellingCustomer, setCancellingCustomer] = useState<any | null>(null);
@@ -146,6 +147,11 @@ const CustomerHub: React.FC = () => {
       if (jt !== jobTypeFilter) return false;
     }
 
+    if (statusFilter !== 'all') {
+      if (statusFilter === 'active' && c.status === 'cancelled') return false;
+      if (statusFilter === 'cancelled' && c.status !== 'cancelled') return false;
+    }
+
     return true;
   });
 
@@ -220,6 +226,14 @@ const CustomerHub: React.FC = () => {
                   <option value="all">All Job Types</option>
                   <option value="one-off">One-off</option>
                   <option value="scheduled">Scheduled</option>
+                </select>
+              </div>
+              <div className="filter-item">
+                <Users size={14} />
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="active">Active Accounts</option>
+                  <option value="cancelled">Cancelled Only</option>
+                  <option value="all">All Accounts</option>
                 </select>
               </div>
            </div>

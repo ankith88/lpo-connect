@@ -15,6 +15,12 @@ export const sortStops = (stops: any[]) => {
   return [...(stops || [])]
     .map((s, index) => ({ ...s, originalIndex: index }))
     .sort((a, b) => {
+      // 1. If sequence is available and different, it is the primary truth
+      if (a.sequence !== undefined && b.sequence !== undefined && a.sequence !== b.sequence) {
+        return (a.sequence || 0) - (b.sequence || 0);
+      }
+      
+      // 2. Fallback to label-based priority
       const getPriority = (label: string) => {
         const l = (label || '').toLowerCase();
         if (l.includes('pickup site')) return 1;
@@ -30,6 +36,9 @@ export const sortStops = (stops: any[]) => {
       const pB = getPriority(b.label);
       
       if (pA !== pB) return pA - pB;
-      return (a.sequence || 0) - (b.sequence || 0);
+      
+      // 3. Last fallback: sequence (if one was missing) then original index
+      if (a.sequence !== b.sequence) return (a.sequence || 0) - (b.sequence || 0);
+      return a.originalIndex - b.originalIndex;
     });
 };
