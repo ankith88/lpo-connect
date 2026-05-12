@@ -13,7 +13,9 @@ import {
   ChevronUp,
   MoreHorizontal,
   RotateCcw,
-  CheckCircle2
+  CheckCircle2,
+  Calendar,
+  Mail
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
@@ -33,6 +35,7 @@ const AwaitingTCPage: React.FC = () => {
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const [supportJobId, setSupportJobId] = useState('');
   const [supportMetadata, setSupportMetadata] = useState<any>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -127,6 +130,33 @@ const AwaitingTCPage: React.FC = () => {
       alert("Error verifying status. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendSCF = async (job: any) => {
+    const customerId = job.netsuiteCustomerId || job.customer?.netsuiteId;
+    const lpoId = job.lpo_id;
+    
+    if (!customerId || !lpoId) {
+      alert("Missing Customer ID or LPO ID.");
+      return;
+    }
+
+    setResendingId(job.id);
+    try {
+      const API_URL = `https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2637&deploy=1&compid=1048144&ns-at=AAEJ7tMQrC0U5eU7eURqGp_fiWWSwngcoYtGs8zoTcbsZ8JJkNk&customer_id=${customerId}&lpo_id=${lpoId}`;
+      const response = await fetch(API_URL);
+      const result = await response.json();
+      if (result.success) {
+        alert("SCF Form resent successfully!");
+      } else {
+        alert("Failed to resend SCF: " + (result.message || "Unknown error"));
+      }
+    } catch (error) {
+      console.error("Error resending SCF:", error);
+      alert("An error occurred while resending the SCF Form.");
+    } finally {
+      setResendingId(null);
     }
   };
 
@@ -261,6 +291,15 @@ const AwaitingTCPage: React.FC = () => {
                                     <RotateCcw size={12} />
                                     <span>{job.billing}</span>
                                  </div>
+                                 <div className="meta-pill">
+                                    <Calendar size={12} />
+                                    <span>Created: {job.createdAt ? (() => {
+                                         const createdDate = job.createdAt.toDate ? job.createdAt.toDate() : new Date(job.createdAt);
+                                         const diffTime = Math.abs(new Date().getTime() - createdDate.getTime());
+                                         const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                                         return `${createdDate.toLocaleDateString('en-AU')} (${diffDays} days ago)`;
+                                       })() : 'N/A'}</span>
+                                 </div>
                                   <div 
                                     className="job-ref interactive" 
                                     onClick={(e) => {
@@ -292,6 +331,14 @@ const AwaitingTCPage: React.FC = () => {
                                         <RefreshCw size={16} />
                                         <span>VERIFY STATUS</span>
                                      </button>
+                                     <button 
+                                        className="btn-secondary-glass mini-chat" 
+                                        onClick={() => handleResendSCF(job)}
+                                        disabled={resendingId === job.id}
+                                      >
+                                         <Mail size={16} className={resendingId === job.id ? 'spin' : ''} />
+                                         <span>{resendingId === job.id ? 'RESENDING...' : 'RESEND SCF'}</span>
+                                      </button>
                                    </div>
                                   
                                   <div className="overflow-menu">
@@ -343,6 +390,13 @@ const AwaitingTCPage: React.FC = () => {
           0% { transform: translate(0, 0) scale(1); }
           100% { transform: translate(100px, 50px) scale(1.1); }
         }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .spin { animation: spin 1s linear infinite; }
 
         .content-container { position: relative; z-index: 1; max-width: 1200px; margin: 0 auto; padding: 40px 24px 100px; }
 

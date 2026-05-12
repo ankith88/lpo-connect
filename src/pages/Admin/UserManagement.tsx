@@ -10,7 +10,8 @@ import {
   Trash2, 
   X,
   Lock,
-  Key
+  Key,
+  Edit2
 } from 'lucide-react';
 import { collection, query, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -33,6 +34,7 @@ const UserManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const isSuperAdmin = userData?.role === 'superadmin' || userData?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
@@ -48,6 +50,10 @@ const UserManagement: React.FC = () => {
   // Reset Password State
   const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
   const [newPassword, setNewPassword] = useState('');
+
+  // Edit User State
+  const [editTarget, setEditTarget] = useState<UserRecord | null>(null);
+  const [editEmail, setEditEmail] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -139,6 +145,31 @@ const UserManagement: React.FC = () => {
     } catch (err: any) {
       console.error("Error resetting password:", err);
       alert(`Failed to reset password: ${err.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget || !editEmail) return;
+
+    setIsSubmitting(true);
+    try {
+      const adminUpdateUser = httpsCallable(functions, 'adminUpdateUser');
+      await adminUpdateUser({
+        uid: editTarget.uid,
+        email: editEmail
+      });
+      
+      alert(`User email has been updated successfully.`);
+      setIsEditModalOpen(false);
+      setEditTarget(null);
+      setEditEmail('');
+      fetchUsers();
+    } catch (err: any) {
+      console.error("Error updating user:", err);
+      alert(`Failed to update user: ${err.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -247,16 +278,29 @@ const UserManagement: React.FC = () => {
                     <td className="text-right">
                       <div className="table-actions">
                         {isSuperAdmin && (
-                          <button 
-                            className="btn-icon-warning" 
-                            onClick={() => {
-                              setResetTarget(u);
-                              setIsResetModalOpen(true);
-                            }}
-                            title="Reset Password"
-                          >
-                            <Key size={18} />
-                          </button>
+                          <>
+                            <button 
+                              className="btn-icon-warning" 
+                              onClick={() => {
+                                setEditTarget(u);
+                                setEditEmail(u.email);
+                                setIsEditModalOpen(true);
+                              }}
+                              title="Edit User Email"
+                            >
+                              <Edit2 size={18} />
+                            </button>
+                            <button 
+                              className="btn-icon-warning" 
+                              onClick={() => {
+                                setResetTarget(u);
+                                setIsResetModalOpen(true);
+                              }}
+                              title="Reset Password"
+                            >
+                              <Key size={18} />
+                            </button>
+                          </>
                         )}
                         <button 
                           className="btn-icon-danger" 
@@ -443,6 +487,65 @@ const UserManagement: React.FC = () => {
                 disabled={isSubmitting}
               >
                 {isSubmitting ? 'Resetting...' : 'Update Password'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Edit User Modal */}
+      <div className={`modal-overlay ${isEditModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass fade-in">
+          <div className="modal-header">
+            <div className="header-title">
+              <Edit2 size={20} />
+              <h2>Edit User Details</h2>
+            </div>
+            <button className="close-btn" onClick={() => {
+              setIsEditModalOpen(false);
+              setEditTarget(null);
+            }}>
+              <X size={20} />
+            </button>
+          </div>
+
+          <p className="modal-info-text">
+            Update account details for user <strong>{editTarget?.uid.substring(0, 8)}</strong>.
+          </p>
+
+          <form onSubmit={handleUpdateUser} className="create-user-form">
+            <div className="form-section">
+              <label className="m-label">Email Address</label>
+              <div className="input-wrapper-glass">
+                <Mail size={18} />
+                <input 
+                  type="email" 
+                  placeholder="name@mailplus.com.au" 
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button 
+                type="button" 
+                className="btn-secondary-glass" 
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditTarget(null);
+                }}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn-primary-glass"
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Updating...' : 'Save Changes'}
               </button>
             </div>
           </form>

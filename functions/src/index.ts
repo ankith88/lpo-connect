@@ -1112,7 +1112,9 @@ const validateSuperAdmin = async (auth: any) => {
 };
 
 // Logic: adminCreateUser
-export const adminCreateUser = onCall(async (request) => {
+export const adminCreateUser = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
   await validateSuperAdmin(request.auth);
 
   const { email, password, role, lpo_id } = request.data;
@@ -1142,12 +1144,90 @@ export const adminCreateUser = onCall(async (request) => {
       hasCompletedTour: false
     });
 
+    // 3. Send Invitation Email
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+
+    const signInLink = "https://lpo.plus/signin";
+    const mailOptions = {
+      from: '"LPO.PLUS" <bookings@lpo.plus>',
+      to: email,
+      subject: "Welcome to LPO.PLUS - Your Account is Ready",
+      html: `
+        <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #333; line-height: 1.6;">
+          <div style="background-color: #1a3d33; padding: 40px; text-align: center; border-top-left-radius: 12px; border-top-right-radius: 12px;">
+            <h1 style="color: #ffffff; margin: 0; font-weight: 300; letter-spacing: 2px;">LPO<span style="color: #EAF044; font-weight: bold;">.PLUS</span></h1>
+          </div>
+          <div style="padding: 40px; background: #ffffff; border: 1px solid #f0f0f0; border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;">
+            <h2 style="color: #1a3d33; margin-top: 0;">Welcome aboard!</h2>
+            <p>Your account for the LPO.PLUS portal has been created. You can now sign in to manage your logistics operations.</p>
+            
+            <div style="margin: 30px 0; text-align: center;">
+              <a href="${signInLink}" style="background-color: #1a3d33; color: #ffffff; padding: 16px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">SIGN IN TO PORTAL</a>
+            </div>
+
+            <p style="font-size: 14px; color: #666;"><strong>Note:</strong> If you would like to set your own secure password, simply click <strong>"Forgot Password"</strong> on the sign-in page and follow the instructions.</p>
+            
+            <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+            <p style="font-size: 12px; color: #999; text-align: center;">
+              &copy; ${new Date().getFullYear()} LPO.PLUS. All rights reserved.
+            </p>
+          </div>
+        </div>
+      `,
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log(`[Admin] Invitation email sent to ${email}`);
+    } catch (emailError) {
+      console.error("[Admin] Failed to send invitation email:", emailError);
+      // We don't throw here because the user is already created
+    }
+
     return { success: true, uid: userRecord.uid };
   } catch (error: any) {
     console.error("[Admin Create User Error]:", error);
     throw new HttpsError("internal", error.message || "Failed to create user.");
   }
 });
+
+export const adminUpdateUser = onCall(async (request) => {
+  await validateSuperAdmin(request.auth);
+
+  const { uid, email } = request.data;
+
+  if (!uid || !email) {
+    throw new HttpsError("invalid-argument", "Missing required fields (uid, email).");
+  }
+
+  try {
+    console.log(`[Admin] Updating user: ${uid} with new email: ${email}`);
+
+    // 1. Update in Firebase Auth
+    await admin.auth().updateUser(uid, {
+      email: email,
+    });
+
+    // 2. Update in Firestore
+    const db = getDB();
+    await db.collection("users").doc(uid).update({
+      email: email.toLowerCase(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("[Admin Update User Error]:", error);
+    throw new HttpsError("internal", error.message || "Failed to update user.");
+  }
+});
+
 
 // Logic: adminResetPassword
 export const adminResetPassword = onCall(async (request) => {
@@ -1567,11 +1647,22 @@ async function fetchDailyJobReportData(statuses: string[]) {
     .where('status', 'in', statuses)
     .get();
 
+  const allDocs: any[] = [...jobsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, docSource: 'jobs' }))];
+
+  // Also fetch from requests if pending is in statuses
+  if (statuses.includes('pending')) {
+    const requestsSnapshot = await db.collection('requests')
+      .where('date', '==', todayStr)
+      .where('status', '==', 'pending')
+      .get();
+    allDocs.push(...requestsSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id, docSource: 'requests' })));
+  }
+
   const jobsData = [];
   const lpoCache: { [key: string]: string } = {};
+  const customerCache: { [key: string]: any } = {};
 
-  for (const doc of jobsSnapshot.docs) {
-    const data = doc.data();
+  for (const data of allDocs) {
     let lpoName = data.lpo_name;
 
     if (!lpoName && data.lpo_id) {
@@ -1584,16 +1675,54 @@ async function fetchDailyJobReportData(statuses: string[]) {
       }
     }
 
+    let franchisee = data.customer?.franchiseeText;
+    if (!franchisee || franchisee === "N/A") {
+      const lpoId = data.lpo_id;
+      const cid = data.netsuiteCustomerId || data.customer?.netsuiteId || data.customerId;
+      
+      if (lpoId && cid) {
+        const cacheKey = `${lpoId}_${cid}`;
+        if (customerCache[cacheKey]) {
+          franchisee = customerCache[cacheKey].franchiseeText;
+        } else {
+          try {
+            const cidStr = cid.toString();
+            const cidNum = parseInt(cidStr);
+            const custQuery = db.collection("lpo").doc(lpoId).collection("customers");
+            
+            let custSnap = await custQuery.where("companyId", "in", [cidStr, cidNum]).limit(1).get();
+            if (custSnap.empty) {
+              custSnap = await custQuery.where("customerInternalId", "in", [cidStr, cidNum]).limit(1).get();
+            }
+
+            if (!custSnap.empty) {
+              const custData = custSnap.docs[0].data();
+              franchisee = custData.franchiseeText;
+              customerCache[cacheKey] = custData;
+            }
+          } catch (e) {
+            console.error(`[Daily Report] Error fetching customer ${cid} for LPO ${lpoId}:`, e);
+          }
+        }
+      }
+    }
+
     jobsData.push({
-      id: doc.id,
+      id: data.id,
       lpoName: lpoName || "N/A",
       customerName: data.customer?.company || data.customer?.companyName || "Unknown Customer",
-      franchisee: data.customer?.franchiseeText || "N/A",
+      franchisee: franchisee || "N/A",
       status: data.status,
       service: data.service,
       lpoId: data.lpo_id
     });
   }
+
+  // Sort by LPO Name then Customer Name
+  jobsData.sort((a, b) => {
+    if (a.lpoName !== b.lpoName) return a.lpoName.localeCompare(b.lpoName);
+    return a.customerName.localeCompare(b.customerName);
+  });
 
   return { todayStr, jobs: jobsData };
 }
@@ -1607,7 +1736,7 @@ export const sendScheduledJobsReport = onSchedule({
   timeZone: "Australia/Sydney",
   secrets: [gmailAppPassword],
 }, async (event) => {
-  const { todayStr, jobs } = await fetchDailyJobReportData(['scheduled']);
+  const { todayStr, jobs } = await fetchDailyJobReportData(['scheduled', 'pending']);
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -1658,7 +1787,7 @@ export const sendScheduledJobsReport = onSchedule({
           <h1>LPO<span>.PLUS</span> | Daily Manifest Alert</h1>
         </div>
         <div class="alert-bar">
-          <p style="margin: 0; color: #854d0e;"><strong>Action Required:</strong> The following jobs are still in <strong>Scheduled</strong> status for today. This means they have not yet been accepted by an operator.</p>
+          <p style="margin: 0; color: #854d0e;"><strong>Action Required:</strong> The following jobs are still in <strong>Pending</strong> or <strong>Scheduled</strong> status for today. This means they have not yet been accepted by an operator or confirmed.</p>
         </div>
         <div class="stats">
           <div class="stat-box">
