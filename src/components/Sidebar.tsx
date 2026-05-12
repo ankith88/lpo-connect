@@ -88,7 +88,11 @@ const Sidebar: React.FC = () => {
             </div>
             {isExpanded && (
               <div className="user-info">
-                <p className="user-name">{userData?.email.split('@')[0] || 'Clarke Kent'}</p>
+                <p className="user-name">
+                  {userData?.first_name && userData?.last_name 
+                    ? `${userData.first_name} ${userData.last_name}` 
+                    : (userData?.email.split('@')[0] || 'Clarke Kent')}
+                </p>
                 <p className="lpo-name">{isAdmin ? 'Head Office Admin' : (lpo?.name || 'Rouse Hill LPO')}</p>
               </div>
             )}
@@ -344,8 +348,26 @@ const Sidebar: React.FC = () => {
           font-weight: 900; font-size: 0.75rem; color: var(--ink);
         }
 
-        .user-name { font-weight: 800; font-size: 0.85rem; color: #ffffff; margin: 0; white-space: nowrap; }
-        .lpo-name { font-size: 0.65rem; font-weight: 600; color: rgba(255, 255, 255, 0.5); margin: 0; white-space: nowrap; }
+        .user-name { 
+          font-weight: 800; 
+          font-size: 0.85rem; 
+          color: #ffffff; 
+          margin: 0; 
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 140px;
+        }
+        .lpo-name { 
+          font-size: 0.65rem; 
+          font-weight: 600; 
+          color: rgba(255, 255, 255, 0.5); 
+          margin: 0; 
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 140px;
+        }
 
         .sidebar-nav {
           flex: 1;

@@ -17,6 +17,8 @@ interface LpoMetadata {
 interface UserMetadata {
   uid: string;
   email: string;
+  first_name?: string;
+  last_name?: string;
   mobile?: string;
   role: string; // 'admin' or 'operator'
   lpo_id: string;

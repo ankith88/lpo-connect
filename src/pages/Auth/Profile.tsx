@@ -82,7 +82,13 @@ const Profile: React.FC = () => {
               <label>Full Name</label>
               <div className="input-readonly">
                 <User size={18} />
-                <input type="text" value={user?.displayName || 'Clarke Kent'} readOnly />
+                <input 
+                  type="text" 
+                  value={userData?.first_name && userData?.last_name 
+                    ? `${userData.first_name} ${userData.last_name}` 
+                    : (user?.displayName || 'Clarke Kent')} 
+                  readOnly 
+                />
                 <Shield size={14} className="verified-icon" />
               </div>
               <p className="field-note">Name is managed by administrators</p>
