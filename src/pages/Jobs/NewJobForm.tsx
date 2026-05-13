@@ -44,6 +44,8 @@ interface JobData {
     instructions: string;
     netsuiteId?: string;
     coordinates?: { lat: number, lng: number };
+    franchisee?: string;
+    franchiseeText?: string;
   };
   service: ServiceType;
   serviceInternalId?: string;
@@ -95,6 +97,8 @@ const NewJobForm: React.FC = () => {
       state: '',
       postcode: '',
       instructions: '',
+      franchisee: '',
+      franchiseeText: '',
     },
     service: 'site-to-lpo',
     billing: 'lpo',
@@ -210,7 +214,9 @@ const NewJobForm: React.FC = () => {
         postcode: c.zip || c.address?.postcode || '',
         instructions: c.instructions || '',
         netsuiteId: c.companyId || c.customerInternalId || undefined,
-        coordinates: c.coordinates || undefined
+        coordinates: c.coordinates || undefined,
+        franchisee: c.franchisee || '',
+        franchiseeText: c.franchiseeText || ''
       },
       service: defaultService,
       serviceInternalId: defaultId,
@@ -618,7 +624,8 @@ const NewJobForm: React.FC = () => {
           netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
           appJobGroupId: null,
           syncedWithNetSuite: null,
-          status: initialRequestStatus
+          status: initialRequestStatus,
+          jobAcceptedCustInternalId: null
         }));
 
         const sysMessage = {
@@ -642,6 +649,7 @@ const NewJobForm: React.FC = () => {
           isExistingCustomer,
           netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
           status: initialRequestStatus,
+          jobAcceptedCustInternalId: null,
           skippedDates: [],
           recurrenceStatus: 'active',
           chat: []

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { 
   doc, 
   updateDoc, 
@@ -10,7 +10,8 @@ import {
   arrayUnion,
   query,
   where,
-  getDocs
+  getDocs,
+  getDoc
 } from 'firebase/firestore';
 import { 
   Building2, 
@@ -25,7 +26,8 @@ import {
   Phone,
   Mail,
   User as UserIcon,
-  Zap
+  Zap,
+  Info
 } from 'lucide-react';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import LoadingScreen from '../../components/LoadingScreen';
@@ -48,6 +50,9 @@ const RequestPage: React.FC = () => {
   const [hasNewMessage, setHasNewMessage] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const zeeParam = searchParams.get('zee');
+  const [franchisees, setFranchisees] = useState<{id: string, name: string}[]>([]);
   
   // Rejection Modal State
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
@@ -90,6 +95,44 @@ const RequestPage: React.FC = () => {
 
     return () => unsubscribe();
   }, [id, lpo]);
+
+  // Fetch full customer details for franchisee list
+  useEffect(() => {
+    if (!request?.lpo_id || !request?.netsuiteCustomerId) return;
+
+    const fetchCustomer = async () => {
+      try {
+        const custDoc = await getDocs(query(
+          collection(db, `lpo/${request.lpo_id}/customers`),
+          where('customerInternalId', '==', request.netsuiteCustomerId)
+        ));
+        
+        if (!custDoc.empty) {
+          const data = custDoc.docs[0].data();
+          
+          // Parse franchisees
+          const ids = (data.franchisee || "").split(',').map((s: string) => s.trim()).filter(Boolean);
+          const names = (data.franchiseeText || "").split(',').map((s: string) => s.trim()).filter(Boolean);
+          
+          const list = ids.map((id: string, index: number) => ({
+            id,
+            name: names[index] || id
+          }));
+          
+          setFranchisees(list);
+
+          // Default zee for operator if missing
+          if (isLpoUser && !zeeParam && list.length > 0) {
+            setSearchParams({ zee: list[0].id }, { replace: true });
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching customer details:", err);
+      }
+    };
+
+    fetchCustomer();
+  }, [request?.lpo_id, request?.netsuiteCustomerId, isLpoUser, zeeParam, setSearchParams]);
 
   useEffect(() => {
     // Request notification permission and save token
@@ -177,6 +220,7 @@ const RequestPage: React.FC = () => {
       sender: isLpoUser ? 'operator' : 'user',
       text: message.trim(),
       timestamp: new Date().toISOString(),
+      zee: zeeParam || null
     };
 
     try {
@@ -347,7 +391,8 @@ const RequestPage: React.FC = () => {
               operatorNetSuiteId: null,
               operatorName: null,
               operatorEmail: null,
-              operatorPhone: null
+              operatorPhone: null,
+              jobAcceptedCustInternalId: null
             });
             console.log("Created immediate job instance:", jobDocRef.id);
             finalJobId = jobDocRef.id;
@@ -395,7 +440,8 @@ const RequestPage: React.FC = () => {
             operatorNetSuiteId: null,
             operatorName: null,
             operatorEmail: null,
-            operatorPhone: null
+            operatorPhone: null,
+            jobAcceptedCustInternalId: null
           });
           console.log("Created one-off job:", jobDocRef.id);
           finalJobId = jobDocRef.id;
@@ -407,10 +453,21 @@ const RequestPage: React.FC = () => {
           setAcceptStatus("Syncing instance...");
           const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
           
+          let acceptedCustId = "";
+          try {
+            const jobSnap = await getDoc(jobDocRef);
+            if (jobSnap.exists()) {
+              acceptedCustId = jobSnap.data().jobAcceptedCustInternalId || "";
+            }
+          } catch (err) {
+            console.error("Error fetching job data for NetSuite sync:", err);
+          }
+
           const params = new URLSearchParams({
             job_id: jobDocRef.id,
             billing: request.billing || "",
             customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+            accepted_cust_id: acceptedCustId,
             instructions: request.customer?.instructions || "",
             job_type: request.jobType || "",
             lpo_id: lpoId,
@@ -443,7 +500,8 @@ const RequestPage: React.FC = () => {
             firstName: request.customer?.firstName || "",
             service: request.service || "",
             date: request.date || "null",
-            frequency: request.jobType === 'scheduled' ? (request.frequency?.join(',') || "null") : "null"
+            frequency: request.jobType === 'scheduled' ? (request.frequency?.join(',') || "null") : "null",
+            zee_id: zeeParam || ""
           });
 
           console.log("Triggering NetSuite 2536 with:", Object.fromEntries(params2536));
@@ -520,7 +578,8 @@ const RequestPage: React.FC = () => {
         customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
         lpo_id: lpo?.id || request.lpo_id || "",
         reason: rejectReason,
-        notes: rejectNotes.trim()
+        notes: rejectNotes.trim(),
+        zee_id: zeeParam || ""
       });
 
       fetch(`${NETSUITE_API}&${params.toString()}`)
@@ -790,6 +849,43 @@ const RequestPage: React.FC = () => {
                   </div>
                 </div>
               )}
+
+              {isLpoUser && franchisees.length > 1 && (
+                <div className="detail-section">
+                  <div className="section-title">
+                    <Building2 size={18} />
+                    <h3>Franchisee Context</h3>
+                  </div>
+                  <div className="franchisee-list">
+                    {franchisees.map(f => (
+                      <button 
+                        key={f.id} 
+                        className={`zee-switch-btn ${zeeParam === f.id ? 'active' : ''}`}
+                        onClick={() => setSearchParams({ zee: f.id })}
+                      >
+                        {f.name}
+                        {zeeParam === f.id && <CheckCircle2 size={14} />}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="context-help">
+                    <Info size={12} />
+                    <span>Actions and notifications will be sent to the selected franchisee.</span>
+                  </div>
+                </div>
+               )}
+
+               {isLpoUser && (
+                <div className="detail-section">
+                   <button className="copy-link-btn" onClick={() => {
+                      const url = `${window.location.origin}/request/${id}?zee=${zeeParam || ''}`;
+                      navigator.clipboard.writeText(url);
+                      alert("Coordination link copied to clipboard!");
+                   }}>
+                      Copy Link for {franchisees.find(f => f.id === zeeParam)?.name || 'Franchisee'}
+                   </button>
+                </div>
+               )}
            </aside>
 
            {/* Right: Chat Coordination */}
@@ -864,30 +960,44 @@ const RequestPage: React.FC = () => {
                        <span className="hint">Questions about timing, access, or billing can be discussed here.</span>
                     </div>
                  ) : (
-                    request.chat.map((msg: any, idx: number) => {
-                       if (msg.sender === 'system') {
-                          return (
-                             <div key={idx} className="system-message">
-                                <div className="system-message-content">
-                                   <span className="system-icon"><Clock size={14} /></span>
-                                   {msg.text}
-                                </div>
-                                <div className="message-time">
-                                   {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                             </div>
-                          );
-                       }
-                       return (
-                          <div key={idx} className={`message-bubble ${msg.sender}`}>
-                             <div className="sender-label">{msg.sender === 'operator' ? 'LPO' : 'Franchisee'}</div>
-                             <div className="message-content">{msg.text}</div>
-                             <div className="message-time">
-                                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                             </div>
-                          </div>
-                       );
-                    })
+                    request.chat
+                      .filter((msg: any) => {
+                        if (isLpoUser) return true;
+                        if (msg.sender === 'system') return true;
+                        // For franchisees, show messages that match their zee OR have no zee (global/legacy)
+                        return !msg.zee || msg.zee === zeeParam;
+                      })
+                      .map((msg: any, idx: number) => {
+                        if (msg.sender === 'system') {
+                           return (
+                              <div key={idx} className="system-message">
+                                 <div className="system-message-content">
+                                    <span className="system-icon"><Clock size={14} /></span>
+                                    {msg.text}
+                                 </div>
+                                 <div className="message-time">
+                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                 </div>
+                              </div>
+                           );
+                        }
+                        
+                        const senderName = msg.sender === 'operator' ? 'LPO' : 'Franchisee';
+                        const zeeInfo = isLpoUser && msg.zee ? franchisees.find(f => f.id === msg.zee) : null;
+
+                        return (
+                           <div key={idx} className={`message-bubble ${msg.sender}`}>
+                              <div className="sender-label">
+                                 {senderName}
+                                 {zeeInfo && <span className="zee-label-inline"> • {zeeInfo.name}</span>}
+                              </div>
+                              <div className="message-content">{msg.text}</div>
+                              <div className="message-time">
+                                 {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </div>
+                           </div>
+                        );
+                      })
                  )}
                  <div ref={chatEndRef} />
               </div>
@@ -1284,6 +1394,31 @@ const RequestPage: React.FC = () => {
         .reprocess-header h3 { margin: 0 0 4px; font-size: 1.1rem; }
         .reprocess-header p { margin: 0 0 20px; font-size: 0.85rem; color: var(--ink-soft); font-weight: 500; }
         .history-notice { display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--cream-warm); color: var(--gold); padding: 16px; border-radius: 20px; margin: 0 20px 20px; font-size: 0.85rem; font-weight: 600; }
+        
+        /* Multi-Franchisee Context Styles */
+        .zee-switch-btn { 
+          display: flex; 
+          align-items: center; 
+          justify-content: space-between;
+          width: 100%;
+          padding: 12px 16px;
+          background: var(--paper);
+          border: 1px solid var(--cream-warm);
+          border-radius: 12px;
+          margin-bottom: 8px;
+          cursor: pointer;
+          transition: all 0.2s;
+          font-weight: 700;
+          color: var(--ink-soft);
+          font-size: 0.85rem;
+          text-align: left;
+        }
+        .zee-switch-btn:hover { background: var(--cream-warm); transform: translateX(4px); }
+        .zee-switch-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+        .context-help { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 0.7rem; color: var(--ink-soft); opacity: 0.7; font-weight: 500; line-height: 1.3; }
+        .copy-link-btn { width: 100%; padding: 14px; background: var(--cream-warm); border: 1px dashed var(--gold); color: var(--gold); border-radius: 14px; font-weight: 800; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
+        .copy-link-btn:hover { background: var(--paper); border-style: solid; }
+        .zee-label-inline { color: var(--gold); font-weight: 900; }
       `}</style>
     </div>
   );
