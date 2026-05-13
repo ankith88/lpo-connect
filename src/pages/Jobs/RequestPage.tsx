@@ -457,7 +457,8 @@ const RequestPage: React.FC = () => {
           try {
             const jobSnap = await getDoc(jobDocRef);
             if (jobSnap.exists()) {
-              acceptedCustId = jobSnap.data().jobAcceptedCustInternalId || "";
+              const jobData = jobSnap.data() as any;
+              acceptedCustId = jobData?.jobAcceptedCustInternalId || "";
             }
           } catch (err) {
             console.error("Error fetching job data for NetSuite sync:", err);
