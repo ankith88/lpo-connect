@@ -12,11 +12,13 @@ import {
   User,
   Building2,
   Edit2,
-  UserMinus
+  UserMinus,
+  StickyNote
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import EditCustomerModal from '../../components/EditCustomerModal';
 import CancelCustomerModal from '../../components/CancelCustomerModal';
+import CustomerNotesModal from '../../components/CustomerNotesModal';
 import { collection, query, getDocs, orderBy, where } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
@@ -35,6 +37,8 @@ const CustomerHub: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [cancellingCustomer, setCancellingCustomer] = useState<any | null>(null);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [notesCustomer, setNotesCustomer] = useState<any | null>(null);
+  const [isNotesModalOpen, setIsNotesModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -203,39 +207,47 @@ const CustomerHub: React.FC = () => {
               />
            </div>
            <div className="filter-group-glass">
-              <div className="filter-item">
-                <Filter size={14} />
-                <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)}>
-                  <option value="all">All Service Types</option>
-                  <option value="lpo-to-site">LPO ➔ Site</option>
-                  <option value="site-to-lpo">Site ➔ LPO</option>
-                  <option value="round-trip">Round Trip</option>
-                </select>
-              </div>
-              <div className="filter-item">
-                <CreditCard size={14} />
-                <select value={billingFilter} onChange={(e) => setBillingFilter(e.target.value)}>
-                  <option value="all">All Billing</option>
-                  <option value="customer">Customer</option>
-                  <option value="lpo">LPO Paid</option>
-                </select>
-              </div>
-              <div className="filter-item">
-                <Rocket size={14} />
-                <select value={jobTypeFilter} onChange={(e) => setJobTypeFilter(e.target.value)}>
-                  <option value="all">All Job Types</option>
-                  <option value="one-off">One-off</option>
-                  <option value="scheduled">Scheduled</option>
-                </select>
-              </div>
-              <div className="filter-item">
-                <Users size={14} />
-                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                  <option value="active">Active Accounts</option>
-                  <option value="cancelled">Cancelled Only</option>
-                  <option value="all">All Accounts</option>
-                </select>
-              </div>
+              <CustomSelect 
+                value={serviceFilter}
+                onChange={(val) => setServiceFilter(val)}
+                options={[
+                  { value: 'all', label: 'All Service Types', icon: <Filter size={14} /> },
+                  { value: 'lpo-to-site', label: 'LPO ➔ Site' },
+                  { value: 'site-to-lpo', label: 'Site ➔ LPO' },
+                  { value: 'round-trip', label: 'Round Trip' }
+                ]}
+                className="hub-filter-custom"
+              />
+              <CustomSelect 
+                value={billingFilter}
+                onChange={(val) => setBillingFilter(val)}
+                options={[
+                  { value: 'all', label: 'All Billing', icon: <CreditCard size={14} /> },
+                  { value: 'customer', label: 'Customer' },
+                  { value: 'lpo', label: 'LPO Paid' }
+                ]}
+                className="hub-filter-custom"
+              />
+              <CustomSelect 
+                value={jobTypeFilter}
+                onChange={(val) => setJobTypeFilter(val)}
+                options={[
+                  { value: 'all', label: 'All Job Types', icon: <Rocket size={14} /> },
+                  { value: 'one-off', label: 'One-off' },
+                  { value: 'scheduled', label: 'Recurring' }
+                ]}
+                className="hub-filter-custom"
+              />
+              <CustomSelect 
+                value={statusFilter}
+                onChange={(val) => setStatusFilter(val)}
+                options={[
+                  { value: 'active', label: 'Active Accounts', icon: <Users size={14} /> },
+                  { value: 'cancelled', label: 'Cancelled Only' },
+                  { value: 'all', label: 'All Accounts' }
+                ]}
+                className="hub-filter-custom"
+              />
            </div>
         </div>
 
@@ -252,51 +264,68 @@ const CustomerHub: React.FC = () => {
              <div className="customer-grid">
                 {filteredCustomers.map((customer) => (
                    <div key={customer.id} className="customer-card glass-card">
-                       <div className="card-top">
-                          <div className="avatar">
-                             {(customer.companyName || customer.company_name || '?').charAt(0)}
-                          </div>
-                          <div className="main-info">
-                             <h3>{customer.companyName || customer.company_name}</h3>
-                             {isAdmin && customer.lpoName && (
-                               <div className="sub-info lpo-tag">
-                                  <Building2 size={12} />
-                                  <span>LPO: {customer.lpoName}</span>
-                               </div>
-                             )}
-                             {customer.franchiseeText && (
-                               <div className="sub-info franchisee-tag">
-                                  <Users size={12} />
-                                  <span>Franchisee: {customer.franchiseeText}</span>
-                               </div>
-                             )}
-                          </div>
-                          <div className="card-actions">
+                       <div className="card-header-premium">
+                          <div className="header-top-row">
                              <div className={`status-badge-premium ${customer.status === 'Active' ? 'active' : customer.status === 'cancelled' ? 'cancelled' : 'awaiting'}`}>
-                               {customer.status === 'Active' ? 'ACTIVE' : customer.status === 'cancelled' ? 'CANCELLED' : 'AWAITING T&C'}
+                                {customer.status === 'Active' ? 'ACTIVE' : customer.status === 'cancelled' ? 'CANCELLED' : 'AWAITING T&C'}
                              </div>
-                             <button 
-                               className="edit-customer-btn" 
-                               onClick={() => {
-                                 setEditingCustomer(customer);
-                                 setIsEditModalOpen(true);
-                               }}
-                               title="Edit Contact Details"
-                             >
-                                <Edit2 size={14} />
-                             </button>
-                             {customer.status !== 'cancelled' && (
-                               <button 
-                                 className="edit-customer-btn cancel-btn" 
-                                 onClick={() => {
-                                   setCancellingCustomer(customer);
-                                   setIsCancelModalOpen(true);
-                                 }}
-                                 title="Cancel Customer"
-                               >
-                                  <UserMinus size={14} />
-                               </button>
-                             )}
+                             <div className="card-actions-group">
+                                <button 
+                                  className="action-btn-pill" 
+                                  onClick={() => {
+                                    setEditingCustomer(customer);
+                                    setIsEditModalOpen(true);
+                                  }}
+                                  title="Edit Contact Details"
+                                >
+                                   <Edit2 size={14} />
+                                </button>
+                                <button 
+                                  className="action-btn-pill" 
+                                  onClick={() => {
+                                    setNotesCustomer(customer);
+                                    setIsNotesModalOpen(true);
+                                  }}
+                                  title="Customer Notes"
+                                >
+                                   <StickyNote size={14} />
+                                </button>
+                                {customer.status !== 'cancelled' && (
+                                  <button 
+                                    className="action-btn-pill cancel" 
+                                    onClick={() => {
+                                      setCancellingCustomer(customer);
+                                      setIsCancelModalOpen(true);
+                                    }}
+                                    title="Cancel Customer"
+                                  >
+                                     <UserMinus size={14} />
+                                  </button>
+                                )}
+                             </div>
+                          </div>
+
+                          <div className="header-main-row">
+                             <div className="avatar">
+                                {(customer.companyName || customer.company_name || '?').charAt(0)}
+                             </div>
+                             <div className="main-info">
+                                <h3>{customer.companyName || customer.company_name}</h3>
+                                <div className="info-tags">
+                                   {isAdmin && customer.lpoName && (
+                                     <div className="sub-info lpo-tag">
+                                        <Building2 size={12} />
+                                        <span>LPO: {customer.lpoName}</span>
+                                     </div>
+                                   )}
+                                   {customer.franchiseeText && (
+                                     <div className="sub-info franchisee-tag">
+                                        <Users size={12} />
+                                        <span>{customer.franchiseeText}</span>
+                                     </div>
+                                   )}
+                                </div>
+                             </div>
                           </div>
                        </div>
 
@@ -388,6 +417,12 @@ const CustomerHub: React.FC = () => {
         }}
       />
 
+      <CustomerNotesModal 
+        isOpen={isNotesModalOpen}
+        onClose={() => setIsNotesModalOpen(false)}
+        customer={notesCustomer}
+      />
+
       <style>{`
         .customer-hub-premium { min-height: 100vh; background: var(--offwhite); padding: 40px 24px 100px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
@@ -427,45 +462,45 @@ const CustomerHub: React.FC = () => {
         .search-bar-glass input:focus { outline: none; }
         .search-bar-glass svg { color: var(--ink-soft); }
 
-        .filter-group-glass { display: flex; gap: 12px; align-items: center; }
-        .filter-item {
-           display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.7);
-           backdrop-filter: blur(10px); padding: 8px 16px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.4);
-           transition: all 0.2s;
+        .filter-group-glass { display: flex; gap: 8px; align-items: center; }
+        .hub-filter-custom { min-width: 160px; }
+        .hub-filter-custom .select-trigger {
+          padding: 8px 14px;
+          border-radius: 16px;
+          font-size: 0.85rem;
+          background: rgba(255, 255, 255, 0.7);
         }
-        .filter-item:focus-within { border-color: var(--ink); background: white; }
-        .filter-item select {
-           border: none; background: transparent; font-weight: 700; color: var(--ink-soft); font-size: 0.85rem; cursor: pointer;
-           outline: none; padding: 4px 0; min-width: 120px;
-        }
-        .filter-item svg { color: var(--ink-soft); opacity: 0.7; }
 
         .customers-view { margin-top: 20px; }
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 32px; padding: 24px; }
         
-        .customer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 24px; }
-        .customer-card { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .customer-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 32px; }
+        .customer-card { transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; }
         .customer-card:hover { transform: translateY(-8px); background: var(--paper); box-shadow: 0 20px 40px rgba(26, 61, 51, 0.08); }
 
-        .card-top { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; position: relative; }
-        .avatar { width: 44px; height: 44px; background: var(--cream-warm); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 400; color: var(--ink); font-size: 1.2rem; font-family: var(--font-headings); }
-        .main-info { flex: 1; min-width: 0; }
-        .main-info h3 { margin: 0; font-size: 1.1rem; font-weight: 400; color: var(--ink); letter-spacing: -0.015em; font-family: var(--font-headings); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sub-info { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 0.75rem; font-weight: 400; margin-top: 2px; }
-        .franchisee-tag { color: var(--ink); background: rgba(26, 61, 51, 0.05); padding: 2px 8px; border-radius: 6px; width: fit-content; }
-        .status-badge-premium { font-family: var(--font-ui); padding: 4px 10px; border-radius: 8px; font-size: 0.55rem; font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; }
-        .status-badge-premium.active { background: var(--cream-warm); color: var(--ink); }
-        .status-badge-premium.awaiting { background: var(--cream-warm); color: var(--gold); }
-        .status-badge-premium.cancelled { background: #fee2e2; color: #dc2626; }
+        .card-header-premium { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
+        .header-top-row { display: flex; justify-content: space-between; align-items: center; }
+        .header-main-row { display: flex; align-items: flex-start; gap: 16px; }
 
-        .card-actions { display: flex; align-items: center; gap: 8px; }
-        .edit-customer-btn {
-          width: 30px; height: 30px; border-radius: 8px; background: rgba(0,0,0,0.05);
-          border: none; color: var(--ink-soft); cursor: pointer; display: flex;
+        .avatar { width: 52px; height: 52px; background: var(--cream-warm); border-radius: 16px; display: flex; align-items: center; justify-content: center; font-weight: 400; color: var(--ink); font-size: 1.4rem; font-family: var(--font-headings); flex-shrink: 0; }
+        .main-info { flex: 1; min-width: 0; }
+        .main-info h3 { margin: 0; font-size: 1.25rem; font-weight: 400; color: var(--ink); letter-spacing: -0.015em; font-family: var(--font-headings); line-height: 1.2; margin-bottom: 6px; word-break: break-word; }
+        .info-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+        .sub-info { display: flex; align-items: center; gap: 6px; color: var(--ink-soft); font-size: 0.7rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; }
+        .franchisee-tag { color: var(--ink); background: rgba(26, 61, 51, 0.05); padding: 4px 10px; border-radius: 8px; }
+        .status-badge-premium { font-family: var(--font-ui); padding: 6px 12px; border-radius: 10px; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+        .status-badge-premium.active { background: #ecfdf5; color: #059669; border: 1px solid #d1fae5; }
+        .status-badge-premium.awaiting { background: #fffbeb; color: #d97706; border: 1px solid #fef3c7; }
+        .status-badge-premium.cancelled { background: #fef2f2; color: #dc2626; border: 1px solid #fee2e2; }
+
+        .card-actions-group { display: flex; align-items: center; gap: 6px; }
+        .action-btn-pill {
+          width: 32px; height: 32px; border-radius: 10px; background: white;
+          border: 1px solid var(--cream-warm); color: var(--ink-soft); cursor: pointer; display: flex;
           align-items: center; justify-content: center; transition: all 0.2s;
         }
-        .edit-customer-btn:hover { background: var(--ink); color: white; }
-        .edit-customer-btn.cancel-btn:hover { background: #dc2626; color: white; }
+        .action-btn-pill:hover { background: var(--ink); color: white; border-color: var(--ink); }
+        .action-btn-pill.cancel:hover { background: #dc2626; color: white; border-color: #dc2626; }
 
         .card-body { border-top: 1px solid var(--cream-warm); border-bottom: 1px solid var(--cream-warm); padding: 16px 0; margin-bottom: 16px; display: flex; flex-direction: column; gap: 10px; }
         .contact-item { display: flex; align-items: center; gap: 10px; color: var(--ink-soft); font-size: 0.85rem; font-weight: 600; }
@@ -510,16 +545,17 @@ const CustomerHub: React.FC = () => {
            .hub-controls { flex-direction: column; align-items: stretch; gap: 12px; margin-bottom: 24px; }
            .search-bar-glass { max-width: none; padding: 0 12px; }
            .search-bar-glass input { padding: 14px 0; font-size: 0.9rem; }
-           .filter-group-glass { flex-direction: column; gap: 8px; }
-           .filter-item { width: 100%; justify-content: flex-start; padding: 12px; }
-           .filter-item select { flex: 1; font-size: 0.8rem; }
+           .filter-group-glass { flex-direction: column; gap: 8px; width: 100%; }
+           .hub-filter-custom { width: 100%; }
+           .hub-filter-custom .select-trigger { padding: 12px; }
 
-           .customer-grid { gap: 16px; }
-           .customer-card { padding: 14px; border-radius: 20px; }
-           .card-top { margin-bottom: 12px; }
-           .avatar { width: 36px; height: 36px; font-size: 1rem; border-radius: 10px; }
-           .main-info h3 { font-size: 1rem; }
-           .status-badge-premium { font-size: 0.5rem; padding: 3px 8px; }
+           .customer-grid { gap: 16px; grid-template-columns: 1fr; }
+           .customer-card { padding: 16px; border-radius: 24px; }
+           .card-header-premium { gap: 12px; margin-bottom: 16px; }
+           .avatar { width: 44px; height: 44px; font-size: 1.2rem; border-radius: 12px; }
+           .main-info h3 { font-size: 1.1rem; }
+           .status-badge-premium { font-size: 0.55rem; padding: 4px 10px; }
+           .action-btn-pill { width: 30px; height: 30px; }
 
            .card-body { padding: 12px 0; margin-bottom: 12px; gap: 8px; }
            .contact-item { font-size: 0.75rem; }

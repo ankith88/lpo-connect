@@ -14,7 +14,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Grid,
-  List
+  List,
+  Copy,
+  CreditCard
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, orderBy, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { sortStops } from '../../utils/stops';
@@ -36,6 +38,7 @@ const Schedules: React.FC = () => {
   const [supportJobId, setSupportJobId] = useState('');
   const [supportMetadata, setSupportMetadata] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
+  const [billingFilter, setBillingFilter] = useState<'all' | 'lpo' | 'customer'>('all');
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
@@ -148,7 +151,8 @@ const Schedules: React.FC = () => {
     const matchesSearch = s.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          s.customer.address.toLowerCase().includes(searchTerm.toLowerCase());
     const isActive = s.recurrenceStatus !== 'stopped';
-    return matchesSearch && isActive;
+    const matchesBilling = billingFilter === 'all' || s.billing === billingFilter;
+    return matchesSearch && isActive && matchesBilling;
   });
 
   // Calendar Logic Helpers
@@ -246,6 +250,17 @@ const Schedules: React.FC = () => {
                    onChange={(e) => setSearchTerm(e.target.value)}
                  />
                </div>
+
+               <CustomSelect 
+                 value={billingFilter}
+                 onChange={(val) => setBillingFilter(val as any)}
+                 options={[
+                   { value: 'all', label: 'All Billing', icon: <CreditCard size={14} /> },
+                   { value: 'lpo', label: 'LPO Pays', icon: <CreditCard size={14} style={{ color: '#1a3d33' }} /> },
+                   { value: 'customer', label: 'Customer Pays', icon: <CreditCard size={14} style={{ color: '#eaf044' }} /> }
+                 ]}
+                 className="billing-select-custom"
+               />
                
                <div className="view-toggle-pills">
                  <button 
@@ -265,6 +280,17 @@ const Schedules: React.FC = () => {
                </div>
 
                <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
+            </div>
+
+            <div className="billing-legend fade-in">
+               <div className="legend-item">
+                 <div className="legend-dot lpo"></div>
+                 <span>LPO PAYS</span>
+               </div>
+               <div className="legend-item">
+                 <div className="legend-dot customer"></div>
+                 <span>CUSTOMER PAYS</span>
+               </div>
             </div>
 
             {loading ? (
@@ -300,7 +326,7 @@ const Schedules: React.FC = () => {
                               return (
                                 <div 
                                   key={job.id} 
-                                  className={`job-dot-pill ${isSkipped ? 'skipped' : ''}`}
+                                  className={`job-dot-pill ${isSkipped ? 'skipped' : ''} billing-${job.billing}`}
                                   onClick={() => setSelectedSchedule(job)}
                                   title={`${job.customer.company} - ${job.service}`}
                                 >
@@ -343,7 +369,7 @@ const Schedules: React.FC = () => {
                               </div>
                            </div>
                            <div className="header-meta-group">
-                             <div className="status-tag status-scheduled">
+                             <div className="status-tag status-awaiting-driver">
                                 {schedule.frequency?.join(', ')}
                              </div>
                              <div className="expand-icon">
@@ -377,28 +403,42 @@ const Schedules: React.FC = () => {
                              <Clock size={12} />
                              <span>{schedule.service.replace(/-/g, ' ')}</span>
                           </div>
-                          <div className="meta-pill">
-                             <RotateCcw size={12} />
-                             <span>{schedule.billing}</span>
+                          <div className={`meta-pill billing-badge ${schedule.billing}`}>
+                             <CreditCard size={12} />
+                             <span>{schedule.billing === "lpo" ? "LPO Pays" : "Customer"}</span>
                           </div>
-                          <div 
-                            className="job-ref interactive" 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSupportJobId(schedule.id);
-                              setSupportMetadata({
-                                lpoName: lpo?.name,
-                                companyName: schedule.customer?.company,
-                                contactName: schedule.customer?.contactName,
-                                contactEmail: schedule.customer?.email,
-                                contactPhone: schedule.customer?.phone,
-                                serviceType: schedule.service,
-                                billing: schedule.billing
-                              });
-                              setIsSupportModalOpen(true);
-                            }}
-                          >
-                            REF: {schedule.id}
+                          <div className="job-ref">
+                            <div 
+                              className="ref-id interactive" 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSupportJobId(schedule.id);
+                                setSupportMetadata({
+                                  lpoName: lpo?.name,
+                                  companyName: schedule.customer?.company,
+                                  contactName: schedule.customer?.contactName,
+                                  contactEmail: schedule.customer?.email,
+                                  contactPhone: schedule.customer?.phone,
+                                  serviceType: schedule.service,
+                                  billing: schedule.billing
+                                });
+                                setIsSupportModalOpen(true);
+                              }}
+                              title="Click for support"
+                            >
+                              REF: {schedule.id}
+                            </div>
+                            <button 
+                              className="copy-ref-icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigator.clipboard.writeText(schedule.id);
+                                alert("Reference ID copied!");
+                              }}
+                              title="Copy Reference ID"
+                            >
+                              <Copy size={12} />
+                            </button>
                           </div>
                        </div>
 
@@ -522,8 +562,8 @@ const Schedules: React.FC = () => {
         .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
         .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
-        .lpo-select-custom {
-          min-width: 200px;
+        .lpo-select-custom, .billing-select-custom {
+          min-width: 180px;
         }
 
         .lpo-badge-inline {
@@ -651,6 +691,12 @@ const Schedules: React.FC = () => {
           overflow: hidden;
         }
         .job-dot-pill.skipped { background: var(--cream-warm); color: var(--ink-soft); opacity: 0.6; text-decoration: line-through; }
+        .status-tag.status-awaiting-driver { background: var(--cream-warm); color: var(--ink); }
+        
+        .job-dot-pill.billing-lpo { background: var(--ink); color: white; }
+        .job-dot-pill.billing-customer { background: var(--gold); color: white; }
+        .job-dot-pill.billing-customer .dot { background: white; }
+
         .job-dot-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--gold); }
         .job-dot-pill.skipped .dot { background: var(--danger); }
         .truncate { overflow: hidden; text-overflow: ellipsis; }
@@ -708,8 +754,52 @@ const Schedules: React.FC = () => {
         .stop-addr { font-size: 0.75rem; color: var(--ink-soft); }
 
         .card-meta { display: flex; gap: 16px; align-items: center; padding: 20px 0; border-top: 1px solid rgba(26,61,51,0.03); margin-top: 20px; }
-        .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); }
-        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.7rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
+        .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); padding: 4px 10px; border-radius: 8px; }
+        
+        .meta-pill.billing-badge.lpo { background: var(--ink); color: white; }
+        .meta-pill.billing-badge.customer { background: var(--gold); color: white; }
+
+        .billing-legend {
+          display: flex;
+          gap: 24px;
+          margin-bottom: 24px;
+          padding: 0 10px;
+        }
+        .legend-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-family: var(--font-ui);
+          font-size: 0.7rem;
+          font-weight: 800;
+          color: var(--ink-soft);
+          letter-spacing: 0.05em;
+        }
+        .legend-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+        }
+        .legend-dot.lpo { background: var(--ink); }
+        .legend-dot.customer { background: var(--gold); }
+
+        .job-ref { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .ref-id { font-family: var(--font-ui); font-size: 0.7rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; cursor: pointer; transition: opacity 0.2s; }
+        .ref-id:hover { opacity: 0.8; }
+        .copy-ref-icon { 
+          background: rgba(0, 0, 0, 0.03); 
+          border: none; 
+          border-radius: 4px; 
+          padding: 3px; 
+          cursor: pointer; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          color: var(--ink-soft);
+          opacity: 0.4;
+          transition: all 0.2s;
+        }
+        .copy-ref-icon:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); opacity: 0.8; }
 
 
         .loading-state, .empty-state {

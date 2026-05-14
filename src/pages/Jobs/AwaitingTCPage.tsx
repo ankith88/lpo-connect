@@ -15,7 +15,8 @@ import {
   RotateCcw,
   CheckCircle2,
   Calendar,
-  Mail
+  Mail,
+  Copy
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
@@ -83,7 +84,26 @@ const AwaitingTCPage: React.FC = () => {
   });
 
   const handleDeleteRequest = async (id: string) => {
+    const request = requests.find(r => r.id === id);
     if (window.confirm('Are you sure you want to delete this job request?')) {
+      if (request) {
+        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
+        
+        const params = new URLSearchParams({
+          job_id: id,
+          request_id: id,
+          customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+          lpo_id: request.lpo_id || ""
+        });
+
+        console.log("Syncing T&C request deletion with NetSuite (2533)...", Object.fromEntries(params));
+        
+        fetch(`${NETSUITE_API}&${params.toString()}`)
+          .then(res => res.json())
+          .then(data => console.log("NetSuite T&C Sync Response:", data))
+          .catch(err => console.error("NetSuite T&C Sync Error:", err));
+      }
+
       await deleteDoc(doc(db, 'requests', id));
       setRequests(requests.filter(r => r.id !== id));
     }
@@ -300,24 +320,38 @@ const AwaitingTCPage: React.FC = () => {
                                          return `${createdDate.toLocaleDateString('en-AU')} (${diffDays} days ago)`;
                                        })() : 'N/A'}</span>
                                  </div>
-                                  <div 
-                                    className="job-ref interactive" 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setSupportJobId(job.id);
-                                      setSupportMetadata({
-                                        lpoName: lpo?.name,
-                                        companyName: job.customer?.company,
-                                        contactName: job.customer?.contactName,
-                                        contactEmail: job.customer?.email,
-                                        contactPhone: job.customer?.phone,
-                                        serviceType: job.service,
-                                        billing: job.billing
-                                      });
-                                      setIsSupportModalOpen(true);
-                                    }}
-                                  >
-                                    REF: {job.id}
+                                  <div className="job-ref">
+                                    <div 
+                                      className="ref-id interactive" 
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSupportJobId(job.id);
+                                        setSupportMetadata({
+                                          lpoName: lpo?.name,
+                                          companyName: job.customer?.company,
+                                          contactName: job.customer?.contactName,
+                                          contactEmail: job.customer?.email,
+                                          contactPhone: job.customer?.phone,
+                                          serviceType: job.service,
+                                          billing: job.billing
+                                        });
+                                        setIsSupportModalOpen(true);
+                                      }}
+                                      title="Click for support"
+                                    >
+                                      REF: {job.id}
+                                    </div>
+                                    <button 
+                                      className="copy-ref-icon"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        navigator.clipboard.writeText(job.id);
+                                        alert("Reference ID copied!");
+                                      }}
+                                      title="Copy Reference ID"
+                                    >
+                                      <Copy size={12} />
+                                    </button>
                                   </div>
                               </div>
 
@@ -471,7 +505,8 @@ const AwaitingTCPage: React.FC = () => {
           background: white; border: 3px solid var(--offwhite); color: var(--ink);
           box-shadow: 0 8px 20px rgba(26, 61, 51, 0.08); transition: all 0.3s;
         }
-        .node-inner.pill-scheduled { border-color: var(--ink); color: var(--ink); }
+        .node-inner.pill-awaiting-driver,
+        .node-inner.pill-awaiting-activation { border-color: var(--ink); color: var(--ink); }
 
         .timeline-content-card {
           flex: 1; padding: 20px 24px; border-radius: 24px; background: rgba(255,255,255,0.6);
@@ -495,7 +530,23 @@ const AwaitingTCPage: React.FC = () => {
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); opacity: 0.6; text-transform: capitalize; }
-        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.65rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
+        .job-ref { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .ref-id { font-family: var(--font-ui); font-size: 0.65rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; cursor: pointer; transition: opacity 0.2s; }
+        .ref-id:hover { opacity: 0.8; }
+        .copy-ref-icon { 
+          background: rgba(0, 0, 0, 0.03); 
+          border: none; 
+          border-radius: 4px; 
+          padding: 3px; 
+          cursor: pointer; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          color: var(--ink-soft);
+          opacity: 0.4;
+          transition: all 0.2s;
+        }
+        .copy-ref-icon:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); opacity: 0.8; }
 
         .card-actions {
           display: flex; justify-content: space-between; align-items: center;

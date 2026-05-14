@@ -34,6 +34,23 @@ const CancelJobModal: React.FC<CancelJobModalProps> = ({ isOpen, onClose, job, o
     const cancelJobFn = httpsCallable(functions, 'cancelJob');
 
     try {
+      const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
+      
+      const params = new URLSearchParams({
+        job_id: job.id,
+        request_id: job.originalRequestId || "",
+        customer_id: job.netsuiteCustomerId || job.customer?.netsuiteId || "",
+        lpo_id: job.lpo_id || ""
+      });
+
+      console.log("Syncing cancellation with NetSuite (2533)...", Object.fromEntries(params));
+      
+      // We don't block on NetSuite, but we log the attempt
+      fetch(`${NETSUITE_API}&${params.toString()}`)
+        .then(res => res.json())
+        .then(data => console.log("NetSuite Cancellation Sync Response:", data))
+        .catch(err => console.error("NetSuite Cancellation Sync Error:", err));
+
       await cancelJobFn({
         jobId: job.id,
         reason,
@@ -64,7 +81,7 @@ const CancelJobModal: React.FC<CancelJobModalProps> = ({ isOpen, onClose, job, o
         <div className="modal-header">
           <div className="header-title" style={{ color: '#ff4757' }}>
             <Trash2 size={20} />
-            <h2>Cancel Scheduled Job</h2>
+            <h2>Cancel Job</h2>
           </div>
           <button className="close-btn" onClick={onClose} disabled={isSubmitting}>
             <X size={20} />
@@ -85,7 +102,7 @@ const CancelJobModal: React.FC<CancelJobModalProps> = ({ isOpen, onClose, job, o
             border: '1px solid rgba(255, 71, 87, 0.2)'
           }}>
             <AlertTriangle size={20} />
-            <span>This will cancel the scheduled job and notify the dispatch team immediately.</span>
+            <span>This will cancel the job and notify the dispatch team immediately.</span>
           </div>
 
           <div className="job-summary-mini" style={{ 

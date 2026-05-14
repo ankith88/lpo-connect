@@ -28,7 +28,7 @@ const Reports: React.FC = () => {
     revenueForecast: 0,
     averageJobValue: 0,
     statusBreakdown: {
-      scheduled: 0,
+      'awaiting-driver': 0,
       completed: 0,
       cancelled: 0
     },
@@ -58,7 +58,7 @@ const Reports: React.FC = () => {
         let completed = 0;
         let revenue = 0;
         let forecast = 0;
-        const statusCount = { scheduled: 0, completed: 0, cancelled: 0 };
+        const statusCount = { 'awaiting-driver': 0, completed: 0, cancelled: 0 };
         const customerRevenue: Record<string, number> = {};
         const suburbs: Record<string, number> = {};
         const split = { 'lpo-to-site': 0, 'site-to-lpo': 0, 'round-trip': 0 };
@@ -84,8 +84,8 @@ const Reports: React.FC = () => {
             customerRevenue[customerName] = (customerRevenue[customerName] || 0) + rate;
           }
           
-          // Forecast logic (scheduled jobs in the next 7 days)
-          if (status === 'scheduled' && data.date) {
+          // Forecast logic (awaiting-driver jobs in the next 7 days)
+          if (status === 'awaiting-driver' && data.date) {
             const jobDate = new Date(data.date);
             if (jobDate >= today && jobDate <= nextWeek) {
               forecast += rate;
@@ -372,8 +372,8 @@ const Reports: React.FC = () => {
                     </div>
                     <div className="legend-item">
                       <span className="dot" style={{ background: 'var(--gold)' }}></span>
-                      <span className="label">Scheduled</span>
-                      <span className="value">{stats.statusBreakdown.scheduled}</span>
+                      <span className="label">Awaiting Driver</span>
+                      <span className="value">{stats.statusBreakdown['awaiting-driver']}</span>
                     </div>
                     <div className="legend-item">
                       <span className="dot" style={{ background: '#ff4757' }}></span>

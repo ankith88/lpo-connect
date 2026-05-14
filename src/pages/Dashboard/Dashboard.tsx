@@ -23,7 +23,8 @@ import {
   User,
   Mail,
   Phone,
-  Repeat
+  Repeat,
+  Copy
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
@@ -45,7 +46,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'in-progress' | 'history' | 'declined'>('in-progress');
+  const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'in-progress' | 'history' | 'declined' | 'cancelled'>('in-progress');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
@@ -196,8 +197,8 @@ const Dashboard: React.FC = () => {
   const globalFilteredRequests = requests.filter(applyGlobalFilters);
 
   // Define source based on tab
-  const source = (activeTab === 'pending' || activeTab === 'declined') 
-    ? globalFilteredRequests 
+  const source = (activeTab === 'pending' || activeTab === 'declined' || activeTab === 'cancelled') 
+    ? (activeTab === 'cancelled' ? [...globalFilteredRequests, ...globalFilteredJobs] : globalFilteredRequests)
     : (activeTab === 'history' ? [...globalFilteredJobs, ...globalFilteredRequests] : (activeTab === 'upcoming' ? [...globalFilteredJobs, ...projectedJobs] : globalFilteredJobs));
 
   const filteredJobs = source.filter(j => {
@@ -213,9 +214,11 @@ const Dashboard: React.FC = () => {
         case 'upcoming':
           return j.date > today && j.status !== 'cancelled' && j.status !== 'rejected';
         case 'history':
-          return j.date < today;
+          return j.date < today && j.status !== 'cancelled' && j.status !== 'rejected';
         case 'declined':
-          return j.status === 'rejected' || j.status === 'cancelled';
+          return j.status === 'rejected';
+        case 'cancelled':
+          return j.status === 'cancelled';
         default:
           return false;
       }
@@ -270,8 +273,8 @@ const Dashboard: React.FC = () => {
   const handleDelete = async (id: string) => {
     const job = jobs.find(j => j.id === id);
     
-    // If job is scheduled, open the cancellation modal
-    if (job && job.status === 'scheduled') {
+    // If job is awaiting-driver, open the cancellation modal
+    if (job && job.status === 'awaiting-driver') {
       setSelectedJobForCancel(job);
       setIsCancelModalOpen(true);
       return;
@@ -305,7 +308,26 @@ const Dashboard: React.FC = () => {
   };
 
   const handleDeleteRequest = async (id: string) => {
+    const request = requests.find(r => r.id === id);
     if (window.confirm('Are you sure you want to delete this job request?')) {
+      if (request) {
+        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
+        
+        const params = new URLSearchParams({
+          job_id: id,
+          request_id: id,
+          customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+          lpo_id: request.lpo_id || ""
+        });
+
+        console.log("Syncing request deletion with NetSuite (2533)...", Object.fromEntries(params));
+        
+        fetch(`${NETSUITE_API}&${params.toString()}`)
+          .then(res => res.json())
+          .then(data => console.log("NetSuite Request Sync Response:", data))
+          .catch(err => console.error("NetSuite Request Sync Error:", err));
+      }
+
       await deleteDoc(doc(db, 'requests', id));
       setRequests(requests.filter(r => r.id !== id));
     }
@@ -363,12 +385,18 @@ const Dashboard: React.FC = () => {
 
   const getTabCount = (tabId: string) => {
     if (tabId === 'pending') return globalFilteredRequests.filter(r => r.status === 'pending' && (r.jobType !== 'one-off' || r.date >= today)).length;
-    if (tabId === 'declined') return globalFilteredRequests.filter(r => r.status === 'rejected' || r.status === 'cancelled').length + globalFilteredJobs.filter(j => j.status === 'cancelled').length;
+    if (tabId === 'declined') return globalFilteredRequests.filter(r => r.status === 'rejected').length;
+    if (tabId === 'cancelled') return globalFilteredRequests.filter(r => r.status === 'cancelled').length + globalFilteredJobs.filter(j => j.status === 'cancelled').length;
     
+    if (tabId === 'history') {
+      const pastJobs = globalFilteredJobs.filter(j => j.date < today && j.status !== 'cancelled' && j.status !== 'rejected').length;
+      const pastReqs = globalFilteredRequests.filter(r => r.date < today && r.status !== 'cancelled' && r.status !== 'rejected').length;
+      return pastJobs + pastReqs;
+    }
+
     return globalFilteredJobs.filter(j => {
-      if (tabId === 'in-progress') return j.date === today;
-      if (tabId === 'upcoming') return j.date > today;
-      if (tabId === 'history') return j.date < today;
+      if (tabId === 'in-progress') return j.date === today && j.status !== 'cancelled' && j.status !== 'rejected';
+      if (tabId === 'upcoming') return j.date > today && j.status !== 'cancelled' && j.status !== 'rejected';
       return false;
     }).length;
   };
@@ -410,7 +438,7 @@ const Dashboard: React.FC = () => {
            {/* Stats Section */}
            <div className="stats-row">
                {[
-                  { label: 'Active Jobs', value: globalFilteredJobs.filter(j => j.date === today && j.status !== 'completed').length, icon: Calendar, color: 'var(--ink)' },
+                  { label: 'Active Jobs', value: globalFilteredJobs.filter(j => j.date === today && j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'rejected').length, icon: Calendar, color: 'var(--ink)' },
                   { label: 'Pending Requests', value: globalFilteredRequests.filter(r => r.status === 'pending' && (r.jobType !== 'one-off' || r.date >= today)).length, icon: MessageSquare, color: 'var(--gold)' },
                   { label: 'Completed Jobs', value: globalFilteredJobs.filter(j => j.status === 'completed').length, icon: CheckCircle2, color: 'var(--ink)' }
                ].map((stat, i) => (
@@ -450,6 +478,7 @@ const Dashboard: React.FC = () => {
                     { id: 'upcoming', label: 'Future One-Off' },
                     { id: 'history', label: 'History' },
                     { id: 'declined', label: 'Declined' },
+                    { id: 'cancelled', label: 'Cancelled' },
                     { id: 'recurring', label: 'Recurring Schedules' }
                   ].map(tab => (
                     <option key={tab.id} value={tab.id}>
@@ -508,7 +537,7 @@ const Dashboard: React.FC = () => {
                         { value: 'all', label: 'All Statuses' },
                         { value: 'pending', label: 'Pending' },
                         { value: 'accepted', label: 'Accepted' },
-                        { value: 'scheduled', label: 'Scheduled' },
+                        { value: 'awaiting-driver', label: 'Awaiting Driver' },
                         { value: 'in-progress', label: 'In Progress' },
                         { value: 'completed', label: 'Completed' },
                         { value: 'rejected', label: 'Rejected' },
@@ -536,6 +565,7 @@ const Dashboard: React.FC = () => {
                     { type: 'separator' },
                     { id: 'history', label: 'History', icon: RotateCcw },
                     { id: 'declined', label: 'Declined', icon: XCircle },
+                    { id: 'cancelled', label: 'Cancelled', icon: XCircle },
                   ].map((tab: any, idx) => (
                     tab.type === 'separator' ? (
                       <div key={`sep-${idx}`} className="sidebar-separator" />
@@ -643,12 +673,12 @@ const Dashboard: React.FC = () => {
                                     <div className="header-meta-group">
                                       <div className={`status-tag status-${
                                         (activeTab === 'history' && job.date < today && job.status === 'pending') ? 'not-accepted' :
-                                        (activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'scheduled')) ? 'unperformed' :
+                                        (activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver')) ? 'unperformed' :
                                         job.status
                                       }`}>
                                          {activeTab === 'history' && job.date < today && job.status === 'pending' ? 'Not Accepted' :
-                                          activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'scheduled') ? 'Unperformed' :
-                                          job.status}
+                                          activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver') ? 'Unperformed' :
+                                          job.status === 'awaiting-driver' ? 'Awaiting Driver' : job.status}
                                       </div>
                                       <div className="expand-icon">
                                         {expandedJobIds.has(job.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -716,24 +746,38 @@ const Dashboard: React.FC = () => {
                                       <RotateCcw size={12} />
                                       <span>{job.billing}</span>
                                    </div>
-                                    <div 
-                                      className="job-ref interactive" 
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSupportJobId(job.id);
-                                        setSupportMetadata({
-                                          lpoName: lpo?.name,
-                                          companyName: job.customer?.company,
-                                          contactName: job.customer?.contactName,
-                                          contactEmail: job.customer?.email,
-                                          contactPhone: job.customer?.phone,
-                                          serviceType: job.service,
-                                          billing: job.billing
-                                        });
-                                        setIsSupportModalOpen(true);
-                                      }}
-                                    >
-                                      REF: {job.id}
+                                    <div className="job-ref">
+                                      <div 
+                                        className="ref-id interactive" 
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSupportJobId(job.id);
+                                          setSupportMetadata({
+                                            lpoName: lpo?.name,
+                                            companyName: job.customer?.company,
+                                            contactName: job.customer?.contactName,
+                                            contactEmail: job.customer?.email,
+                                            contactPhone: job.customer?.phone,
+                                            serviceType: job.service,
+                                            billing: job.billing
+                                          });
+                                          setIsSupportModalOpen(true);
+                                        }}
+                                        title="Click for support"
+                                      >
+                                        REF: {job.id}
+                                      </div>
+                                      <button 
+                                        className="copy-ref-icon"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigator.clipboard.writeText(job.id);
+                                          alert("Reference ID copied!");
+                                        }}
+                                        title="Copy Reference ID"
+                                      >
+                                        <Copy size={12} />
+                                      </button>
                                     </div>
                                 </div>
 
@@ -774,7 +818,7 @@ const Dashboard: React.FC = () => {
                                                <>
                                                  <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
                                                  {(job.status !== 'accepted' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed') && (
-                                                   <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> {job.status === 'scheduled' ? 'Cancel Job' : 'Cancel'}</button>
+                                                   <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> {job.status === 'awaiting-driver' ? 'Cancel Job' : 'Cancel'}</button>
                                                  )}
                                                </>
                                              )}
@@ -1115,7 +1159,7 @@ const Dashboard: React.FC = () => {
           background: white; border: 3px solid var(--offwhite); color: var(--ink);
           box-shadow: 0 8px 20px rgba(26, 61, 51, 0.08); transition: all 0.3s;
         }
-        .node-inner.pill-scheduled { border-color: var(--ink); color: var(--ink); }
+        .node-inner.pill-awaiting-driver { border-color: var(--ink); color: var(--ink); }
         .node-inner.pill-cancelled { border-color: var(--danger); color: var(--danger); }
 
         .timeline-content-card {
@@ -1150,7 +1194,7 @@ const Dashboard: React.FC = () => {
           padding: 4px 10px; border-radius: 8px; font-family: var(--font-ui); font-size: 0.55rem; font-weight: 500;
           text-transform: uppercase; background: var(--cream-warm); color: var(--ink-soft); letter-spacing: 0.16em;
         }
-        .status-tag.status-scheduled { background: var(--cream-warm); color: var(--ink); }
+        .status-tag.status-awaiting-driver { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-not-accepted { background: var(--cream-warm); color: var(--gold); }
         .status-tag.status-unperformed { background: var(--cream-warm); color: var(--danger); }
         .status-tag.status-accepted { background: var(--cream-warm); color: var(--ink); }
@@ -1161,7 +1205,23 @@ const Dashboard: React.FC = () => {
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); opacity: 0.6; text-transform: capitalize; }
-        .job-ref { margin-left: auto; font-family: var(--font-ui); font-size: 0.65rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; }
+        .job-ref { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+        .ref-id { font-family: var(--font-ui); font-size: 0.65rem; color: var(--ink-soft); opacity: 0.4; font-weight: 500; cursor: pointer; transition: opacity 0.2s; }
+        .ref-id:hover { opacity: 0.8; }
+        .copy-ref-icon { 
+          background: rgba(0, 0, 0, 0.03); 
+          border: none; 
+          border-radius: 4px; 
+          padding: 3px; 
+          cursor: pointer; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          color: var(--ink-soft);
+          opacity: 0.4;
+          transition: all 0.2s;
+        }
+        .copy-ref-icon:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); opacity: 0.8; }
 
         .decline-details-card {
           margin: 16px 0;

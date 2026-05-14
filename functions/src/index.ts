@@ -795,7 +795,7 @@ export const generateDailyScheduledJobs = onSchedule({
   const scheduledJobsRef = db.collection('scheduled_jobs');
   const jobsRef = db.collection('jobs');
 
-  const snapshot = await scheduledJobsRef.where('status', 'in', ['accepted', 'scheduled']).get();
+  const snapshot = await scheduledJobsRef.where('status', 'in', ['accepted', 'awaiting-driver']).get();
   let generatedCount = 0;
 
   const batch = db.batch();
@@ -828,9 +828,11 @@ export const generateDailyScheduledJobs = onSchedule({
           jobType: 'scheduled_instance',
           scheduledJobId: doc.id,
           date: todayStr,
-          status: 'scheduled',
+          status: 'awaiting-driver',
           syncedWithNetSuite: false,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          jobAcceptedCustInternalId: template.jobAcceptedCustInternalId || null,
+          serviceInternalId: template.serviceInternalId || null,
           operatorNetSuiteId: null,
           operatorName: null,
           operatorEmail: null,
@@ -952,6 +954,113 @@ export const sendSupportEmail = onCall({
     throw new HttpsError("internal", error.message);
   }
 });
+
+// Logic: sendTerritoryEscalation
+export const sendTerritoryEscalation = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
+  console.log("[Territory Escalation] Function triggered");
+
+  if (!request.auth) {
+    console.warn("[Territory Escalation] Unauthenticated request");
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const { companyData, serviceData, lpoId, lpoName } = request.data;
+  console.log(`[Territory Escalation] Data for LPO: ${lpoId}`);
+
+  if (!companyData || !lpoId) {
+    console.warn("[Territory Escalation] Missing required data");
+    throw new HttpsError("invalid-argument", "Missing required data: companyData or lpoId.");
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+
+    const recipients = ["mailplusit@mailplus.com.au", "michael.mcdaid@mailplus.com.au", "kerry.oneill@mailplus.com.au"];
+
+    const htmlContent = `
+      <div style="font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+        <div style="background: #dc2626; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px;">TERRITORY ESCALATION</h1>
+        </div>
+        
+        <div style="padding: 20px; border: 1px solid #e9ecef; border-top: none; border-radius: 0 0 8px 8px;">
+          <p>A manual review has been requested for a job address outside the standard territory of <strong>${lpoName || 'Unknown LPO'}</strong>.</p>
+          
+          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Company Details</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr><td style="padding: 8px 0; color: #64748b; width: 140px;"><strong>Company Name:</strong></td><td style="font-weight: 600;">${companyData.company}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Address:</strong></td><td>${companyData.address}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Contact Person:</strong></td><td>${companyData.firstName} ${companyData.lastName}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Email:</strong></td><td>${companyData.email}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Phone:</strong></td><td>${companyData.phone}</td></tr>
+            </table>
+          </div>
+
+          <div style="background: #fffbeb; padding: 20px; border-radius: 8px; border: 1px solid #fef3c7; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #92400e; border-bottom: 2px solid #fef3c7; padding-bottom: 8px;">Service Requirements</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tr><td style="padding: 8px 0; color: #64748b; width: 140px;"><strong>Service Type:</strong></td><td style="font-weight: 600;">${serviceData?.serviceName || 'Not specified'}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Date:</strong></td><td>${serviceData?.date || 'Not specified'}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Notes:</strong></td><td style="font-style: italic;">${serviceData?.notes || 'None'}</td></tr>
+            </table>
+          </div>
+
+          <p style="font-size: 14px; color: #475569; margin-top: 30px;">
+            Please review this request and contact the LPO or customer to resolve the territory discrepancy.
+          </p>
+
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+          <p style="font-size: 12px; color: #94a3b8; text-align: center;">
+            <strong>Source LPO:</strong> ${lpoName} (${lpoId})<br>
+            Sent via LocalMile.Plus Manual Review System
+          </p>
+        </div>
+      </div>
+    `;
+
+    const taggedHtml = injectMetadataTag(htmlContent, { lpo_id: lpoId, type: 'territory_escalation' });
+
+    const mailOptions = {
+      from: '"LocalMile.Plus Manual Review" <bookings@lpo.plus>',
+      to: recipients.join(","),
+      subject: `TERRITORY ESCALATION: ${companyData.company} (${lpoName || lpoId})`,
+      html: taggedHtml,
+    };
+
+    console.log("[Territory Escalation] Sending via Nodemailer...");
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Territory Escalation Email sent:", info.messageId);
+
+    // Log to communications
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: recipients.join(","),
+      subject: mailOptions.subject,
+      body: taggedHtml,
+      type: 'sent',
+      metadata: {
+        lpoId,
+        companyName: companyData.company,
+        type: 'territory_escalation'
+      }
+    });
+
+    return { success: true, messageId: info.messageId };
+  } catch (error: any) {
+    console.error("[Territory Escalation] Error:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
 
 // Logic: cancelJob
 export const cancelJob = onCall({
@@ -1729,14 +1838,14 @@ async function fetchDailyJobReportData(statuses: string[]) {
 
 /**
  * DAILY REPORT: 12:15 PM Sydney Time (Weekdays)
- * Shows all jobs still in "Scheduled" status.
+ * Shows all jobs still in "Awaiting Driver" status.
  */
-export const sendScheduledJobsReport = onSchedule({
+export const sendAwaitingDriverJobsReport = onSchedule({
   schedule: "15 12 * * 1-5",
   timeZone: "Australia/Sydney",
   secrets: [gmailAppPassword],
 }, async (event) => {
-  const { todayStr, jobs } = await fetchDailyJobReportData(['scheduled', 'pending']);
+  const { todayStr, jobs } = await fetchDailyJobReportData(['awaiting-driver', 'pending']);
 
   const transporter = nodemailer.createTransport({
     service: "gmail",
@@ -1787,7 +1896,7 @@ export const sendScheduledJobsReport = onSchedule({
           <h1>LPO<span>.PLUS</span> | Daily Manifest Alert</h1>
         </div>
         <div class="alert-bar">
-          <p style="margin: 0; color: #854d0e;"><strong>Action Required:</strong> The following jobs are still in <strong>Pending</strong> or <strong>Scheduled</strong> status for today. This means they have not yet been accepted by an operator or confirmed.</p>
+          <p style="margin: 0; color: #854d0e;"><strong>Action Required:</strong> The following jobs are still in <strong>Pending</strong> or <strong>Awaiting Driver</strong> status for today. This means they have not yet been accepted by an operator or confirmed.</p>
         </div>
         <div class="stats">
           <div class="stat-box">
@@ -1827,7 +1936,7 @@ export const sendScheduledJobsReport = onSchedule({
   `;
 
   const metadata = {
-    type: 'daily_report_scheduled',
+    type: 'daily_report_awaiting_driver',
     date: todayStr,
     jobCount: jobs.length
   };
@@ -1837,7 +1946,7 @@ export const sendScheduledJobsReport = onSchedule({
   const mailOptions = {
     from: '"LPO.PLUS Manifest" <bookings@lpo.plus>',
     to: recipient,
-    subject: `[Action Required] Daily Manifest: Scheduled Jobs (${todayStr})`,
+    subject: `[Action Required] Daily Manifest: Awaiting Driver Jobs (${todayStr})`,
     html: taggedHtml,
   };
 
@@ -2089,7 +2198,7 @@ export const sendDailyPerformanceReport = onSchedule({
     const stats = {
       completed: lpoJobs.filter(j => j.status === 'completed').length,
       cancelled: lpoJobs.filter(j => j.status === 'cancelled').length,
-      scheduled: lpoJobs.filter(j => j.status === 'scheduled').length,
+      scheduled: lpoJobs.filter(j => j.status === 'awaiting-driver').length,
       inProgress: lpoJobs.filter(j => j.status === 'in-progress').length,
     };
 
@@ -2206,10 +2315,10 @@ export const testReports = onRequest({
   const { type } = req.query;
 
   try {
-    if (type === 'scheduled') {
+    if (type === 'awaiting-driver' || type === 'scheduled') {
       // @ts-ignore - Triggering the internal handler
-      await sendScheduledJobsReport({});
-      res.send("Scheduled Jobs Report triggered. Check dispatcher@mailplus.com.au");
+      await sendAwaitingDriverJobsReport({});
+      res.send("Awaiting Driver Jobs Report triggered. Check dispatcher@mailplus.com.au");
     } else if (type === 'progress') {
       // @ts-ignore - Triggering the internal handler
       await sendInProgressJobsReport({});

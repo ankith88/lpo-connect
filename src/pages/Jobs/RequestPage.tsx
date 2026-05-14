@@ -10,8 +10,7 @@ import {
   arrayUnion,
   query,
   where,
-  getDocs,
-  getDoc
+  getDocs
 } from 'firebase/firestore';
 import { 
   Building2, 
@@ -23,6 +22,7 @@ import {
   Send,
   XCircle,
   CheckCircle2,
+  Copy,
   Phone,
   Mail,
   User as UserIcon,
@@ -66,6 +66,10 @@ const RequestPage: React.FC = () => {
   // Propose New Time Modal State
   const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
   const [proposedTime, setProposedTime] = useState('');
+
+  // Accept with Tentative Time Modal State
+  const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
+  const [tentativeTime, setTentativeTime] = useState('');
 
   // Identity: If lpo exists, person is the LPO User.
   // Otherwise, they are an External User.
@@ -257,6 +261,16 @@ const RequestPage: React.FC = () => {
           await deleteDoc(doc(db, 'jobs', jobDoc.id));
         }
 
+        // 1.5. Ensure the request itself is synced as cancelled in NetSuite
+        const requestParams = new URLSearchParams({
+          job_id: id,
+          request_id: id,
+          customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+          lpo_id: request.lpo_id || ""
+        });
+        console.log("Syncing request cancellation with NetSuite (2533)...", Object.fromEntries(requestParams));
+        await fetch(`${NETSUITE_API}&${requestParams.toString()}`).catch(e => console.error("NetSuite Request Cancel Error:", e));
+
         // 2. Find and cancel related scheduled_jobs (templates)
         const schedQ = query(collection(db, 'scheduled_jobs'), where('originalRequestId', '==', id));
         const schedSnap = await getDocs(schedQ);
@@ -305,238 +319,281 @@ const RequestPage: React.FC = () => {
       return;
     }
 
-    if (window.confirm("Accept this job request?")) {
-      setIsAccepting(true);
-      setAcceptProgress(5);
-      setAcceptStatus("Initializing acceptance flow...");
+    // Open the tentative time modal instead of window.confirm
+    setIsAcceptModalOpen(true);
+  };
 
-      try {
-        // 1. Create Job or Scheduled Template
-        let jobDocRef;
-        const today = formatDateForInput(new Date());
-        let finalJobId = "";
-        const netsuiteCustomerId = request.netsuiteCustomerId || request.customer?.netsuiteId || "";
+  const confirmAccept = async () => {
+    if (!request || !tentativeTime) {
+      alert("Please provide a tentative service time.");
+      return;
+    }
+
+    const lpoId = lpo?.id || request.lpo_id;
+    setIsAcceptModalOpen(false);
+    setIsAccepting(true);
+    setAcceptProgress(5);
+    setAcceptStatus("Initializing acceptance flow...");
+
+    try {
+      // 1. Create Job or Scheduled Template
+      const today = formatDateForInput(new Date());
+      let finalJobId = "";
+      const netsuiteCustomerId = request.netsuiteCustomerId || request.customer?.netsuiteId || "";
+      
+      setAcceptProgress(15);
+      setAcceptStatus("Analyzing service requirements...");
+
+      let serviceInternalId = '';
+      let serviceRate = '';
+      let templateRef: any = null;
+      let jobDocRef: any = null;
+
+      if (request.jobType === 'scheduled') {
+        // 1.1 Fetch Service Metadata from Customer Record
+        setAcceptStatus("Fetching customer service metadata...");
         
-        setAcceptProgress(15);
-        setAcceptStatus("Analyzing service requirements...");
-
-        let serviceInternalId = '';
-        let serviceRate = '';
-
-        if (request.jobType === 'scheduled') {
-          // 1.1 Fetch Service Metadata from Customer Record
-          setAcceptStatus("Fetching customer service metadata...");
-          
-          try {
-            const custQ = query(
-              collection(db, `lpo/${lpoId}/customers`),
-              where('companyName', '==', request.customer.company)
-            );
-            const custSnap = await getDocs(custQ);
-            if (!custSnap.empty) {
-              const c = custSnap.docs[0].data();
-              if (request.service === 'lpo-to-site') {
-                serviceInternalId = c.lpoServiceAMPOInternalID || '';
-                serviceRate = c.lpoServiceAMPORate || '';
-              } else if (request.service === 'site-to-lpo') {
-                serviceInternalId = c.lpoServicePMPOInternalID || '';
-                serviceRate = c.lpoServicePMPORate || '';
-              } else if (request.service === 'round-trip') {
-                serviceInternalId = c.lpoServiceAMPOPMPOInternalID || '';
-                serviceRate = c.lpoServiceAMPOPMPORate || '';
-              }
+        try {
+          const custQ = query(
+            collection(db, `lpo/${lpoId}/customers`),
+            where('companyName', '==', request.customer.company)
+          );
+          const custSnap = await getDocs(custQ);
+          if (!custSnap.empty) {
+            const c = custSnap.docs[0].data();
+            if (request.service === 'lpo-to-site') {
+              serviceInternalId = c.lpoServiceAMPOInternalID || '';
+              serviceRate = c.lpoServiceAMPORate || '';
+            } else if (request.service === 'site-to-lpo') {
+              serviceInternalId = c.lpoServicePMPOInternalID || '';
+              serviceRate = c.lpoServicePMPORate || '';
+            } else if (request.service === 'round-trip') {
+              serviceInternalId = c.lpoServiceAMPOPMPOInternalID || '';
+              serviceRate = c.lpoServiceAMPOPMPORate || '';
             }
-          } catch (err) {
-            console.error("Error fetching customer service metadata:", err);
           }
+        } catch (err) {
+          console.error("Error fetching customer service metadata:", err);
+        }
 
-          setAcceptProgress(35);
-          setAcceptStatus("Generating recurring schedule template...");
+        setAcceptProgress(35);
+        setAcceptStatus("Generating recurring schedule template...");
 
-          // Save template
-          const { id: _, ...requestData } = request;
-          const templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
-            ...requestData,
-            lpo_id: lpoId,
-            status: 'scheduled',
-            serviceInternalId,
-            serviceRate,
-            createdAt: new Date(),
-            originalRequestId: request.id,
-            operatorNetSuiteId: null,
-            operatorName: null,
-            operatorEmail: null,
-            operatorPhone: null
-          });
-          
-          console.log("Created scheduled_jobs template:", templateRef.id);
-          finalJobId = templateRef.id;
-          
-          // Check if today matches frequency to immediately generate first instance
-          const todayDayName = getDayName(new Date());
-          if (request.date <= today && request.frequency?.includes(todayDayName)) {
-            setAcceptProgress(50);
-            setAcceptStatus("Creating first job instance...");
-            jobDocRef = await addDoc(collection(db, 'jobs'), {
-              ...requestData,
-              lpo_id: lpoId,
-              status: 'scheduled',
-              serviceInternalId,
-              serviceRate,
-              createdAt: new Date(),
-              jobType: 'scheduled_instance',
-              scheduledJobId: templateRef.id,
-              date: today,
-              originalRequestId: request.id,
-              operatorNetSuiteId: null,
-              operatorName: null,
-              operatorEmail: null,
-              operatorPhone: null,
-              jobAcceptedCustInternalId: null
-            });
-            console.log("Created immediate job instance:", jobDocRef.id);
-            finalJobId = jobDocRef.id;
-          }
-        } else {
-          // Normal one-off job
-          // 1.2 Fetch Service Metadata for one-off job
-          setAcceptStatus("Fetching customer service metadata...");
-          
-          try {
-            const custQ = query(
-              collection(db, `lpo/${lpoId}/customers`),
-              where('companyName', '==', request.customer.company)
-            );
-            const custSnap = await getDocs(custQ);
-            if (!custSnap.empty) {
-              const c = custSnap.docs[0].data();
-              if (request.service === 'lpo-to-site') {
-                serviceInternalId = c.lpoServiceAMPOInternalID || '';
-                serviceRate = c.lpoServiceAMPORate || '';
-              } else if (request.service === 'site-to-lpo') {
-                serviceInternalId = c.lpoServicePMPOInternalID || '';
-                serviceRate = c.lpoServicePMPORate || '';
-              } else if (request.service === 'round-trip') {
-                serviceInternalId = c.lpoServiceAMPOPMPOInternalID || '';
-                serviceRate = c.lpoServiceAMPOPMPORate || '';
-              }
-            }
-          } catch (err) {
-            console.error("Error fetching one-off service metadata:", err);
-          }
-
-          setAcceptProgress(45);
-          setAcceptStatus("Creating job record...");
-
-          const { id: _, ...requestData } = request;
+        // Save template
+        const { id: _, ...requestData } = request;
+        templateRef = await addDoc(collection(db, 'scheduled_jobs'), {
+          ...requestData,
+          lpo_id: lpoId,
+          status: 'awaiting-driver',
+          serviceInternalId,
+          serviceRate,
+          createdAt: new Date(),
+          originalRequestId: request.id,
+          operatorNetSuiteId: null,
+          operatorName: null,
+          operatorEmail: null,
+          operatorPhone: null,
+          jobAcceptedCustInternalId: zeeParam || request.jobAcceptedCustInternalId || null,
+          tentativeTime: tentativeTime
+        });
+        
+        console.log("Created scheduled_jobs template:", templateRef.id);
+        finalJobId = templateRef.id;
+        
+        // Check if today matches frequency to immediately generate first instance
+        const todayDayName = getDayName(new Date());
+        if (request.date <= today && request.frequency?.includes(todayDayName)) {
+          setAcceptProgress(50);
+          setAcceptStatus("Creating first job instance...");
           jobDocRef = await addDoc(collection(db, 'jobs'), {
             ...requestData,
             lpo_id: lpoId,
-            status: 'scheduled',
+            status: 'awaiting-driver',
+            syncedWithNetSuite: false,
             serviceInternalId,
             serviceRate,
             createdAt: new Date(),
+            jobType: 'scheduled_instance',
+            scheduledJobId: templateRef.id,
+            date: today,
             originalRequestId: request.id,
             operatorNetSuiteId: null,
             operatorName: null,
             operatorEmail: null,
             operatorPhone: null,
-            jobAcceptedCustInternalId: null
+            jobAcceptedCustInternalId: zeeParam || request.jobAcceptedCustInternalId || null,
+            tentativeTime: tentativeTime
           });
-          console.log("Created one-off job:", jobDocRef.id);
+          console.log("Created immediate job instance:", jobDocRef.id);
           finalJobId = jobDocRef.id;
         }
-
-        // 1.5 Sync with NetSuite if same-day job instance was created
-        if (request.date === today && jobDocRef) {
-          setAcceptProgress(65);
-          setAcceptStatus("Syncing instance...");
-          const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
-          
-          let acceptedCustId = "";
-          try {
-            const jobSnap = await getDoc(jobDocRef);
-            if (jobSnap.exists()) {
-              const jobData = jobSnap.data() as any;
-              acceptedCustId = jobData?.jobAcceptedCustInternalId || "";
+      } else {
+        // Normal one-off job
+        // 1.2 Fetch Service Metadata for one-off job
+        setAcceptStatus("Fetching customer service metadata...");
+        
+        try {
+          const custQ = query(
+            collection(db, `lpo/${lpoId}/customers`),
+            where('companyName', '==', request.customer.company)
+          );
+          const custSnap = await getDocs(custQ);
+          if (!custSnap.empty) {
+            const c = custSnap.docs[0].data();
+            if (request.service === 'lpo-to-site') {
+              serviceInternalId = c.lpoServiceAMPOInternalID || '';
+              serviceRate = c.lpoServiceAMPORate || '';
+            } else if (request.service === 'site-to-lpo') {
+              serviceInternalId = c.lpoServicePMPOInternalID || '';
+              serviceRate = c.lpoServicePMPORate || '';
+            } else if (request.service === 'round-trip') {
+              serviceInternalId = c.lpoServiceAMPOPMPOInternalID || '';
+              serviceRate = c.lpoServiceAMPOPMPORate || '';
             }
-          } catch (err) {
-            console.error("Error fetching job data for NetSuite sync:", err);
           }
-
-          const params = new URLSearchParams({
-            job_id: jobDocRef.id,
-            billing: request.billing || "",
-            customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
-            accepted_cust_id: acceptedCustId,
-            instructions: request.customer?.instructions || "",
-            job_type: request.jobType || "",
-            lpo_id: lpoId,
-            request_id: request.id,
-            preferred_time: request.preferredTime || "",
-            service_name: request.service || "null",
-            service_internal_id: serviceInternalId || "null",
-            date: request.date || "null"
-          });
-
-          try {
-            const res = await fetch(`${NETSUITE_API}&${params.toString()}`);
-            const data = await res.json();
-            console.log("NetSuite Script 2529 Response:", data);
-          } catch (err) {
-            console.error("NetSuite Script 2529 Error:", err);
-          }
+        } catch (err) {
+          console.error("Error fetching one-off service metadata:", err);
         }
 
-        // 1.6 Secondary NetSuite Sync (Confirmation)
+        setAcceptProgress(45);
+        setAcceptStatus("Creating job record...");
+
+        const { id: _, ...requestData } = request;
+        jobDocRef = await addDoc(collection(db, 'jobs'), {
+          ...requestData,
+          lpo_id: lpoId,
+          status: 'awaiting-driver',
+          syncedWithNetSuite: false,
+          serviceInternalId,
+          serviceRate,
+          createdAt: new Date(),
+          originalRequestId: request.id,
+          operatorNetSuiteId: null,
+          operatorName: null,
+          operatorEmail: null,
+          operatorPhone: null,
+          jobAcceptedCustInternalId: zeeParam || request.jobAcceptedCustInternalId || null,
+          tentativeTime: tentativeTime
+        });
+        console.log("Created one-off job:", jobDocRef.id);
+        finalJobId = jobDocRef.id;
+      }
+
+      // 1.5 NetSuite IDs Retrieval & Sync
+      let currentAcceptedCustId = zeeParam || request.jobAcceptedCustInternalId || "";
+      let currentServiceInternalId = serviceInternalId;
+
+      if (finalJobId) {
+        setAcceptProgress(65);
+        setAcceptStatus("Retrieving authoritative NetSuite IDs...");
+
         const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2536&deploy=1&compid=1048144&ns-at=AAEJ7tMQhaB4QYR7Pw-EtSlrxcIMl2il8br6cxfmm6xmf7VP-1w";
-        if (finalJobId) {
-          setAcceptProgress(85);
-          setAcceptStatus("Sending confirmation...");
-          const params2536 = new URLSearchParams({
-            job_id: finalJobId,
-            lpo_id: lpoId,
-            customer_id: netsuiteCustomerId,
-            email: request.customer?.email || "",
-            firstName: request.customer?.firstName || "",
-            service: request.service || "",
-            date: request.date || "null",
-            frequency: request.jobType === 'scheduled' ? (request.frequency?.join(',') || "null") : "null",
-            zee_id: zeeParam || ""
-          });
-
-          console.log("Triggering NetSuite 2536 with:", Object.fromEntries(params2536));
-
-          try {
-            const res = await fetch(`${SECOND_NETSUITE_API}&${params2536.toString()}`);
-            const data = await res.json();
-            console.log("NetSuite Script 2536 Response:", data);
-          } catch (err) {
-            console.error("NetSuite Script 2536 Error:", err);
-          }
-        } else {
-          console.warn("NetSuite 2536 not triggered: finalJobId is empty");
-        }
-
-        // 2. Update Request Status
-        setAcceptProgress(95);
-        setAcceptStatus("Finalizing request status...");
-        await updateDoc(doc(db, 'requests', request.id), {
-          status: 'scheduled'
+        
+        const params2536 = new URLSearchParams({
+          job_id: finalJobId,
+          lpo_id: lpoId,
+          customer_id: netsuiteCustomerId,
+          email: request.customer?.email || "",
+          firstName: request.customer?.firstName || "",
+          service: request.service || "",
+          date: request.date || "null",
+          frequency: request.jobType === 'scheduled' ? (request.frequency?.join(',') || "null") : "null",
+          zee_id: currentAcceptedCustId
         });
 
-        setAcceptProgress(100);
-        setAcceptStatus("Job accepted successfully!");
-        
-        setTimeout(() => {
-          setIsAccepting(false);
-          setAcceptProgress(0);
-        }, 2000);
-      } catch (err) {
-        console.error("Error accepting job:", err);
-        alert("Failed to accept job.");
-        setIsAccepting(false);
+        console.log("Triggering NetSuite Confirmation (2536) with:", Object.fromEntries(params2536));
+
+        try {
+          const res2536 = await fetch(`${SECOND_NETSUITE_API}&${params2536.toString()}`);
+          const data2536 = await res2536.json();
+          console.log("NetSuite Confirmation (2536) Response:", data2536);
+
+          if (data2536.jobAcceptedCustInternalId || data2536.serviceInternalId) {
+            const updates: any = {};
+            if (data2536.jobAcceptedCustInternalId) {
+              updates.jobAcceptedCustInternalId = data2536.jobAcceptedCustInternalId;
+              currentAcceptedCustId = data2536.jobAcceptedCustInternalId;
+            }
+            if (data2536.serviceInternalId) {
+              updates.serviceInternalId = data2536.serviceInternalId;
+              currentServiceInternalId = data2536.serviceInternalId;
+            }
+
+            console.log("Updating Firestore with confirmed NetSuite IDs:", updates);
+            if (templateRef) {
+              await updateDoc(doc(db, 'scheduled_jobs', templateRef.id), updates);
+            }
+            if (jobDocRef) {
+              await updateDoc(doc(db, 'jobs', jobDocRef.id), updates);
+            }
+            // Also update the original request for consistency
+            await updateDoc(doc(db, 'requests', request.id), updates);
+          }
+        } catch (err) {
+          console.error("NetSuite Confirmation (2536) Error:", err);
+        }
       }
+
+      // 1.6 Sync Job Instance if applicable
+      if (request.date === today && jobDocRef) {
+        setAcceptProgress(85);
+        setAcceptStatus("Syncing job data to NetSuite...");
+        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
+
+        const params2529 = new URLSearchParams({
+          job_id: jobDocRef.id,
+          billing: request.billing || "",
+          customer_id: netsuiteCustomerId,
+          accepted_cust_id: currentAcceptedCustId,
+          jobAcceptedCustInternalId: currentAcceptedCustId,
+          instructions: request.customer?.instructions || "",
+          job_type: request.jobType || "",
+          lpo_id: lpoId,
+          request_id: request.id,
+          preferred_time: request.preferredTime || "",
+          service_name: request.service || "null",
+          service_internal_id: currentServiceInternalId || "null",
+          date: request.date || "null"
+        });
+
+        try {
+          const res2529 = await fetch(`${NETSUITE_API}&${params2529.toString()}`);
+          const data2529 = await res2529.json();
+          console.log("NetSuite Sync (2529) Response:", data2529);
+        } catch (err) {
+          console.error("NetSuite Sync (2529) Error:", err);
+        }
+      }
+
+      // 2. Add message to chat about acceptance and tentative time
+      const acceptMessage = {
+        sender: 'operator',
+        text: `Job Accepted. Tentative service time: ${tentativeTime}`,
+        timestamp: new Date().toISOString(),
+        zee: zeeParam || null
+      };
+
+      // 3. Update Request Status
+      setAcceptProgress(95);
+      setAcceptStatus("Finalizing request status...");
+      await updateDoc(doc(db, 'requests', request.id), {
+        status: 'awaiting-driver',
+        tentativeTime: tentativeTime,
+        chat: arrayUnion(acceptMessage)
+      });
+
+      setAcceptProgress(100);
+      setAcceptStatus("Job accepted successfully!");
+      
+      setTimeout(() => {
+        setIsAccepting(false);
+        setAcceptProgress(0);
+        setTentativeTime('');
+      }, 2000);
+    } catch (err) {
+      console.error("Error accepting job:", err);
+      alert("Failed to accept job.");
+      setIsAccepting(false);
     }
   };
 
@@ -700,7 +757,7 @@ const RequestPage: React.FC = () => {
            </button>
            <div className="header-main">
               <div className={`status-pill ${request.status}`}>
-                {request.status === 'scheduled' ? 'Job Scheduled' : 
+                {request.status === 'awaiting-driver' ? 'Awaiting Driver' : 
                  request.status === 'awaiting-activation' ? 'Awaiting Activation' : 
                  request.status === 'cancelled' ? 'Cancelled' :
                  request.status === 'rejected' ? 'Request Declined' :
@@ -708,7 +765,19 @@ const RequestPage: React.FC = () => {
                  'Coordination Phase'}
               </div>
               <h1>Job Request Coordination</h1>
-              <p>Reference: #{request.id.slice(0, 8).toUpperCase()}</p>
+              <div className="reference-group">
+                <p>Reference: #{request.id.slice(0, 8).toUpperCase()}</p>
+                <button 
+                  className="copy-ref-btn" 
+                  onClick={() => {
+                    navigator.clipboard.writeText(request.id);
+                    alert("Reference ID copied to clipboard!");
+                  }}
+                  title="Copy Full Reference ID"
+                >
+                  <Copy size={14} />
+                </button>
+              </div>
               {request.status === 'awaiting-activation' && (
                 <div className="tc-banner fade-in">
                   <div className="tc-icon"><Clock size={16} /></div>
@@ -891,7 +960,7 @@ const RequestPage: React.FC = () => {
 
            {/* Right: Chat Coordination */}
            <main className="chat-interface glass-card">
-              {isExternalUser && request.status === 'scheduled' && !isHistory && (
+              {isExternalUser && request.status === 'awaiting-driver' && !isHistory && (
                  <div className="guest-connection-banner fade-in">
                     <div className="banner-icon pulse">
                        <Zap size={18} />
@@ -1166,6 +1235,38 @@ const RequestPage: React.FC = () => {
         </div>
       )}
 
+      {isAcceptModalOpen && (
+        <div className="modal-overlay">
+           <div className="modal-content">
+              <div className="modal-header">
+                 <h3>Accept Job Request</h3>
+                 <button className="close-btn" onClick={() => setIsAcceptModalOpen(false)}>
+                    <XCircle size={24} />
+                 </button>
+              </div>
+              <div className="modal-body">
+                 <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', marginBottom: '10px' }}>
+                   Please provide a tentative time when the service will be performed today. This will be shared with the operator.
+                 </p>
+                 <div className="input-group">
+                    <label>Tentative Service Time</label>
+                    <input 
+                       type="time" 
+                       value={tentativeTime}
+                       onChange={(e) => setTentativeTime(e.target.value)}
+                    />
+                 </div>
+              </div>
+              <div className="modal-actions">
+                 <button className="btn-cancel" onClick={() => setIsAcceptModalOpen(false)}>CANCEL</button>
+                 <button className="btn-confirm-time shadow-teal" onClick={confirmAccept} disabled={!tentativeTime}>
+                   CONFIRM ACCEPTANCE
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+
       <style>{`
         .request-page-premium { min-height: 100vh; background: var(--offwhite); padding: 40px 24px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
@@ -1179,6 +1280,21 @@ const RequestPage: React.FC = () => {
         .back-btn { display: flex; align-items: center; gap: 8px; background: transparent; border: none; color: var(--ink-soft); font-weight: 700; cursor: pointer; }
         .header-main h1 { font-family: var(--font-headings); font-size: 2rem; font-weight: 400; color: var(--ink); margin: 8px 0 4px; letter-spacing: -0.025em; }
         .header-main p { font-weight: 500; color: var(--ink-soft); font-family: var(--font-ui); font-size: 0.75rem; letter-spacing: 0.05em; }
+        .reference-group { display: flex; align-items: center; gap: 8px; }
+        .reference-group p { margin: 0; }
+        .copy-ref-btn { 
+          background: rgba(0, 0, 0, 0.03); 
+          border: none; 
+          border-radius: 6px; 
+          padding: 4px; 
+          cursor: pointer; 
+          display: flex; 
+          align-items: center; 
+          justify-content: center;
+          color: var(--ink-soft);
+          transition: all 0.2s;
+        }
+        .copy-ref-btn:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); }
         .status-pill { display: inline-block; padding: 4px 12px; borderRadius: 20px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; }
         .status-pill.pending { background: var(--cream-warm); color: var(--gold); }
         .tc-banner { margin-top: 12px; display: inline-flex; align-items: center; gap: 10px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); padding: 10px 16px; border-radius: 12px; color: #b38600; font-family: var(--font-ui); font-size: 0.8rem; }

@@ -25,7 +25,8 @@ import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomTimePicker from '../../components/CustomTimePicker';
 import { useLpo } from '../../context/LpoContext';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
-import { db, googleMapsApiKey } from '../../firebase/config';
+import { httpsCallable } from 'firebase/functions';
+import { db, googleMapsApiKey, functions } from '../../firebase/config';
 
 type ServiceType = 'site-to-lpo' | 'lpo-to-site' | 'round-trip';
 type BillingOption = 'customer' | 'lpo';
@@ -71,6 +72,7 @@ const NewJobForm: React.FC = () => {
   const [isAwaitingTC, setIsAwaitingTC] = useState(false);
   const [isExistingCustomer, setIsExistingCustomer] = useState(false);
   const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
+  const [isManualReview, setIsManualReview] = useState(false);
   
   // Processing States
   const [isProcessing, setIsProcessing] = useState(false);
@@ -320,26 +322,46 @@ const NewJobForm: React.FC = () => {
         return;
       }
 
-      let territories: string[] = [];
+      let rawTerritories: any[] = [];
       if (Array.isArray(lpo.franchiseeTerritoryJSON)) {
-        territories = lpo.franchiseeTerritoryJSON;
+        rawTerritories = lpo.franchiseeTerritoryJSON;
       } else {
         try {
           const parsed = JSON.parse(lpo.franchiseeTerritoryJSON);
-          territories = Array.isArray(parsed) ? (typeof parsed[0] === 'string' ? parsed : parsed.map((p: any) => p.suburb)) : [];
+          rawTerritories = Array.isArray(parsed) ? parsed : [];
         } catch (e) {
           console.error("Failed to parse territory:", e);
         }
       }
 
-      const userSuburb = formData.customer.suburb.trim().toUpperCase();
-      const userPostcode = formData.customer.postcode.trim();
-      const isValid = territories.some(t => {
-        const territoryStr = t.toUpperCase();
-        return territoryStr.includes(userSuburb) || territoryStr.includes(userPostcode);
+      const parsedTerritories = rawTerritories.map(item => {
+        if (typeof item === 'string') {
+          const parts = item.split(',');
+          const suburb = parts[0]?.trim() || '';
+          const rest = parts[1]?.trim() || '';
+          const restParts = rest.split(' ');
+          const state = restParts[0] || '';
+          const postcode = restParts[restParts.length - 1] || '';
+          return { suburb, state, postcode };
+        }
+        return {
+          suburb: item.suburb || '',
+          state: item.state || '',
+          postcode: item.postcode || ''
+        };
       });
 
-      if (!isValid && userSuburb !== "") {
+      const userSuburb = formData.customer.suburb.trim().toUpperCase();
+      const userState = formData.customer.state.trim().toUpperCase();
+      const userPostcode = formData.customer.postcode.trim();
+
+      const isValid = parsedTerritories.some(t => {
+        return t.suburb.toUpperCase() === userSuburb && 
+               t.state.toUpperCase() === userState && 
+               t.postcode === userPostcode;
+      });
+
+      if (!isValid && userSuburb !== "" && !isManualReview) {
         setValidationError(`Sorry, the address in ${userSuburb} is outside our coverage.`);
         return;
       }
@@ -349,7 +371,7 @@ const NewJobForm: React.FC = () => {
       setValidationError(null);
       
       if (formData.jobType === 'scheduled' && formData.frequency.length === 0) {
-        setValidationError("Please select at least one day for the scheduled service.");
+        setValidationError("Please select at least one day for the recurring service.");
         return;
       }
 
@@ -532,6 +554,35 @@ const NewJobForm: React.FC = () => {
     setProcessingProgress(10);
     setProcessingMessage('Validating request details...');
     setValidationError(null);
+
+    if (isManualReview) {
+      setProcessingProgress(30);
+      setProcessingMessage('Sending manual review request...');
+      try {
+        const sendTerritoryEscalation = httpsCallable(functions, 'sendTerritoryEscalation');
+        await sendTerritoryEscalation({
+          companyData: formData.customer,
+          serviceData: {
+            serviceName: formData.service.replace(/-/g, ' ').toUpperCase(),
+            date: formData.date,
+            notes: formData.customer.instructions
+          },
+          lpoId: lpo.id,
+          lpoName: lpo.name
+        });
+        setProcessingProgress(100);
+        setProcessingMessage('Escalation sent!');
+        await wait(800);
+        setSuccess(true);
+        setNetsuiteMessage("Your manual review request has been sent to the dispatch team. They will contact you shortly.");
+        return;
+      } catch (e: any) {
+        console.error("Manual review escalation failed", e);
+        setValidationError("Failed to send manual review request. Please try again.");
+        setIsProcessing(false);
+        return;
+      }
+    }
 
     try {
       const isEditing = window.location.search.includes('edit=true');
@@ -1015,11 +1066,25 @@ const NewJobForm: React.FC = () => {
                     </div>
                   </div>
 
-
                   {validationError && (
-                    <div className="error-pill glass">
-                      <Info size={16} />
-                      {validationError}
+                    <div className="error-pill-container fade-in">
+                      <div className="error-pill glass">
+                        <Info size={16} />
+                        {validationError}
+                      </div>
+                      {validationError.includes("outside our coverage") && (
+                        <button 
+                          className="manual-review-btn glass"
+                          onClick={() => {
+                            setIsManualReview(true);
+                            setValidationError(null);
+                            setTimeout(() => handleNext(), 0);
+                          }}
+                        >
+                          <Sparkles size={14} />
+                          Address outside coverage? Request Manual Review
+                        </button>
+                      )}
                     </div>
                   )}
 
@@ -1247,6 +1312,13 @@ const NewJobForm: React.FC = () => {
                     </div>
                   </div>
 
+                  {isManualReview && (
+                    <div className="alert-pill glass warning w-full mb-6" style={{ display: 'flex', width: '100%', marginBottom: '24px', padding: '16px' }}>
+                      <Info size={18} />
+                      <p style={{ margin: 0 }}>This address is outside your standard territory. Your request will be sent to the dispatch team for manual review.</p>
+                    </div>
+                  )}
+
                   <div className="form-actions">
                     <button className="btn-text" onClick={handleBack}>Modify Selection</button>
                     <button 
@@ -1254,7 +1326,7 @@ const NewJobForm: React.FC = () => {
                       onClick={handleSubmit}
                       disabled={loading}
                     >
-                      {loading ? 'PROCESSING...' : 'REQUEST JOB'}
+                      {loading ? 'PROCESSING...' : (isManualReview ? 'SUBMIT FOR MANUAL REVIEW' : 'REQUEST JOB')}
                     </button>
                   </div>
                 </div>
@@ -1306,6 +1378,10 @@ const NewJobForm: React.FC = () => {
         .step-item.active .step-label { color: var(--ink); }
         .step-connector { position: absolute; top: 20px; left: calc(50% + 20px); width: calc(100% - 40px); height: 2px; background: var(--cream-warm); z-index: 1; }
         .step-item.completed .step-connector { background: var(--ink); }
+
+        .error-pill-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+        .manual-review-btn { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px; border-radius: 12px; border: 1px dashed var(--gold); color: var(--gold); font-size: 0.8rem; font-weight: 700; cursor: pointer; transition: all 0.2s; background: rgba(234, 240, 68, 0.05); }
+        .manual-review-btn:hover { background: rgba(234, 240, 68, 0.1); transform: translateY(-2px); }
 
         .glass-card { background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.4); border-radius: 32px; padding: 40px; box-shadow: 0 20px 60px rgba(26, 61, 51, 0.05); }
         .card-top-info { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; color: var(--ink); }
