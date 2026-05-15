@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Search,
   Download,
@@ -8,18 +8,24 @@ import {
   Layers,
   Search as SearchIcon
 } from 'lucide-react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import { useLpo } from '../../context/LpoContext';
 import { googleMapsApiKey } from '../../firebase/config';
 
-// Hardcoded coordinates for common demo suburbs to ensure pins show up
-const COORDINATES_MAP: Record<string, { lat: number, lng: number }> = {
-  'CASTLE HILL': { lat: -33.729, lng: 151.003 },
-  'KELLYVILLE': { lat: -33.719, lng: 150.946 },
-  'NORTH KELLYVILLE': { lat: -33.693, lng: 150.931 },
-  'ROUSE HILL': { lat: -33.676, lng: 150.922 },
-  'BEAUMONT HILLS': { lat: -33.689, lng: 150.927 },
+// Mapping for state-specific GeoJSON data
+const STATE_CONFIG: Record<string, { file: string, key: string }> = {
+  'NSW': { file: 'nsw', key: 'nsw_loca_2' },
+  'VIC': { file: 'vic', key: 'vic_loca_2' },
+  'QLD': { file: 'qld', key: 'qld_loca_2' },
+  'WA': { file: 'wa', key: 'wa_loca_2' },
+  'SA': { file: 'sa', key: 'sa_loca_2' },
+  'TAS': { file: 'tas', key: 'tas_loca_2' },
+  'NT': { file: 'nt', key: 'nt_loca_2' },
+  'ACT': { file: 'act', key: 'act_loca_2' },
 };
+
+// Simplified GeoJSON base URL (2% simplification for performance)
+const GEOJSON_BASE_URL = 'https://raw.githubusercontent.com/anthwri/GeoJson-Data/master/suburb-2-';
 
 const mapStyles = [
   {
@@ -50,6 +56,7 @@ const ServiceArea: React.FC = () => {
   const { lpo } = useLpo();
   const [searchTerm, setSearchTerm] = useState('');
   const [hoveredSuburb, setHoveredSuburb] = useState<string | null>(null);
+  const [mapRef, setMapRef] = useState<google.maps.Map | null>(null);
   
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -84,14 +91,14 @@ const ServiceArea: React.FC = () => {
           suburb,
           state,
           postcode,
-          lat: COORDINATES_MAP[suburb.toUpperCase()]?.lat,
-          lng: COORDINATES_MAP[suburb.toUpperCase()]?.lng,
+          lat: undefined,
+          lng: undefined,
         };
       }
       return {
         ...item,
-        lat: item.lat || COORDINATES_MAP[item.suburb.toUpperCase()]?.lat,
-        lng: item.lng || COORDINATES_MAP[item.suburb.toUpperCase()]?.lng,
+        lat: item.lat,
+        lng: item.lng,
       };
     });
   }, [lpo]);
@@ -105,8 +112,71 @@ const ServiceArea: React.FC = () => {
     if (filteredTerritories.length > 0 && filteredTerritories[0].lat) {
       return { lat: filteredTerritories[0].lat, lng: filteredTerritories[0].lng };
     }
+    // Default to Sydney area if no territories
     return { lat: -33.71, lng: 150.97 };
   }, [filteredTerritories]);
+
+  // Load GeoJSON data into the map's Data layer
+  useEffect(() => {
+    if (!mapRef || territories.length === 0) return;
+
+    const map = mapRef;
+    const activeStates = Array.from(new Set(territories.map(t => t.state.toUpperCase())));
+    
+    // Clear existing data features
+    map.data.forEach((feature) => {
+      map.data.remove(feature);
+    });
+
+    // Load GeoJSON for each active state
+    activeStates.forEach(stateCode => {
+      const config = STATE_CONFIG[stateCode];
+      if (config) {
+        map.data.loadGeoJson(`${GEOJSON_BASE_URL}${config.file}.geojson`);
+      }
+    });
+
+    // Setup Styling
+    map.data.setStyle((feature) => {
+      const suburbName = Object.values(STATE_CONFIG).reduce<string | null>((name, config) => {
+        return name || (feature.getProperty(config.key) as string | null);
+      }, null);
+
+      const isTerritory = territories.some(t => t.suburb.toUpperCase() === suburbName?.toUpperCase());
+      const isHovered = hoveredSuburb?.toUpperCase() === suburbName?.toUpperCase();
+
+      if (!isTerritory) {
+        return { visible: false };
+      }
+
+      return {
+        fillColor: isHovered ? '#1a3d33' : '#e6b94a', // Ink vs Gold
+        fillOpacity: isHovered ? 0.7 : 0.4,
+        strokeColor: '#1a3d33',
+        strokeWeight: isHovered ? 2 : 1,
+        visible: true
+      };
+    });
+
+    // Event Listeners
+    const mouseOverListener = map.data.addListener('mouseover', (event: any) => {
+      const feature = event.feature;
+      const suburbName = Object.values(STATE_CONFIG).reduce<string | null>((name, config) => {
+        return name || (feature.getProperty(config.key) as string | null);
+      }, null);
+      
+      if (suburbName) setHoveredSuburb(suburbName);
+    });
+
+    const mouseOutListener = map.data.addListener('mouseout', () => {
+      setHoveredSuburb(null);
+    });
+
+    return () => {
+      google.maps.event.removeListener(mouseOverListener);
+      google.maps.event.removeListener(mouseOutListener);
+    };
+  }, [mapRef, territories, hoveredSuburb]);
 
   return (
     <div className="service-area-premium">
@@ -181,29 +251,18 @@ const ServiceArea: React.FC = () => {
         <main className="map-side">
           {isLoaded ? (
             <div className="map-wrapper">
-              <GoogleMap
-                mapContainerClassName="premium-map"
-                center={mapCenter}
-                zoom={12.5}
-                options={{
-                  styles: mapStyles,
-                  disableDefaultUI: true,
-                  zoomControl: true,
-                  gestureHandling: 'greedy'
-                }}
-              >
-                {territories.map((t, index) => (
-                  t.lat && t.lng && (
-                    <Marker 
-                      key={index} 
-                      position={{ lat: t.lat, lng: t.lng }}
-                      title={t.suburb}
-                      opacity={hoveredSuburb && hoveredSuburb !== t.suburb ? 0.4 : 1}
-                      animation={hoveredSuburb === t.suburb ? google.maps.Animation.BOUNCE : undefined}
-                    />
-                  )
-                ))}
-              </GoogleMap>
+                <GoogleMap
+                  mapContainerClassName="premium-map"
+                  center={mapCenter}
+                  zoom={12.5}
+                  onLoad={(map) => setMapRef(map)}
+                  options={{
+                    styles: mapStyles,
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    gestureHandling: 'greedy'
+                  }}
+                />
               
               <div className="map-controls glass">
                 <button className="map-type-btn">

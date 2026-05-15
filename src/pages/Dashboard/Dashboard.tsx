@@ -43,6 +43,7 @@ const Dashboard: React.FC = () => {
   const [jobs, setJobs] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<any[]>([]);
+  const [customerDetailsMap, setCustomerDetailsMap] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
@@ -56,6 +57,15 @@ const Dashboard: React.FC = () => {
 
   const getLpoName = (id: string) => {
     return allLpos.find(l => l.id === id)?.name || 'Unknown LPO';
+  };
+
+  const parseZeeDetails = (detailString: string) => {
+    const [name, email, mobile] = detailString.split(',');
+    return { 
+      name: name?.trim() || 'Unknown Zee', 
+      email: email?.trim() || '', 
+      mobile: mobile?.trim() || '' 
+    };
   };
   const [commMessage, setCommMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
@@ -108,7 +118,40 @@ const Dashboard: React.FC = () => {
         let schedBaseQ = collection(db, 'scheduled_jobs');
         const schedQ = selectedLpoId !== 'all' ? query(schedBaseQ, where('lpo_id', '==', selectedLpoId)) : schedBaseQ;
         const schedSnapshot = await getDocs(schedQ);
-        setSchedules(schedSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
+        const allFetchedSchedules = schedSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id }));
+        setSchedules(allFetchedSchedules);
+
+        // Fetch Customer Details for Linked Zee Info
+        const allFetchedJobs = jobsSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id }));
+        const allFetchedRequests = reqSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id }));
+        
+        const lpoIds = new Set<string>();
+        if (selectedLpoId !== 'all') {
+          lpoIds.add(selectedLpoId);
+        } else {
+          allFetchedJobs.forEach(j => lpoIds.add(j.lpo_id));
+          allFetchedRequests.forEach(r => lpoIds.add(r.lpo_id));
+        }
+
+        const custMap: Record<string, any> = {};
+        for (const lpoId of lpoIds) {
+          try {
+            const custQ = query(collection(db, `lpo/${lpoId}/customers`));
+            const custSnap = await getDocs(custQ);
+            custSnap.docs.forEach(doc => {
+              const data = doc.data();
+              const companyName = data.companyName || data.company_name;
+              if (companyName) {
+                custMap[`${lpoId}_${companyName}`] = data;
+              }
+            });
+          } catch (err) {
+            console.error(`Error fetching customers for LPO ${lpoId}:`, err);
+          }
+        }
+        setCustomerDetailsMap(custMap);
+        setJobs(allFetchedJobs);
+        setRequests(allFetchedRequests);
 
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -127,6 +170,29 @@ const Dashboard: React.FC = () => {
         const schedQ = selectedLpoId !== 'all' ? query(collection(db, 'scheduled_jobs'), where('lpo_id', '==', selectedLpoId)) : collection(db, 'scheduled_jobs');
         const schedSnapshot = await getDocs(schedQ);
         setSchedules(schedSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
+
+        // Fallback customer details fetching
+        const fallBackLpoIds = new Set<string>();
+        if (selectedLpoId !== 'all') {
+          fallBackLpoIds.add(selectedLpoId);
+        } else {
+          jobsSnapshot.docs.forEach(doc => fallBackLpoIds.add((doc.data() as any).lpo_id));
+          reqSnapshot.docs.forEach(doc => fallBackLpoIds.add((doc.data() as any).lpo_id));
+        }
+
+        const fallBackCustMap: Record<string, any> = {};
+        for (const lpoId of fallBackLpoIds) {
+          try {
+            const custQ = query(collection(db, `lpo/${lpoId}/customers`));
+            const custSnap = await getDocs(custQ);
+            custSnap.docs.forEach(doc => {
+              const data = doc.data() as any;
+              const companyName = data.companyName || data.company_name;
+              if (companyName) fallBackCustMap[`${lpoId}_${companyName}`] = data;
+            });
+          } catch (e) {}
+        }
+        setCustomerDetailsMap(fallBackCustMap);
       } finally {
         setLoading(false);
       }
@@ -208,7 +274,7 @@ const Dashboard: React.FC = () => {
     const checkTab = (tab: string) => {
       switch (tab) {
         case 'pending':
-          return j.status === 'pending' && (!isOneOff || j.date >= today); 
+          return (j.status === 'pending' || j.status === 'new-time-proposed' || j.status === 'awaiting-activation') && (!isOneOff || j.date >= today); 
         case 'in-progress':
           return j.date === today && j.status !== 'cancelled' && j.status !== 'rejected';
         case 'upcoming':
@@ -384,7 +450,7 @@ const Dashboard: React.FC = () => {
   };
 
   const getTabCount = (tabId: string) => {
-    if (tabId === 'pending') return globalFilteredRequests.filter(r => r.status === 'pending' && (r.jobType !== 'one-off' || r.date >= today)).length;
+    if (tabId === 'pending') return globalFilteredRequests.filter(r => (r.status === 'pending' || r.status === 'new-time-proposed' || r.status === 'awaiting-activation') && (r.jobType !== 'one-off' || r.date >= today)).length;
     if (tabId === 'declined') return globalFilteredRequests.filter(r => r.status === 'rejected').length;
     if (tabId === 'cancelled') return globalFilteredRequests.filter(r => r.status === 'cancelled').length + globalFilteredJobs.filter(j => j.status === 'cancelled').length;
     
@@ -439,7 +505,7 @@ const Dashboard: React.FC = () => {
            <div className="stats-row">
                {[
                   { label: 'Active Jobs', value: globalFilteredJobs.filter(j => j.date === today && j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'rejected').length, icon: Calendar, color: 'var(--ink)' },
-                  { label: 'Pending Requests', value: globalFilteredRequests.filter(r => r.status === 'pending' && (r.jobType !== 'one-off' || r.date >= today)).length, icon: MessageSquare, color: 'var(--gold)' },
+                  { label: 'Pending Requests', value: globalFilteredRequests.filter(r => (r.status === 'pending' || r.status === 'new-time-proposed' || r.status === 'awaiting-activation') && (r.jobType !== 'one-off' || r.date >= today)).length, icon: MessageSquare, color: 'var(--gold)' },
                   { label: 'Completed Jobs', value: globalFilteredJobs.filter(j => j.status === 'completed').length, icon: CheckCircle2, color: 'var(--ink)' }
                ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
@@ -668,21 +734,58 @@ const Dashboard: React.FC = () => {
                                        <div className="location-info">
                                           <MapPin size={12} />
                                           <span>{job.customer.suburb}, {job.customer.state}</span>
-                                       </div>
+                                        </div>
+                                        {/* Franchisee Details on Main Card */}
+                                        {customerDetailsMap[`${job.lpo_id}_${job.customer.company}`]?.linkedZeeDetails && 
+                                         customerDetailsMap[`${job.lpo_id}_${job.customer.company}`].linkedZeeDetails.length > 0 && (
+                                          <div className="card-zee-list" onClick={(e) => e.stopPropagation()}>
+                                            {customerDetailsMap[`${job.lpo_id}_${job.customer.company}`].linkedZeeDetails.map((detail: any, zIdx: number) => {
+                                              const zee = parseZeeDetails(detail as string);
+                                              return (
+                                                <div key={zIdx} className="card-zee-item">
+                                                  <div className="zee-main-label">
+                                                    <User size={10} />
+                                                    <span>{zee.name}</span>
+                                                  </div>
+                                                  <div className="zee-main-actions">
+                                                    {zee.email && (
+                                                      <a href={`mailto:${zee.email}`} className="zee-action-link" title={`Email ${zee.name}`}>
+                                                        <Mail size={10} />
+                                                      </a>
+                                                    )}
+                                                    {zee.mobile && (
+                                                      <a href={`sms:${zee.mobile}`} className="zee-action-link" title={`SMS ${zee.name}`}>
+                                                        <MessageSquare size={10} />
+                                                      </a>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+
                                     </div>
                                     <div className="header-meta-group">
-                                      <div className={`status-tag status-${
-                                        (activeTab === 'history' && job.date < today && job.status === 'pending') ? 'not-accepted' :
-                                        (activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver')) ? 'unperformed' :
-                                        job.status
-                                      }`}>
-                                         {activeTab === 'history' && job.date < today && job.status === 'pending' ? 'Not Accepted' :
-                                          activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver') ? 'Unperformed' :
-                                          job.status === 'awaiting-driver' ? 'Awaiting Driver' : job.status}
-                                      </div>
-                                      <div className="expand-icon">
-                                        {expandedJobIds.has(job.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                                      </div>
+                                       <div className={`type-tag type-${job.jobType === 'scheduled' || job.jobType === 'scheduled_instance' ? 'recurring' : 'one-off'}`}>
+                                          {job.jobType === 'scheduled' || job.jobType === 'scheduled_instance' ? <Repeat size={10} /> : <Clock size={10} />}
+                                          <span>{job.jobType === 'scheduled' || job.jobType === 'scheduled_instance' ? 'Recurring' : 'One-off'}</span>
+                                       </div>
+                                       <div className={`status-tag status-${
+                                         (activeTab === 'history' && job.date < today && job.status === 'pending') ? 'not-accepted' :
+                                         (activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver')) ? 'unperformed' :
+                                         job.status
+                                       }`}>
+                                          {activeTab === 'history' && job.date < today && job.status === 'pending' ? 'Not Accepted' :
+                                           activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver') ? 'Unperformed' :
+                                           job.status === 'awaiting-driver' ? 'Awaiting Driver' : 
+                                           job.status === 'new-time-proposed' ? 'Time Proposed' :
+                                           job.status === 'awaiting-activation' ? 'Awaiting Activation' :
+                                           job.status}
+                                        </div>
+                                       <div className="expand-icon">
+                                         {expandedJobIds.has(job.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                       </div>
                                     </div>
                                  </div>
 
@@ -719,6 +822,57 @@ const Dashboard: React.FC = () => {
                                           Consolidated view unavailable for legacy records.
                                         </div>
                                       )}
+
+                                       
+                                       {customerDetailsMap[`${job.lpo_id}_${job.customer.company}`]?.linkedZeeDetails && 
+                                        customerDetailsMap[`${job.lpo_id}_${job.customer.company}`].linkedZeeDetails.length > 0 && (
+                                         <div className="zee-details-section">
+                                           <div className="zee-section-header">
+                                             <User size={14} />
+                                             <h4>Franchisee Details</h4>
+                                           </div>
+                                           <div className="zee-list">
+                                             {customerDetailsMap[`${job.lpo_id}_${job.customer.company}`].linkedZeeDetails.map((detail: string, zIdx: number) => {
+                                               const zee = parseZeeDetails(detail);
+                                               return (
+                                                 <div key={zIdx} className="zee-item glass">
+                                                   <div className="zee-info">
+                                                     <span className="zee-name">{zee.name}</span>
+                                                     <div className="zee-contacts">
+                                                       {zee.email && (
+                                                         <div className="zee-contact-text">
+                                                           <Mail size={12} />
+                                                           <span>{zee.email}</span>
+                                                         </div>
+                                                       )}
+                                                       {zee.mobile && (
+                                                         <div className="zee-contact-text">
+                                                           <MessageSquare size={12} />
+                                                           <span>{zee.mobile}</span>
+                                                         </div>
+                                                       )}
+                                                     </div>
+                                                   </div>
+                                                   <div className="zee-actions">
+                                                     {zee.email && (
+                                                       <a href={`mailto:${zee.email}`} className="zee-btn email" title="Email Franchisee" onClick={(e) => e.stopPropagation()}>
+                                                         <Mail size={14} />
+                                                         <span>Email</span>
+                                                       </a>
+                                                     )}
+                                                     {zee.mobile && (
+                                                       <a href={`sms:${zee.mobile}`} className="zee-btn sms" title="SMS Franchisee" onClick={(e) => e.stopPropagation()}>
+                                                         <MessageSquare size={14} />
+                                                         <span>SMS</span>
+                                                       </a>
+                                                     )}
+                                                   </div>
+                                                 </div>
+                                               );
+                                             })}
+                                           </div>
+                                         </div>
+                                       )}
                                    </div>
                                  )}
 
@@ -1200,8 +1354,16 @@ const Dashboard: React.FC = () => {
         .status-tag.status-accepted { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-in-progress { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-completed { background: var(--ink); color: white; }
-        .status-tag.status-rejected { background: var(--cream-warm); color: var(--danger); }
         .status-tag.status-cancelled { background: var(--cream-warm); color: var(--danger); }
+        .status-tag.status-new-time-proposed { background: #e8f4fd; color: #3498db; }
+        .status-tag.status-awaiting-activation { background: #fff8e1; color: #f39c12; }
+
+        .type-tag {
+          padding: 4px 10px; border-radius: 8px; font-family: var(--font-ui); font-size: 0.55rem; font-weight: 700;
+          text-transform: uppercase; display: flex; align-items: center; gap: 4px; letter-spacing: 0.05em;
+        }
+        .type-tag.type-one-off { background: rgba(0, 0, 0, 0.04); color: var(--ink-soft); }
+        .type-tag.type-recurring { background: rgba(224, 184, 107, 0.15); color: #7d653a; }
 
         .card-meta { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
         .meta-pill { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 700; color: var(--ink-soft); opacity: 0.6; text-transform: capitalize; }
@@ -1583,6 +1745,162 @@ const Dashboard: React.FC = () => {
         }
         .live-chat-highlight { background: var(--ink) !important; color: white !important; border: none !important; box-shadow: 0 4px 12px rgba(26, 61, 51, 0.2); }
         .live-chat-highlight:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(26, 61, 51, 0.3); }
+
+        .zee-details-section {
+          margin: 24px 24px 24px 44px;
+          padding: 24px;
+          background: rgba(255, 255, 255, 0.4);
+          border-radius: 24px;
+          border: 1px solid rgba(255, 255, 255, 0.6);
+          backdrop-filter: blur(10px);
+        }
+        .zee-section-header {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 20px;
+          color: var(--ink);
+        }
+        .zee-section-header h4 {
+          margin: 0;
+          font-family: var(--font-headings);
+          font-size: 0.85rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          opacity: 0.7;
+        }
+        .zee-list {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        .zee-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 20px;
+          border-radius: 20px;
+          background: white;
+          border: 1px solid rgba(26, 61, 51, 0.03);
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.02);
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .zee-item:hover {
+          transform: translateX(8px) scale(1.01);
+          border-color: var(--gold);
+          box-shadow: 0 10px 25px rgba(212, 175, 55, 0.1);
+        }
+        .zee-info {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .zee-name {
+          font-weight: 800;
+          color: var(--ink);
+          font-size: 1rem;
+          letter-spacing: -0.01em;
+        }
+        .zee-contacts {
+          display: flex;
+          gap: 16px;
+          font-size: 0.8rem;
+          color: var(--ink-soft);
+          font-weight: 500;
+        }
+        .zee-contact-text {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .zee-actions {
+          display: flex;
+          gap: 12px;
+        }
+        .zee-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 20px;
+          border-radius: 14px;
+          font-size: 0.8rem;
+          font-weight: 800;
+          text-decoration: none;
+          transition: all 0.2s;
+        }
+        .zee-btn.email {
+          background: var(--offwhite);
+          color: var(--ink);
+          border: 1px solid rgba(26, 61, 51, 0.08);
+        }
+        .zee-btn.sms {
+          background: var(--ink);
+          color: white;
+          box-shadow: 0 4px 12px rgba(26, 61, 51, 0.15);
+        }
+        .zee-btn:hover {
+          transform: translateY(-2px);
+          filter: brightness(1.1);
+        }
+
+        .card-zee-list {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .card-zee-item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 6px 12px;
+          background: rgba(26, 61, 51, 0.04);
+          border: 1px solid rgba(26, 61, 51, 0.08);
+          border-radius: 50px;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-zee-item:hover {
+          background: white;
+          border-color: var(--gold);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 15px rgba(212, 175, 55, 0.1);
+        }
+        .zee-main-label {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.65rem;
+          font-weight: 800;
+          color: var(--ink);
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+        }
+        .zee-main-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding-left: 10px;
+          border-left: 1px solid rgba(26, 61, 51, 0.1);
+        }
+        .zee-action-link {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 50%;
+          background: white;
+          color: var(--ink-soft);
+          transition: all 0.2s;
+          border: 1px solid rgba(26, 61, 51, 0.05);
+        }
+        .zee-action-link:hover {
+          background: var(--ink);
+          color: white;
+          transform: scale(1.15);
+          border-color: var(--ink);
+        }
       `}</style>
     </div>
   );

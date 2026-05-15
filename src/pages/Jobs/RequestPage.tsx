@@ -319,12 +319,17 @@ const RequestPage: React.FC = () => {
       return;
     }
 
-    // Open the tentative time modal instead of window.confirm
-    setIsAcceptModalOpen(true);
+    if (request.status === 'new-time-proposed' && isLpoUser) {
+      // Bypass modal if accepting a proposed time
+      confirmAccept(request.preferredTime);
+    } else {
+      setIsAcceptModalOpen(true);
+    }
   };
 
-  const confirmAccept = async () => {
-    if (!request || !tentativeTime) {
+  const confirmAccept = async (overrideTime?: string) => {
+    const timeToUse = overrideTime || tentativeTime;
+    if (!request || !timeToUse) {
       alert("Please provide a tentative service time.");
       return;
     }
@@ -394,7 +399,7 @@ const RequestPage: React.FC = () => {
           operatorEmail: null,
           operatorPhone: null,
           jobAcceptedCustInternalId: zeeParam || request.jobAcceptedCustInternalId || null,
-          tentativeTime: tentativeTime
+          tentativeTime: timeToUse
         });
         
         console.log("Created scheduled_jobs template:", templateRef.id);
@@ -422,7 +427,7 @@ const RequestPage: React.FC = () => {
             operatorEmail: null,
             operatorPhone: null,
             jobAcceptedCustInternalId: zeeParam || request.jobAcceptedCustInternalId || null,
-            tentativeTime: tentativeTime
+            tentativeTime: timeToUse
           });
           console.log("Created immediate job instance:", jobDocRef.id);
           finalJobId = jobDocRef.id;
@@ -473,7 +478,7 @@ const RequestPage: React.FC = () => {
           operatorEmail: null,
           operatorPhone: null,
           jobAcceptedCustInternalId: zeeParam || request.jobAcceptedCustInternalId || null,
-          tentativeTime: tentativeTime
+          tentativeTime: timeToUse
         });
         console.log("Created one-off job:", jobDocRef.id);
         finalJobId = jobDocRef.id;
@@ -568,7 +573,7 @@ const RequestPage: React.FC = () => {
       // 2. Add message to chat about acceptance and tentative time
       const acceptMessage = {
         sender: 'operator',
-        text: `Job Accepted. Tentative service time: ${tentativeTime}`,
+        text: `Job Accepted. Tentative service time: ${timeToUse}`,
         timestamp: new Date().toISOString(),
         zee: zeeParam || null
       };
@@ -578,7 +583,7 @@ const RequestPage: React.FC = () => {
       setAcceptStatus("Finalizing request status...");
       await updateDoc(doc(db, 'requests', request.id), {
         status: 'awaiting-driver',
-        tentativeTime: tentativeTime,
+        tentativeTime: timeToUse,
         chat: arrayUnion(acceptMessage)
       });
 
@@ -661,7 +666,7 @@ const RequestPage: React.FC = () => {
       const sysMessage = {
         id: Date.now().toString(),
         sender: 'system',
-        text: `Franchisee proposed a new 'Must be completed by' time: ${proposedTime}`,
+        text: `Franchisee proposed a new 'Service at or after' time: ${proposedTime}`,
         timestamp: new Date().toISOString()
       };
 
@@ -674,7 +679,7 @@ const RequestPage: React.FC = () => {
 
       setIsTimeModalOpen(false);
       setProposedTime('');
-      alert("New time proposal sent to operator.");
+      alert("New time proposal sent to customer.");
     } catch (err) {
       console.error("Error proposing new time:", err);
       alert("Failed to send proposal.");
@@ -788,7 +793,7 @@ const RequestPage: React.FC = () => {
               )}
            </div>
            
-           {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && (
+           {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && !isHistory && (
              <div className="operator-actions desktop-only">
                {isLpoUser ? (
                  <>
@@ -809,9 +814,11 @@ const RequestPage: React.FC = () => {
                    <button className="btn-reject" onClick={handleReject}>
                      <XCircle size={18} /> DECLINE JOB
                    </button>
-                   <button className="btn-propose" onClick={() => setIsTimeModalOpen(true)}>
-                     <Clock size={18} /> PROPOSE NEW TIME
-                   </button>
+                   {request.preferredTime && (
+                     <button className="btn-propose" onClick={() => setIsTimeModalOpen(true)}>
+                       <Clock size={18} /> PROPOSE NEW TIME
+                     </button>
+                   )}
                    <button 
                      className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
                      onClick={handleAccept}
@@ -901,7 +908,7 @@ const RequestPage: React.FC = () => {
                            <Clock size={20} className="pulse-clock" />
                         </div>
                         <div className="time-text-area">
-                           <label>MUST BE COMPLETED BY</label>
+                           <label>SERVICE AT OR AFTER</label>
                            <span className="time-value">{request.preferredTime}</span>
                         </div>
                      </div>
@@ -1002,7 +1009,7 @@ const RequestPage: React.FC = () => {
                        )}
                     </div>
                     
-                    {!isLpoUser && !isHistory && (
+                    {!isLpoUser && !isHistory && request.preferredTime && (
                        <div className="reprocess-mini">
                           <button className="btn-show-reprocess" onClick={() => {
                              // Toggle a local state or just scroll to a form
@@ -1095,7 +1102,7 @@ const RequestPage: React.FC = () => {
                  <div id="reprocess-form-anchor" className="reprocess-section-inline">
                     <div className="reprocess-header">
                        <h3>Submit a new proposed time</h3>
-                       <p>If you'd like the operator to review this again, pick a new date and time.</p>
+                       <p>If you'd like the customer to review this again, pick a new date and time.</p>
                     </div>
                     <form className="reprocess-form" onSubmit={handleReprocess}>
                        <div className="form-row">
@@ -1128,7 +1135,7 @@ const RequestPage: React.FC = () => {
         </div>
       </div>
 
-       {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && (
+       {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && !isHistory && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
             {isLpoUser ? (
@@ -1147,9 +1154,11 @@ const RequestPage: React.FC = () => {
                 <button className="btn-reject" onClick={handleReject}>
                   <XCircle size={18} /> DECLINE
                 </button>
-                <button className="btn-propose-mobile" onClick={() => setIsTimeModalOpen(true)}>
-                  <Clock size={18} /> PROPOSE TIME
-                </button>
+                {request.preferredTime && (
+                  <button className="btn-propose-mobile" onClick={() => setIsTimeModalOpen(true)}>
+                    <Clock size={18} /> PROPOSE TIME
+                  </button>
+                )}
                 <button 
                   className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
                   onClick={handleAccept}
@@ -1214,7 +1223,7 @@ const RequestPage: React.FC = () => {
               </div>
               <div className="modal-body">
                  <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', marginBottom: '10px' }}>
-                   If you can't make the requested time, please suggest a new "Must be completed by" time for the operator to review.
+                   If you can't make the requested time, please suggest a new "Service at or after" time for the customer to review.
                  </p>
                  <div className="input-group">
                     <label>Proposed Completion Time</label>
@@ -1246,7 +1255,7 @@ const RequestPage: React.FC = () => {
               </div>
               <div className="modal-body">
                  <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', marginBottom: '10px' }}>
-                   Please provide a tentative time when the service will be performed today. This will be shared with the operator.
+                   Please provide a tentative time when the service will be performed today. This will be shared with the customer.
                  </p>
                  <div className="input-group">
                     <label>Tentative Service Time</label>
@@ -1259,7 +1268,7 @@ const RequestPage: React.FC = () => {
               </div>
               <div className="modal-actions">
                  <button className="btn-cancel" onClick={() => setIsAcceptModalOpen(false)}>CANCEL</button>
-                 <button className="btn-confirm-time shadow-teal" onClick={confirmAccept} disabled={!tentativeTime}>
+                 <button className="btn-confirm-time shadow-teal" onClick={() => confirmAccept()} disabled={!tentativeTime}>
                    CONFIRM ACCEPTANCE
                  </button>
               </div>
