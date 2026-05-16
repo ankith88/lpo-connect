@@ -2305,6 +2305,167 @@ export const sendDailyPerformanceReport = onSchedule({
 });
 
 /**
+ * SEND SCHEDULE NOTIFICATION: Automated email to franchisee when recurring service is changed.
+ */
+export const sendScheduleNotification = onCall({
+  secrets: [gmailAppPassword],
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "The function must be called while authenticated.");
+  }
+
+  const { type, scheduleId, date, newFrequency } = request.data;
+  if (!type || !scheduleId) {
+    throw new HttpsError("invalid-argument", "Type and scheduleId are required.");
+  }
+
+  console.log(`[Schedule Notification] Triggered for ${scheduleId}, type: ${type}`);
+
+  const db = getDB();
+  const scheduleDoc = await db.collection("scheduled_jobs").doc(scheduleId).get();
+  if (!scheduleDoc.exists) {
+    throw new HttpsError("not-found", "Schedule not found.");
+  }
+
+  const scheduleData = scheduleDoc.data();
+  const lpoId = scheduleData?.lpo_id;
+  // Fallback chain for customer ID
+  const customerId = scheduleData?.customerId || scheduleData?.customer?.id || scheduleData?.netsuiteCustomerId;
+
+  if (!lpoId || !customerId) {
+    console.warn(`LPO ID or Customer ID missing for schedule ${scheduleId}`);
+    return { success: false, message: "Missing metadata (LPO/Customer ID)" };
+  }
+
+  // Fetch customer to get linkedZeeDetails
+  let customerData: any = null;
+  try {
+    const customerDoc = await db.collection("lpo").doc(lpoId).collection("customers").doc(customerId).get();
+    if (customerDoc.exists) {
+      customerData = customerDoc.data();
+    } else {
+      // Try searching by companyId/netsuiteCustomerId if doc ID mismatch
+      const custQuery = db.collection("lpo").doc(lpoId).collection("customers")
+        .where("companyId", "==", customerId).limit(1).get();
+      const custSnap = await custQuery;
+      if (!custSnap.empty) {
+        customerData = custSnap.docs[0].data();
+      }
+    }
+  } catch (err) {
+    console.error("Error fetching customer for notification:", err);
+  }
+
+  const linkedZeeDetails = customerData?.linkedZeeDetails || "";
+  const [zeeName, zeeEmail] = linkedZeeDetails.split(',').map((s: string) => s.trim());
+  
+  if (!zeeEmail) {
+    console.warn(`No franchisee email found for customer ${customerId}. Will fallback to dispatcher only.`);
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "bookings@lpo.plus",
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  const companyName = customerData?.companyName || scheduleData?.customer?.company || "Unknown Customer";
+  
+  let subject = "";
+  let actionText = "";
+
+  switch (type) {
+    case 'skip':
+      subject = `RECURRING SERVICE SKIPPED: ${companyName} (${date})`;
+      actionText = `skipped a day in the recurring service`;
+      break;
+    case 'unskip':
+      subject = `RECURRING SERVICE UNSKIPPED: ${companyName} (${date})`;
+      actionText = `unskipped a day in the recurring service`;
+      break;
+    case 'stop':
+      subject = `RECURRING SERVICE STOPPED: ${companyName}`;
+      actionText = `stopped all future visits in the recurring service`;
+      break;
+    case 'frequency_change':
+      subject = `SERVICE FREQUENCY UPDATED: ${companyName}`;
+      const freqList = Array.isArray(newFrequency) ? newFrequency.join(', ') : 'N/A';
+      actionText = `updated the service frequency to: ${freqList}`;
+      break;
+    default:
+      throw new HttpsError("invalid-argument", "Invalid notification type.");
+  }
+
+  const html = `
+    <div style="font-family: sans-serif; line-height: 1.6; color: #333; max-width: 600px; border: 1px solid #f0f0f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+      <div style="background-color: #095c7b; padding: 30px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 300;">LPO<span style="color: #EAF044; font-weight: bold;">.PLUS</span></h1>
+      </div>
+      <div style="padding: 30px;">
+        <p style="font-size: 16px;">Hello ${zeeName || 'Franchisee'},</p>
+        <p>This is an automated notification regarding the recurring service for <strong>${companyName}</strong>.</p>
+        
+        <div style="background: #f8fafb; padding: 20px; border-radius: 8px; border-left: 4px solid #EAF044; margin: 25px 0;">
+          <p style="margin: 0; font-weight: 500;">An operator has <strong>${actionText}</strong>.</p>
+          ${date ? `<p style="margin: 10px 0 0 0;"><strong>Affected Date:</strong> ${date}</p>` : ''}
+        </div>
+
+        <p>Please update your run sheets and driver manifest accordingly.</p>
+        <p style="font-size: 14px; color: #666; margin-top: 30px;">If you have any questions, please contact the LPO dispatch team.</p>
+      </div>
+      <div style="background-color: #f4f7f8; padding: 20px; text-align: center; font-size: 12px; color: #999;">
+        <p><strong>System Metadata:</strong> LPO ID: ${lpoId} | Customer ID: ${customerId}</p>
+        <p style="margin-top: 10px;">&copy; ${new Date().getFullYear()} LPO.PLUS | Powered by MailPlus</p>
+      </div>
+    </div>
+  `;
+
+  const metadata = {
+    lpoId,
+    customerId,
+    scheduleId,
+    type: `schedule_${type}`,
+    companyName
+  };
+
+  const taggedHtml = injectMetadataTag(html, metadata);
+
+  const recipients = ["dispatcher@mailplus.com.au"];
+  if (zeeEmail) {
+    recipients.unshift(zeeEmail); // Primary recipient is the franchisee
+  }
+
+  const mailOptions = {
+    from: '"LPO.PLUS Notifications" <bookings@lpo.plus>',
+    to: recipients.join(','),
+    cc: "dispatcher@mailplus.com.au", // Ensure dispatcher is always on CC/To
+    subject: subject,
+    html: taggedHtml,
+  };
+
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`[Schedule Notification] Email sent. ID: ${info.messageId}`);
+
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      body: taggedHtml,
+      type: 'sent',
+      metadata: metadata
+    });
+    
+    return { success: true, messageId: info.messageId };
+  } catch (error: any) {
+    console.error(`[Schedule Notification Error]`, error);
+    return { success: false, error: error.message };
+  }
+});
+
+/**
  * TEST TRIGGER: Manually trigger reports for verification.
  * Visit: .../testReports?type=scheduled|progress|performance
  */

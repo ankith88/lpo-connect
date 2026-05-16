@@ -19,9 +19,10 @@ import {
   CreditCard
 } from 'lucide-react';
 import { collection, query, where, getDocs, doc, orderBy, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { sortStops } from '../../utils/stops';
 
-import { db } from '../../firebase/config';
+import { db, functions } from '../../firebase/config';
 import SupportEmailModal from '../../components/SupportEmailModal';
 import { useLpo } from '../../context/LpoContext';
 import { getNextOccurrences, parseLocalDate } from '../../utils/scheduling';
@@ -92,6 +93,15 @@ const Schedules: React.FC = () => {
       if (selectedSchedule?.id === jobId) {
         setSelectedSchedule({ ...selectedSchedule, skippedDates: [...(selectedSchedule.skippedDates || []), date] });
       }
+
+      // Trigger Notification
+      const sendNotification = httpsCallable(functions, 'sendScheduleNotification');
+      sendNotification({
+        type: 'skip',
+        scheduleId: jobId,
+        date: date
+      }).catch(err => console.error("Notification failed:", err));
+
     } catch (e) {
       console.error("Error skipping date:", e);
     }
@@ -107,6 +117,15 @@ const Schedules: React.FC = () => {
       if (selectedSchedule?.id === jobId) {
         setSelectedSchedule({ ...selectedSchedule, skippedDates: (selectedSchedule.skippedDates || []).filter((d: string) => d !== date) });
       }
+
+      // Trigger Notification
+      const sendNotification = httpsCallable(functions, 'sendScheduleNotification');
+      sendNotification({
+        type: 'unskip',
+        scheduleId: jobId,
+        date: date
+      }).catch(err => console.error("Notification failed:", err));
+
     } catch (e) {
       console.error("Error unskipping date:", e);
     }
@@ -120,6 +139,14 @@ const Schedules: React.FC = () => {
       });
       setSchedules(schedules.map(s => s.id === jobId ? { ...s, recurrenceStatus: 'stopped' } : s));
       setSelectedSchedule(null);
+
+      // Trigger Notification
+      const sendNotification = httpsCallable(functions, 'sendScheduleNotification');
+      sendNotification({
+        type: 'stop',
+        scheduleId: jobId
+      }).catch(err => console.error("Notification failed:", err));
+
     } catch (e) {
       console.error("Error stopping series:", e);
     }
@@ -142,6 +169,15 @@ const Schedules: React.FC = () => {
       if (selectedSchedule?.id === jobId) {
         setSelectedSchedule({ ...selectedSchedule, frequency: newFreq });
       }
+
+      // Trigger Notification
+      const sendNotification = httpsCallable(functions, 'sendScheduleNotification');
+      sendNotification({
+        type: 'frequency_change',
+        scheduleId: jobId,
+        newFrequency: newFreq
+      }).catch(err => console.error("Notification failed:", err));
+
     } catch (e) {
       console.error("Error updating frequency:", e);
     }

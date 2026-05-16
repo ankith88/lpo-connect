@@ -12,6 +12,7 @@ interface LpoMetadata {
   latitude?: number;
   longitude?: number;
   franchiseeTerritoryJSON?: string | string[];
+  lpoServiceAdditionalLPOBagRate?: string;
 }
 
 interface UserMetadata {

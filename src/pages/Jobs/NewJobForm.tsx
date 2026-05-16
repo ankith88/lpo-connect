@@ -56,6 +56,7 @@ interface JobData {
   jobType: 'one-off' | 'scheduled';
   frequency: string[];
   preferredTime?: string;
+  additionalBagRate?: string;
 }
 
 const LIBRARIES: ("places")[] = ["places"];
@@ -108,6 +109,7 @@ const NewJobForm: React.FC = () => {
     jobType: 'one-off',
     frequency: [],
     preferredTime: '',
+    additionalBagRate: '',
   });
 
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -698,6 +700,7 @@ const NewJobForm: React.FC = () => {
           stops,
           lpo_id: lpo.id,
           isExistingCustomer,
+          additionalBagRate: lpo.lpoServiceAdditionalLPOBagRate || null,
           netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
           status: initialRequestStatus,
           jobAcceptedCustInternalId: null,
@@ -1192,6 +1195,18 @@ const NewJobForm: React.FC = () => {
                       <p className="field-hint">Are there any timing restrictions for this job? Leave blank if the operator can attend anytime during business hours.</p>
                     </div>
                   </div>
+                  
+                  {lpo?.lpoServiceAdditionalLPOBagRate && (
+                    <div className="alert-wrapper" style={{ marginTop: '0', marginBottom: '24px' }}>
+                      <div className="alert-pill glass success w-full" style={{ display: 'flex', width: '100%', padding: '16px', gap: '12px' }}>
+                        <Info size={18} />
+                        <div style={{ textAlign: 'left' }}>
+                          <div style={{ fontWeight: 800, fontSize: '0.8rem', textTransform: 'uppercase', marginBottom: '2px' }}>Additional LPO Bag</div>
+                          <p style={{ margin: 0, fontSize: '0.85rem', opacity: 0.8 }}>An additional bag fee of <strong>${parseFloat(lpo.lpoServiceAdditionalLPOBagRate).toFixed(2)}</strong> will be applied for each individual bag after the 1st bag.</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="alert-wrapper">
                     {new Date().getHours() < 12 ? (
