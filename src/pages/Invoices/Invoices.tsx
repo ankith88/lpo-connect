@@ -55,12 +55,9 @@ export default function Invoices() {
         const querySnapshot = await getDocs(q);
         const fetchedInvoices: Invoice[] = [];
         
-        await Promise.all(querySnapshot.docs.map(async (docSnapshot) => {
+        querySnapshot.docs.forEach((docSnapshot) => {
           const data = docSnapshot.data();
-          const lineItemsRef = collection(db, `lpo/${currentLPOId}/invoices/${docSnapshot.id}/line_items`);
-          const lineItemsSnapshot = await getDocs(lineItemsRef);
-          
-          const line_items = lineItemsSnapshot.docs.map(liDoc => liDoc.data() as LineItem);
+          const line_items = Array.isArray(data.line_items) ? data.line_items : [];
           
           fetchedInvoices.push({
             id: docSnapshot.id,
@@ -72,7 +69,7 @@ export default function Invoices() {
             status: data.status || '',
             line_items
           });
-        }));
+        });
         
         fetchedInvoices.sort((a, b) => a.customerName.localeCompare(b.customerName));
         setInvoices(fetchedInvoices);
@@ -170,7 +167,7 @@ export default function Invoices() {
                   <th>Invoice Number</th>
                   <th>Date</th>
                   <th>Status</th>
-                  <th className="amount-col">Total Amount</th>
+                  <th className="amount-col">Total Amount (Inc. GST)</th>
                 </tr>
               </thead>
               <tbody>
@@ -213,29 +210,34 @@ export default function Invoices() {
                                   <h3 className="line-items-header">Line Items</h3>
                                   <table className="line-items-table">
                                     <thead>
-                                      <tr>
+                                        <th>Service Item</th>
                                         <th>Description</th>
                                         <th className="right">Rate</th>
                                         <th className="right">Qty</th>
-                                        <th className="right">Amount</th>
+                                        <th className="right">Amount (Ex. GST)</th>
+                                        <th className="right">Amount (Inc. GST)</th>
                                       </tr>
                                     </thead>
                                     <tbody>
                                       {invoice.line_items?.map((item, i) => (
                                         <tr key={i}>
+                                          <td>{item.itemId}</td>
                                           <td>{item.description}</td>
                                           <td className="right">
                                             ${item.rate?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                           </td>
                                           <td className="right">{item.quantity}</td>
-                                          <td className="right total">
+                                          <td className="right">
                                             ${item.amount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                          </td>
+                                          <td className="right total">
+                                            ${(item.amount * 1.1)?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                           </td>
                                         </tr>
                                       ))}
                                       {(!invoice.line_items || invoice.line_items.length === 0) && (
                                         <tr>
-                                          <td colSpan={4} className="p-4 text-center italic" style={{ color: 'var(--ink-soft)' }}>
+                                          <td colSpan={6} className="p-4 text-center italic" style={{ color: 'var(--ink-soft)' }}>
                                             No line items found.
                                           </td>
                                         </tr>
@@ -365,11 +367,11 @@ export default function Invoices() {
 
         .expanded-row td { background: rgba(255,255,255,0.3) !important; padding: 0; border-bottom: 1px solid rgba(26,61,51,0.05); }
 
-        .line-items-container { padding: 24px; background: rgba(255,255,255,0.8); border-left: 4px solid var(--ink); margin: 16px 24px; border-radius: 12px; box-shadow: 0 4px 12px rgba(26,61,51,0.03); }
-        .line-items-header { font-family: var(--font-ui); font-size: 0.65rem; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 0; margin-bottom: 16px; }
-        .line-items-table { width: 100%; background: white; border-radius: 12px; overflow: hidden; border: 1px solid rgba(26,61,51,0.05); border-collapse: collapse; }
-        .line-items-table th { padding: 12px 16px; font-family: var(--font-ui); font-size: 0.6rem; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; border-bottom: 1px solid rgba(26,61,51,0.05); background: rgba(26,61,51,0.02); }
-        .line-items-table td { padding: 12px 16px; font-size: 0.85rem; border-bottom: 1px solid rgba(26,61,51,0.05); font-weight: 500; }
+        .line-items-container { padding: 16px; background: rgba(255,255,255,0.8); border-left: 4px solid var(--ink); margin: 12px 16px; border-radius: 8px; box-shadow: 0 4px 12px rgba(26,61,51,0.03); }
+        .line-items-header { font-family: var(--font-ui); font-size: 0.65rem; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 0; margin-bottom: 8px; }
+        .line-items-table { width: 100%; background: white; border-radius: 8px; overflow: hidden; border: 1px solid rgba(26,61,51,0.05); border-collapse: collapse; }
+        .line-items-table th { padding: 8px 12px; font-family: var(--font-ui); font-size: 0.6rem; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; border-bottom: 1px solid rgba(26,61,51,0.05); background: rgba(26,61,51,0.02); }
+        .line-items-table td { padding: 8px 12px; font-size: 0.8rem; border-bottom: 1px solid rgba(26,61,51,0.05); font-weight: 500; }
         .line-items-table tr:last-child td { border-bottom: none; }
         .line-items-table th.right, .line-items-table td.right { text-align: right; }
         .line-items-table td.total { font-weight: 700; color: var(--ink); }
