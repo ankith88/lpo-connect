@@ -185,15 +185,15 @@ export default function Invoices() {
                               {idx === 0 ? customerName : ''}
                             </td>
                             <td>
-                              <span className="flex items-center gap-2">
+                              <span className="flex items-center gap-2 font-medium">
                                 {invoice.invoiceNum}
-                                <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''} opacity-50 group-hover:opacity-100`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+                                <ChevronDown size={16} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} opacity-40 group-hover:opacity-100 text-emerald-800`} strokeWidth={2.5} />
                               </span>
                             </td>
                             <td>{invoice.date}</td>
                             <td>
                               {invoice.status ? (
-                                <span className={`status-badge-premium ${invoice.status === 'Paid in Full' ? 'paid' : 'default'}`}>
+                                <span className={`status-badge-premium ${invoice.status.toLowerCase() === 'paid in full' ? 'paid' : 'default'}`}>
                                   {invoice.status}
                                 </span>
                               ) : null}
