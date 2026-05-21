@@ -16,6 +16,7 @@ import Schedules from './pages/Jobs/Schedules';
 import AwaitingTCPage from './pages/Jobs/AwaitingTCPage';
 import Reports from './pages/Admin/Reports';
 import SupportCenter from './pages/Help/SupportCenter';
+import Invoices from './pages/Invoices/Invoices';
 
 import Profile from './pages/Auth/Profile';
 import ResetPassword from './pages/Auth/ResetPassword';
@@ -166,6 +167,14 @@ const App: React.FC = () => {
                 <AdminCommunications />
               </AppLayout>
             </AdminRoute>
+          } />
+
+          <Route path="/invoices" element={
+            <PrivateRoute>
+              <AppLayout>
+                <Invoices />
+              </AppLayout>
+            </PrivateRoute>
           } />
 
           <Route path="/" element={<Navigate to="/dashboard" />} />
