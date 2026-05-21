@@ -210,6 +210,7 @@ export default function Invoices() {
                                   <h3 className="line-items-header">Line Items</h3>
                                   <table className="line-items-table">
                                     <thead>
+                                      <tr>
                                         <th>Service Item</th>
                                         <th>Description</th>
                                         <th className="right">Rate</th>
