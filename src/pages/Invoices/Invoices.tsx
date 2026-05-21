@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { useLpo } from '../../context/LpoContext';
 import { db } from '../../firebase/config';
 import { Search, FileText, ChevronDown } from 'lucide-react';
@@ -14,12 +14,14 @@ interface LineItem {
 
 interface Invoice {
   id: string;
+  customerId?: string;
   customerName: string;
   invoiceNum: string;
   date: string;
   billingMonth: string;
   totalAmount: number;
   status?: string;
+  billingMethod?: string;
   line_items: LineItem[];
 }
 
@@ -53,26 +55,42 @@ export default function Invoices() {
       
       try {
         const querySnapshot = await getDocs(q);
-        const fetchedInvoices: Invoice[] = [];
         
-        querySnapshot.docs.forEach((docSnapshot) => {
+        const invoicePromises = querySnapshot.docs.map(async (docSnapshot) => {
           const data = docSnapshot.data();
           const line_items = Array.isArray(data.line_items) ? data.line_items : [];
           
-          fetchedInvoices.push({
+          let billingMethod = '';
+          const customerId = data.customerId;
+          if (customerId) {
+            try {
+              const custDocRef = doc(db, `lpo/${currentLPOId}/customers/${customerId}`);
+              const custDocSnap = await getDoc(custDocRef);
+              if (custDocSnap.exists()) {
+                billingMethod = custDocSnap.data().billing || '';
+              }
+            } catch (err) {
+              console.error("Failed to fetch customer billing", err);
+            }
+          }
+          
+          return {
             id: docSnapshot.id,
+            customerId: customerId || '',
             customerName: data.customerName || '',
             invoiceNum: data.invoiceNum || '',
             date: data.date || '',
             billingMonth: data.billingMonth || '',
             totalAmount: data.totalAmount || 0,
             status: data.status || '',
+            billingMethod,
             line_items
-          });
+          };
         });
         
-        fetchedInvoices.sort((a, b) => a.customerName.localeCompare(b.customerName));
-        setInvoices(fetchedInvoices);
+        const resolvedInvoices = await Promise.all(invoicePromises);
+        resolvedInvoices.sort((a, b) => a.customerName.localeCompare(b.customerName));
+        setInvoices(resolvedInvoices);
       } catch (error) {
         console.error("Failed to fetch invoices:", error);
       }
@@ -167,6 +185,7 @@ export default function Invoices() {
                   <th>Invoice Number</th>
                   <th>Date</th>
                   <th>Status</th>
+                  <th>Billing Method</th>
                   <th className="amount-col">Total Amount (Inc. GST)</th>
                   <th className="w-12"></th>
                 </tr>
@@ -198,6 +217,11 @@ export default function Invoices() {
                                 </span>
                               ) : null}
                             </td>
+                            <td>
+                              <span className="font-medium text-ink-soft text-sm">
+                                {invoice.billingMethod || '-'}
+                              </span>
+                            </td>
                             <td className="amount-col">
                               ${invoice.totalAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
@@ -208,7 +232,7 @@ export default function Invoices() {
 
                           {isExpanded && (
                             <tr className="expanded-row">
-                              <td colSpan={6} className="p-0 border-0">
+                              <td colSpan={7} className="p-0 border-0">
                                 <div className="line-items-container animate-fade-in-down">
                                   <h3 className="line-items-header">Line Items</h3>
                                   <table className="line-items-table">
@@ -260,7 +284,7 @@ export default function Invoices() {
                 
                 {filteredInvoices.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-0 border-0">
+                    <td colSpan={7} className="p-0 border-0">
                       <div className="empty-state">
                         <p>No invoices found</p>
                         <span>Try adjusting your filters or selecting a different month.</span>
