@@ -168,6 +168,7 @@ export default function Invoices() {
                   <th>Date</th>
                   <th>Status</th>
                   <th className="amount-col">Total Amount (Inc. GST)</th>
+                  <th className="w-12"></th>
                 </tr>
               </thead>
               <tbody>
@@ -185,9 +186,8 @@ export default function Invoices() {
                               {idx === 0 ? customerName : ''}
                             </td>
                             <td>
-                              <span className="flex items-center gap-2 font-medium">
+                              <span className="font-medium text-ink">
                                 {invoice.invoiceNum}
-                                <ChevronDown size={16} className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} opacity-40 group-hover:opacity-100 text-emerald-800`} strokeWidth={2.5} />
                               </span>
                             </td>
                             <td>{invoice.date}</td>
@@ -201,11 +201,14 @@ export default function Invoices() {
                             <td className="amount-col">
                               ${invoice.totalAmount?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </td>
+                            <td className="w-12 text-center">
+                              <ChevronDown size={18} className={`inline-block transition-transform duration-300 ${isExpanded ? 'rotate-180 text-ink opacity-100' : 'text-ink-soft opacity-40'} group-hover:opacity-100`} strokeWidth={2} />
+                            </td>
                           </tr>
 
                           {isExpanded && (
                             <tr className="expanded-row">
-                              <td colSpan={5} className="p-0 border-0">
+                              <td colSpan={6} className="p-0 border-0">
                                 <div className="line-items-container animate-fade-in-down">
                                   <h3 className="line-items-header">Line Items</h3>
                                   <table className="line-items-table">
@@ -257,7 +260,7 @@ export default function Invoices() {
                 
                 {filteredInvoices.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-0 border-0">
+                    <td colSpan={6} className="p-0 border-0">
                       <div className="empty-state">
                         <p>No invoices found</p>
                         <span>Try adjusting your filters or selecting a different month.</span>
