@@ -29,7 +29,7 @@ import { getNextOccurrences, parseLocalDate } from '../../utils/scheduling';
 import CustomSelect from '../../components/CustomSelect';
 
 const Schedules: React.FC = () => {
-  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
+  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos, userData, user } = useLpo();
   const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -86,7 +86,11 @@ const Schedules: React.FC = () => {
   const handleSkipDate = async (jobId: string, date: string) => {
     try {
       await updateDoc(doc(db, 'scheduled_jobs', jobId), {
-        skippedDates: arrayUnion(date)
+        skippedDates: arrayUnion(date),
+        lastActionAt: new Date().toISOString(),
+        lastActionType: 'skip',
+        lastActionByUserId: userData?.uid || user?.uid || 'unknown',
+        lastActionByUserName: userData?.first_name || 'System/Operator'
       });
       const updated = schedules.map(s => s.id === jobId ? { ...s, skippedDates: [...(s.skippedDates || []), date] } : s);
       setSchedules(updated);
@@ -110,7 +114,11 @@ const Schedules: React.FC = () => {
   const handleUnskipDate = async (jobId: string, date: string) => {
     try {
       await updateDoc(doc(db, 'scheduled_jobs', jobId), {
-        skippedDates: arrayRemove(date)
+        skippedDates: arrayRemove(date),
+        lastActionAt: new Date().toISOString(),
+        lastActionType: 'unskip',
+        lastActionByUserId: userData?.uid || user?.uid || 'unknown',
+        lastActionByUserName: userData?.first_name || 'System/Operator'
       });
       const updated = schedules.map(s => s.id === jobId ? { ...s, skippedDates: (s.skippedDates || []).filter((d: string) => d !== date) } : s);
       setSchedules(updated);
@@ -135,7 +143,10 @@ const Schedules: React.FC = () => {
     if (!window.confirm("Are you sure you want to stop this recurring schedule? This will prevent all future visits.")) return;
     try {
       await updateDoc(doc(db, 'scheduled_jobs', jobId), {
-        recurrenceStatus: 'stopped'
+        recurrenceStatus: 'stopped',
+        stoppedAt: new Date().toISOString(),
+        stoppedByUserId: userData?.uid || user?.uid || 'unknown',
+        stoppedByUserName: userData?.first_name || 'System/Operator'
       });
       setSchedules(schedules.map(s => s.id === jobId ? { ...s, recurrenceStatus: 'stopped' } : s));
       setSelectedSchedule(null);
@@ -162,7 +173,10 @@ const Schedules: React.FC = () => {
 
     try {
       await updateDoc(doc(db, 'scheduled_jobs', jobId), {
-        frequency: newFreq
+        frequency: newFreq,
+        frequencyUpdatedAt: new Date().toISOString(),
+        frequencyUpdatedByUserId: userData?.uid || user?.uid || 'unknown',
+        frequencyUpdatedByUserName: userData?.first_name || 'System/Operator'
       });
       const updated = schedules.map(s => s.id === jobId ? { ...s, frequency: newFreq } : s);
       setSchedules(updated);

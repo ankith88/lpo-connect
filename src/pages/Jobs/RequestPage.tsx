@@ -291,6 +291,8 @@ const RequestPage: React.FC = () => {
           status: 'cancelled',
           cancelledAt: new Date().toISOString(),
           cancelledBy: isLpoUser ? 'operator' : 'customer',
+          cancelledByUserId: userData?.uid || 'unknown',
+          cancelledByUserName: userData?.first_name || (isLpoUser ? 'operator' : 'customer'),
           chat: arrayUnion(sysMessage)
         });
 
