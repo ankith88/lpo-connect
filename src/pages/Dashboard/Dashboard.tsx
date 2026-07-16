@@ -24,7 +24,8 @@ import {
   Mail,
   Phone,
   Repeat,
-  Copy
+  Copy,
+  AlertCircle
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
@@ -47,7 +48,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
-  const [activeTab, setActiveTab] = useState<'pending' | 'upcoming' | 'in-progress' | 'history' | 'declined' | 'cancelled'>('in-progress');
+  const [activeTab, setActiveTab] = useState<'pending' | 'expired-requests' | 'upcoming' | 'in-progress' | 'history' | 'declined' | 'cancelled'>('in-progress');
   const [serviceFilter, setServiceFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
@@ -263,24 +264,23 @@ const Dashboard: React.FC = () => {
   const globalFilteredRequests = requests.filter(applyGlobalFilters);
 
   // Define source based on tab
-  const source = (activeTab === 'pending' || activeTab === 'declined' || activeTab === 'cancelled') 
+  const source = (activeTab === 'pending' || activeTab === 'expired-requests' || activeTab === 'declined' || activeTab === 'cancelled') 
     ? (activeTab === 'cancelled' ? [...globalFilteredRequests, ...globalFilteredJobs] : globalFilteredRequests)
     : (activeTab === 'history' ? [...globalFilteredJobs, ...globalFilteredRequests] : (activeTab === 'upcoming' ? [...globalFilteredJobs, ...projectedJobs] : globalFilteredJobs));
 
   const filteredJobs = source.filter(j => {
-    // Tab Filtering
-    const isOneOff = j.jobType === 'one-off';
-
     const checkTab = (tab: string) => {
       switch (tab) {
         case 'pending':
-          return (j.status === 'pending' || j.status === 'new-time-proposed' || j.status === 'awaiting-activation') && (!isOneOff || j.date >= today); 
+          return (j.status === 'pending' || j.status === 'new-time-proposed' || j.status === 'awaiting-activation') && j.date >= today; 
+        case 'expired-requests':
+          return (j.status === 'pending' || j.status === 'new-time-proposed' || j.status === 'awaiting-activation') && j.date < today; 
         case 'in-progress':
           return j.date === today && j.status !== 'cancelled' && j.status !== 'rejected';
         case 'upcoming':
           return j.date > today && j.status !== 'cancelled' && j.status !== 'rejected';
         case 'history':
-          return j.date < today && j.status !== 'cancelled' && j.status !== 'rejected';
+          return j.date < today && j.status !== 'cancelled' && j.status !== 'rejected' && j.status !== 'pending' && j.status !== 'new-time-proposed' && j.status !== 'awaiting-activation';
         case 'declined':
           return j.status === 'rejected';
         case 'cancelled':
@@ -303,7 +303,7 @@ const Dashboard: React.FC = () => {
     }
     return acc;
   }, []).sort((a, b) => {
-    return activeTab === 'history' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date);
+    return (activeTab === 'history' || activeTab === 'expired-requests') ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date);
   });
 
   const exportJobsCSV = () => {
@@ -523,13 +523,14 @@ const Dashboard: React.FC = () => {
   };
 
   const getTabCount = (tabId: string) => {
-    if (tabId === 'pending') return globalFilteredRequests.filter(r => (r.status === 'pending' || r.status === 'new-time-proposed' || r.status === 'awaiting-activation') && (r.jobType !== 'one-off' || r.date >= today)).length;
+    if (tabId === 'pending') return globalFilteredRequests.filter(r => (r.status === 'pending' || r.status === 'new-time-proposed' || r.status === 'awaiting-activation') && r.date >= today).length;
+    if (tabId === 'expired-requests') return globalFilteredRequests.filter(r => (r.status === 'pending' || r.status === 'new-time-proposed' || r.status === 'awaiting-activation') && r.date < today).length;
     if (tabId === 'declined') return globalFilteredRequests.filter(r => r.status === 'rejected').length;
     if (tabId === 'cancelled') return globalFilteredRequests.filter(r => r.status === 'cancelled').length + globalFilteredJobs.filter(j => j.status === 'cancelled').length;
     
     if (tabId === 'history') {
       const pastJobs = globalFilteredJobs.filter(j => j.date < today && j.status !== 'cancelled' && j.status !== 'rejected').length;
-      const pastReqs = globalFilteredRequests.filter(r => r.date < today && r.status !== 'cancelled' && r.status !== 'rejected').length;
+      const pastReqs = globalFilteredRequests.filter(r => r.date < today && r.status !== 'cancelled' && r.status !== 'rejected' && r.status !== 'pending' && r.status !== 'new-time-proposed' && r.status !== 'awaiting-activation').length;
       return pastJobs + pastReqs;
     }
 
@@ -578,7 +579,7 @@ const Dashboard: React.FC = () => {
            <div className="stats-row">
                {[
                   { label: 'Active Jobs', value: globalFilteredJobs.filter(j => j.date === today && j.status !== 'completed' && j.status !== 'cancelled' && j.status !== 'rejected').length, icon: Calendar, color: 'var(--ink)' },
-                  { label: 'Pending Requests', value: globalFilteredRequests.filter(r => (r.status === 'pending' || r.status === 'new-time-proposed' || r.status === 'awaiting-activation') && (r.jobType !== 'one-off' || r.date >= today)).length, icon: MessageSquare, color: 'var(--gold)' },
+                  { label: 'Pending Requests', value: globalFilteredRequests.filter(r => (r.status === 'pending' || r.status === 'new-time-proposed' || r.status === 'awaiting-activation') && r.date >= today).length, icon: MessageSquare, color: 'var(--gold)' },
                   { label: 'Completed Jobs', value: globalFilteredJobs.filter(j => j.status === 'completed').length, icon: CheckCircle2, color: 'var(--ink)' }
                ].map((stat, i) => (
                 <div key={i} className="stat-card glass">
@@ -616,6 +617,7 @@ const Dashboard: React.FC = () => {
                     { id: 'in-progress', label: 'Active Today' },
                     { id: 'upcoming', label: 'Future One-Off' },
                     { id: 'history', label: 'History' },
+                    { id: 'expired-requests', label: 'Expired Requests' },
                     { id: 'declined', label: 'Declined' },
                     { id: 'cancelled', label: 'Cancelled' },
                     { id: 'recurring', label: 'Recurring Schedules' }
@@ -703,6 +705,7 @@ const Dashboard: React.FC = () => {
                     { id: 'recurring', label: 'Recurring Schedules', icon: Repeat, external: true },
                     { type: 'separator' },
                     { id: 'history', label: 'History', icon: RotateCcw },
+                    { id: 'expired-requests', label: 'Expired Requests', icon: AlertCircle },
                     { id: 'declined', label: 'Declined', icon: XCircle },
                     { id: 'cancelled', label: 'Cancelled', icon: XCircle },
                   ].map((tab: any, idx) => (
@@ -845,11 +848,11 @@ const Dashboard: React.FC = () => {
                                           <span>{job.jobType === 'scheduled' || job.jobType === 'scheduled_instance' ? 'Recurring' : 'One-off'}</span>
                                        </div>
                                        <div className={`status-tag status-${
-                                         (activeTab === 'history' && job.date < today && job.status === 'pending') ? 'not-accepted' :
+                                         ((activeTab === 'history' || activeTab === 'expired-requests') && job.date < today && (job.status === 'pending' || job.status === 'new-time-proposed' || job.status === 'awaiting-activation')) ? 'not-accepted' :
                                          (activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver')) ? 'unperformed' :
                                          job.status
                                        }`}>
-                                          {activeTab === 'history' && job.date < today && job.status === 'pending' ? 'Not Accepted' :
+                                          {(activeTab === 'history' || activeTab === 'expired-requests') && job.date < today && (job.status === 'pending' || job.status === 'new-time-proposed' || job.status === 'awaiting-activation') ? 'Not Accepted' :
                                            activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver') ? 'Unperformed' :
                                            job.status === 'awaiting-driver' ? 'Awaiting Driver' : 
                                            job.status === 'new-time-proposed' ? 'Time Proposed' :
@@ -1009,7 +1012,7 @@ const Dashboard: React.FC = () => {
                                 </div>
 
                                  <div className="card-actions">
-                                     {activeTab === 'pending' || activeTab === 'declined' ? (
+                                     {activeTab === 'pending' || activeTab === 'expired-requests' || activeTab === 'declined' ? (
                                       <div className="messaging-group">
                                         <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
                                            <MessageSquare size={16} />
@@ -1031,7 +1034,6 @@ const Dashboard: React.FC = () => {
                                          )}
                                       </div>
                                     )}
-                                    
                                     <div className="overflow-menu">
                                        <div className="menu-trigger">
                                           <MoreHorizontal size={18} />
@@ -1039,6 +1041,15 @@ const Dashboard: React.FC = () => {
                                              {activeTab === 'pending' || activeTab === 'declined' ? (
                                                <>
                                                  <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
+                                                 {isAdmin ? (
+                                                   <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
+                                                 ) : (
+                                                   <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
+                                                 )}
+                                               </>
+                                             ) : activeTab === 'expired-requests' ? (
+                                               <>
+                                                 <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
                                                  {isAdmin ? (
                                                    <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
                                                  ) : (
