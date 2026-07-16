@@ -1185,14 +1185,14 @@ const NewJobForm: React.FC = () => {
                     </div>
 
                     <div className="selection-group flex-1">
-                      <label className="group-label">Time Constraints (Optional)</label>
+                      <label className="group-label">Service On or After Time (Optional)</label>
                       <div className="custom-booking-time">
                         <CustomTimePicker 
                           value={formData.preferredTime}
                           onChange={(val) => setFormData({...formData, preferredTime: val})}
                         />
                       </div>
-                      <p className="field-hint">Are there any timing restrictions for this job? Leave blank if the operator can attend anytime during business hours.</p>
+                      <p className="field-hint">Specify a time only if the job needs to be completed on or after a certain time (e.g., when items are ready for collection). Leave blank if the operator can attend anytime during business hours.</p>
                     </div>
                   </div>
                   
@@ -1313,7 +1313,7 @@ const NewJobForm: React.FC = () => {
                       </div>
                       {formData.preferredTime && (
                         <div className="v-row">
-                          <span className="v-label">BY TIME</span>
+                          <span className="v-label">SERVICE ON/AFTER</span>
                           <span className="v-val">{formData.preferredTime}</span>
                         </div>
                       )}
