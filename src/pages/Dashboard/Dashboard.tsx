@@ -29,7 +29,7 @@ import {
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
 import CancelJobModal from '../../components/CancelJobModal';
-import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy, arrayUnion } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
@@ -39,7 +39,7 @@ import CustomSelect from '../../components/CustomSelect';
 
 
 const Dashboard: React.FC = () => {
-  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
+  const { lpo, isAdmin, userData, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
   const [jobs, setJobs] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -396,6 +396,79 @@ const Dashboard: React.FC = () => {
 
       await deleteDoc(doc(db, 'requests', id));
       setRequests(requests.filter(r => r.id !== id));
+    }
+  };
+
+  const handleCancelRequest = async (id: string) => {
+    const request = requests.find(r => r.id === id);
+    if (!request) return;
+
+    if (window.confirm("Are you sure you want to cancel this job request? This will remove all scheduled visits associated with it.")) {
+      setLoading(true);
+      try {
+        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
+        
+        // 1. Find and cancel all related jobs (instances)
+        const jobsQ = query(collection(db, 'jobs'), where('originalRequestId', '==', id));
+        const jobsSnap = await getDocs(jobsQ);
+        
+        for (const jobDoc of jobsSnap.docs) {
+          const params = new URLSearchParams({
+            job_id: jobDoc.id,
+            request_id: id,
+            customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+            lpo_id: request.lpo_id || ""
+          });
+
+          await fetch(`${NETSUITE_API}&${params.toString()}`).catch(e => console.error("NetSuite Instance Cancel Error:", e));
+          await deleteDoc(doc(db, 'jobs', jobDoc.id));
+        }
+
+        // 1.5. Ensure the request itself is synced as cancelled in NetSuite
+        const requestParams = new URLSearchParams({
+          job_id: id,
+          request_id: id,
+          customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+          lpo_id: request.lpo_id || ""
+        });
+        console.log("Syncing request cancellation with NetSuite (2533)...", Object.fromEntries(requestParams));
+        await fetch(`${NETSUITE_API}&${requestParams.toString()}`).catch(e => console.error("NetSuite Request Cancel Error:", e));
+
+        // 2. Find and cancel related scheduled_jobs (templates)
+        const schedQ = query(collection(db, 'scheduled_jobs'), where('originalRequestId', '==', id));
+        const schedSnap = await getDocs(schedQ);
+        
+        for (const schedDoc of schedSnap.docs) {
+          await deleteDoc(doc(db, 'scheduled_jobs', schedDoc.id));
+        }
+
+        // 3. Update the request document
+        const sysMessage = {
+          id: Date.now().toString(),
+          sender: 'system',
+          text: `Job cancelled by Admin.`,
+          timestamp: new Date().toISOString()
+        };
+
+        await updateDoc(doc(db, 'requests', id), {
+          status: 'cancelled',
+          cancelledAt: new Date().toISOString(),
+          cancelledBy: 'admin',
+          cancelledByUserId: userData?.uid || 'unknown',
+          cancelledByUserName: userData?.first_name || 'Admin',
+          chat: arrayUnion(sysMessage)
+        });
+
+        // Update local state
+        setRequests(requests.map(r => r.id === id ? { ...r, status: 'cancelled' } : r));
+
+        alert("Job request cancelled successfully.");
+      } catch (err) {
+        console.error("Error cancelling job request:", err);
+        alert("Failed to cancel job request. Please try again.");
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -966,7 +1039,11 @@ const Dashboard: React.FC = () => {
                                              {activeTab === 'pending' || activeTab === 'declined' ? (
                                                <>
                                                  <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
-                                                 <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
+                                                 {isAdmin ? (
+                                                   <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
+                                                 ) : (
+                                                   <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
+                                                 )}
                                                </>
                                              ) : (
                                                <>

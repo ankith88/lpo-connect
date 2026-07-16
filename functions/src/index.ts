@@ -415,12 +415,22 @@ export const onCustomerCancelled = onDocumentUpdated({
     const reason = newData.cancellationReason || "No reason provided";
     const notes = newData.cancellationNotes || "No notes provided";
 
+    const linkedZeeDetails = newData.linkedZeeDetails || "";
+    const [zeeName, zeeEmail] = linkedZeeDetails.split(',').map((s: string) => s.trim());
+
+    const recipients = ["mailplusit@mailplus.com.au"];
+    if (zeeEmail) {
+      recipients.unshift(zeeEmail); // Primary recipient is the franchisee
+    }
+
     const mailOptions = {
       from: '"LPO.PLUS Notifications" <bookings@lpo.plus>',
-      to: "mailplusit@mailplus.com.au",
+      to: recipients.join(','),
+      cc: "mailplusit@mailplus.com.au", // Ensure mailplusit is always CC'd
       subject: `CUSTOMER CANCELLED: ${customerName} (${lpoName})`,
       html: `
         <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+          <p>Hello ${zeeName || 'Franchisee'},</p>
           <h2 style="color: #dc2626;">Customer Cancellation Notification</h2>
           <p>The following customer has been cancelled in the LPO.PLUS system.</p>
           
@@ -467,7 +477,7 @@ export const onCustomerCancelled = onDocumentUpdated({
       // Log to communications
       await logCommunication({
         from: "bookings@lpo.plus",
-        to: "mailplusit@mailplus.com.au",
+        to: mailOptions.to,
         subject: mailOptions.subject,
         body: mailOptions.html,
         type: 'sent',
@@ -2356,6 +2366,17 @@ export const sendScheduleNotification = onCall({
     console.error("Error fetching customer for notification:", err);
   }
 
+  // Fetch LPO Name
+  let lpoName = "An operator";
+  try {
+    const lpoDoc = await db.collection("lpo").doc(lpoId).get();
+    if (lpoDoc.exists) {
+      lpoName = lpoDoc.data()?.name || "An operator";
+    }
+  } catch (err) {
+    console.error("Error fetching LPO for notification:", err);
+  }
+
   const linkedZeeDetails = customerData?.linkedZeeDetails || "";
   const [zeeName, zeeEmail] = linkedZeeDetails.split(',').map((s: string) => s.trim());
   
@@ -2408,11 +2429,10 @@ export const sendScheduleNotification = onCall({
         <p>This is an automated notification regarding the recurring service for <strong>${companyName}</strong>.</p>
         
         <div style="background: #f8fafb; padding: 20px; border-radius: 8px; border-left: 4px solid #EAF044; margin: 25px 0;">
-          <p style="margin: 0; font-weight: 500;">An operator has <strong>${actionText}</strong>.</p>
+          <p style="margin: 0; font-weight: 500;">${lpoName} has <strong>${actionText}</strong>.</p>
           ${date ? `<p style="margin: 10px 0 0 0;"><strong>Affected Date:</strong> ${date}</p>` : ''}
         </div>
 
-        <p>Please update your run sheets and driver manifest accordingly.</p>
         <p style="font-size: 14px; color: #666; margin-top: 30px;">If you have any questions, please contact the LPO dispatch team.</p>
       </div>
       <div style="background-color: #f4f7f8; padding: 20px; text-align: center; font-size: 12px; color: #999;">

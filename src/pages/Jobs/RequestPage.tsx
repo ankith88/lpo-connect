@@ -39,7 +39,7 @@ import { requestNotificationPermission, saveTokenToFirestore, onForegroundMessag
 
 const RequestPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { lpo, userData, loading: lpoLoading } = useLpo();
+  const { lpo, userData, loading: lpoLoading, isAdmin } = useLpo();
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isAccepting, setIsAccepting] = useState(false);
@@ -283,16 +283,16 @@ const RequestPage: React.FC = () => {
         const sysMessage = {
           id: Date.now().toString(),
           sender: 'system',
-          text: `Job cancelled by ${isLpoUser ? 'MailPlus LPO' : 'Franchisee'}.`,
+          text: `Job cancelled by ${isAdmin ? 'Admin' : (isLpoUser ? 'MailPlus LPO' : 'Franchisee')}.`,
           timestamp: new Date().toISOString()
         };
 
         await updateDoc(doc(db, 'requests', id), {
           status: 'cancelled',
           cancelledAt: new Date().toISOString(),
-          cancelledBy: isLpoUser ? 'operator' : 'customer',
+          cancelledBy: isAdmin ? 'admin' : (isLpoUser ? 'operator' : 'customer'),
           cancelledByUserId: userData?.uid || 'unknown',
-          cancelledByUserName: userData?.first_name || (isLpoUser ? 'operator' : 'customer'),
+          cancelledByUserName: userData?.first_name || (isAdmin ? 'Admin' : (isLpoUser ? 'operator' : 'customer')),
           chat: arrayUnion(sysMessage)
         });
 
@@ -797,7 +797,7 @@ const RequestPage: React.FC = () => {
            
            {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && !isHistory && (
              <div className="operator-actions desktop-only">
-               {isLpoUser ? (
+               {isLpoUser || isAdmin ? (
                  <>
                    <button className="btn-reject" onClick={handleCancelRequest}>
                      <XCircle size={18} /> CANCEL REQUEST
@@ -1140,7 +1140,7 @@ const RequestPage: React.FC = () => {
        {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && !isHistory && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
-            {isLpoUser ? (
+            {isLpoUser || isAdmin ? (
               <>
                 <button className="btn-reject" style={{ width: '100%' }} onClick={handleCancelRequest}>
                   <XCircle size={18} /> CANCEL REQUEST

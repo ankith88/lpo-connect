@@ -84,6 +84,7 @@ const Schedules: React.FC = () => {
   };
 
   const handleSkipDate = async (jobId: string, date: string) => {
+    if (!window.confirm(`Are you sure you want to skip the visit on ${date}?`)) return;
     try {
       await updateDoc(doc(db, 'scheduled_jobs', jobId), {
         skippedDates: arrayUnion(date),
@@ -167,6 +168,13 @@ const Schedules: React.FC = () => {
     const schedule = schedules.find(s => s.id === jobId);
     if (!schedule) return;
     const currentFreq = schedule.frequency || [];
+    const isRemoving = currentFreq.includes(day);
+    const actionMsg = isRemoving 
+      ? `remove ${day} from` 
+      : `add ${day} to`;
+    
+    if (!window.confirm(`Are you sure you want to ${actionMsg} the service frequency?`)) return;
+
     const newFreq = currentFreq.includes(day)
       ? currentFreq.filter((d: string) => d !== day)
       : [...currentFreq, day];
