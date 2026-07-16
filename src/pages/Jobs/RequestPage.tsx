@@ -1257,7 +1257,11 @@ const RequestPage: React.FC = () => {
               </div>
               <div className="modal-body">
                  <p style={{ color: 'var(--ink-soft)', fontSize: '0.9rem', marginBottom: '10px' }}>
-                   Please provide a tentative time when the service will be performed today. This will be shared with the customer.
+                   Please provide a tentative time when the service will be performed on{' '}
+                   <strong>
+                     {request?.date ? parseLocalDate(request.date).toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' }) : 'today'}
+                   </strong>
+                   . This will be shared with the customer.
                  </p>
                  <div className="input-group">
                     <label>Tentative Service Time</label>
