@@ -1011,62 +1011,62 @@ const Dashboard: React.FC = () => {
                                     </div>
                                 </div>
 
-                                 <div className="card-actions">
-                                     {activeTab === 'pending' || activeTab === 'expired-requests' || activeTab === 'declined' ? (
-                                      <div className="messaging-group">
-                                        <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
-                                           <MessageSquare size={16} />
-                                           <span>CHAT & MANAGE</span>
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <div className="messaging-group">
-                                         {job.originalRequestId && job.date >= today ? (
-                                           <button className="btn-primary-glass mini-chat live-chat-highlight" onClick={() => window.open(`/request/${job.originalRequestId}`, '_blank')}>
-                                              <MessageSquare size={16} />
-                                              <span>LIVE CHAT</span>
-                                           </button>
-                                         ) : (
-                                           <button className="btn-primary-glass mini-chat" onClick={() => handleCommunication(job)}>
-                                              <MessageSquare size={16} />
-                                              <span>CONTACT OPERATOR</span>
-                                           </button>
-                                         )}
-                                      </div>
-                                    )}
-                                    <div className="overflow-menu">
-                                       <div className="menu-trigger">
-                                          <MoreHorizontal size={18} />
-                                          <div className="menu-dropdown glass">
-                                             {activeTab === 'pending' || activeTab === 'declined' ? (
-                                               <>
-                                                 <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
-                                                 {isAdmin ? (
-                                                   <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
-                                                 ) : (
-                                                   <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
-                                                 )}
-                                               </>
-                                             ) : activeTab === 'expired-requests' ? (
-                                               <>
-                                                 <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
-                                                 {isAdmin ? (
-                                                   <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
-                                                 ) : (
-                                                   <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
-                                                 )}
-                                               </>
-                                             ) : (
-                                               <>
-                                                 <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
-                                                 {(job.status !== 'accepted' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed') && (
-                                                   <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> {job.status === 'awaiting-driver' ? 'Cancel Job' : 'Cancel'}</button>
-                                                 )}
-                                               </>
-                                             )}
+                                <div className="card-actions">
+                                      {activeTab === 'expired-requests' ? (
+                                       <div className="messaging-group">
+                                         <button className="btn-primary-glass mini-chat" onClick={() => handleRebook(job)}>
+                                            <RotateCcw size={16} />
+                                            <span>REBOOK</span>
+                                         </button>
+                                       </div>
+                                      ) : activeTab === 'pending' || activeTab === 'declined' ? (
+                                       <div className="messaging-group">
+                                         <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
+                                            <MessageSquare size={16} />
+                                            <span>CHAT & MANAGE</span>
+                                         </button>
+                                       </div>
+                                     ) : (
+                                       <div className="messaging-group">
+                                          {job.originalRequestId && job.date >= today ? (
+                                            <button className="btn-primary-glass mini-chat live-chat-highlight" onClick={() => window.open(`/request/${job.originalRequestId}`, '_blank')}>
+                                               <MessageSquare size={16} />
+                                               <span>LIVE CHAT</span>
+                                            </button>
+                                          ) : (
+                                            <button className="btn-primary-glass mini-chat" onClick={() => handleCommunication(job)}>
+                                               <MessageSquare size={16} />
+                                               <span>CONTACT OPERATOR</span>
+                                            </button>
+                                          )}
+                                       </div>
+                                     )}
+                                     {activeTab !== 'expired-requests' && (
+                                       <div className="overflow-menu">
+                                          <div className="menu-trigger">
+                                             <MoreHorizontal size={18} />
+                                             <div className="menu-dropdown glass">
+                                                {activeTab === 'pending' || activeTab === 'declined' ? (
+                                                  <>
+                                                    <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
+                                                    {isAdmin ? (
+                                                      <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
+                                                    ) : (
+                                                      <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
+                                                    )}
+                                                  </>
+                                                ) : (
+                                                  <>
+                                                    <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
+                                                    {(job.status !== 'accepted' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed') && (
+                                                      <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> {job.status === 'awaiting-driver' ? 'Cancel Job' : 'Cancel'}</button>
+                                                    )}
+                                                  </>
+                                                )}
+                                             </div>
                                           </div>
                                        </div>
-                                    </div>
+                                     )}
                                  </div>
                              </div>
                           </div>
