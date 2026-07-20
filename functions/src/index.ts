@@ -2515,3 +2515,42 @@ export const testReports = onRequest({
     res.status(500).send(`Error triggering report: ${error.message}`);
   }
 });
+
+/**
+ * API to check if an LPO exists in the database and is active.
+ * Exposes a public API endpoint called from the ProspectPlus application.
+ */
+export const checkLpoStatus = onRequest({ cors: true }, async (req, res) => {
+  const id = req.query.id as string || req.body.id as string;
+  if (!id) {
+    res.status(400).json({ success: false, error: "Missing LPO ID" });
+    return;
+  }
+
+  try {
+    const docRef = db.collection("lpo").doc(id);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+      res.json({ success: true, name: null, isActive: false });
+      return;
+    }
+
+    const fields = docSnap.data() || {};
+    const name = fields.name || null;
+
+    const isActive = fields.active === true || 
+                     fields.registered === true || 
+                     fields.hasAccount === true || 
+                     (fields.status && ['active', 'registered', 'joined', 'completed'].includes(fields.status.toLowerCase())) ||
+                     !!fields.userId || 
+                     !!fields.ownerId ||
+                     !!fields.userUid ||
+                     true; // If doc exists, indicate active/created
+
+    res.json({ success: true, name, isActive });
+  } catch (error: any) {
+    console.error("Error checking LPO status:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
