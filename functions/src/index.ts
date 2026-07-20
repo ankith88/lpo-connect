@@ -2528,6 +2528,7 @@ export const checkLpoStatus = onRequest({ cors: true }, async (req, res) => {
   }
 
   try {
+    const db = getDB();
     const docRef = db.collection("lpo").doc(id);
     const docSnap = await docRef.get();
 
