@@ -2538,15 +2538,7 @@ export const checkLpoStatus = onRequest({ cors: true }, async (req, res) => {
 
     const fields = docSnap.data() || {};
     const name = fields.name || null;
-
-    const isActive = fields.active === true || 
-                     fields.registered === true || 
-                     fields.hasAccount === true || 
-                     (fields.status && ['active', 'registered', 'joined', 'completed'].includes(fields.status.toLowerCase())) ||
-                     !!fields.userId || 
-                     !!fields.ownerId ||
-                     !!fields.userUid ||
-                     true; // If doc exists, indicate active/created
+    const isActive = true;
 
     res.json({ success: true, name, isActive });
   } catch (error: any) {
