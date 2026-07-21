@@ -494,6 +494,188 @@ export const onCustomerCancelled = onDocumentUpdated({
   }
 });
 
+// Logic: onCustomerAddressUpdated
+export const onCustomerAddressUpdated = onDocumentUpdated({
+  document: "lpo/{lpoId}/customers/{customerId}",
+  database: "lpoconnect",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  const newData = event.data?.after.data();
+  const oldData = event.data?.before.data();
+  const { lpoId, customerId } = event.params;
+
+  if (!newData || !oldData) return;
+
+  const oldStreet = oldData.address1 || oldData.address?.street || "";
+  const oldSuburb = oldData.city || oldData.address?.suburb || "";
+  const oldState = oldData.state || oldData.address?.state || "";
+  const oldPostcode = oldData.postcode || oldData.zip || oldData.address?.postcode || "";
+
+  const newStreet = newData.address1 || newData.address?.street || "";
+  const newSuburb = newData.city || newData.address?.suburb || "";
+  const newState = newData.state || newData.address?.state || "";
+  const newPostcode = newData.postcode || newData.zip || newData.address?.postcode || "";
+
+  const addressChanged = 
+    oldStreet !== newStreet || 
+    oldSuburb !== newSuburb || 
+    oldState !== newState || 
+    oldPostcode !== newPostcode;
+
+  if (!addressChanged) return;
+
+  console.log(`[Address Update] Triggered for ${newData.companyName} (${customerId})`);
+
+  const db = getDB();
+
+  let lpoName = "Unknown LPO";
+  let rawTerritories: any[] = [];
+  try {
+    const lpoDoc = await db.collection("lpo").doc(lpoId).get();
+    if (lpoDoc.exists) {
+      const lpoData = lpoDoc.data();
+      lpoName = lpoData?.name || lpoName;
+      
+      const territoryJSON = lpoData?.franchiseeTerritoryJSON;
+      if (territoryJSON) {
+        if (Array.isArray(territoryJSON)) {
+          rawTerritories = territoryJSON;
+        } else {
+          try {
+            const parsed = JSON.parse(territoryJSON);
+            rawTerritories = Array.isArray(parsed) ? parsed : [];
+          } catch (e) {
+            console.error("Failed to parse territory JSON:", e);
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error fetching LPO:", e);
+  }
+
+  const parsedTerritories = rawTerritories.map(item => {
+    if (typeof item === 'string') {
+      const parts = item.split(',');
+      const suburb = parts[0]?.trim() || '';
+      const rest = parts[1]?.trim() || '';
+      const restParts = rest.split(' ');
+      const state = restParts[0] || '';
+      const postcode = restParts[restParts.length - 1] || '';
+      return { suburb, state, postcode };
+    }
+    return {
+      suburb: item.suburb || '',
+      state: item.state || '',
+      postcode: item.postcode || ''
+    };
+  });
+
+  const cleanNewSuburb = newSuburb.trim().toUpperCase();
+  const cleanNewState = newState.trim().toUpperCase();
+  const cleanNewPostcode = newPostcode.toString().trim();
+
+  const isCovered = parsedTerritories.some(t => {
+    return t.suburb.toUpperCase() === cleanNewSuburb && 
+           t.state.toUpperCase() === cleanNewState && 
+           t.postcode === cleanNewPostcode;
+  });
+
+  const customerName = newData.companyName || newData.company_name || "Unknown Customer";
+  const netsuiteId = newData.companyId || newData.customerInternalId || newData.netsuiteId || "N/A";
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: "bookings@lpo.plus",
+      pass: gmailAppPassword.value(),
+    },
+  });
+
+  const coverageMessage = isCovered
+    ? `<div style="background: #e6f4ea; border: 1px solid #34a853; color: #137333; padding: 15px; border-radius: 8px; margin-top: 15px;">
+        <strong>Address Coverage Verified:</strong> The new address matches the LPO's suburb mapping. The user can create jobs immediately.
+       </div>`
+    : `<div style="background: #fce8e6; border: 1px solid #ea4335; color: #c5221f; padding: 15px; border-radius: 8px; margin-top: 15px;">
+        <strong>Address Coverage Warning:</strong> Warning: The new address matches suburb and state but not the exact postcode, or is not in the suburb mapping. Because of this, the LPO cannot create jobs for this customer.
+       </div>`;
+
+  const mailOptions = {
+    from: '"LPO.PLUS Notifications" <bookings@lpo.plus>',
+    to: "mailplusit@mailplus.com.au",
+    subject: `CUSTOMER ADDRESS UPDATED: ${customerName} (${lpoName})`,
+    html: `
+      <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+        <h2>Customer Address Update Notification</h2>
+        <p>A customer's address has been updated in the LPO.PLUS system.</p>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #e9ecef; margin: 20px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #666; width: 180px;"><strong>Customer Name:</strong></td>
+              <td>${customerName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666;"><strong>NetSuite ID:</strong></td>
+              <td>${netsuiteId}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #666;"><strong>LPO Name (ID):</strong></td>
+              <td>${lpoName} (${lpoId})</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="margin: 20px 0; display: flex; gap: 20px;">
+          <div style="flex: 1; background: #f1f3f4; padding: 15px; border-radius: 8px; border: 1px solid #dadce0;">
+            <h4 style="margin-top: 0; color: #5f6368;">Old Address</h4>
+            <p style="margin-bottom: 0;">
+              ${oldStreet}<br>
+              ${oldSuburb} ${oldState} ${oldPostcode}
+            </p>
+          </div>
+          <div style="flex: 1; background: #f1f3f4; padding: 15px; border-radius: 8px; border: dadce0;">
+            <h4 style="margin-top: 0; color: #5f6368;">New Address</h4>
+            <p style="margin-bottom: 0;">
+              ${newStreet}<br>
+              ${newSuburb} ${newState} ${newPostcode}
+            </p>
+          </div>
+        </div>
+
+        ${coverageMessage}
+
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="font-size: 12px; color: #999;">
+          LPO ID: ${lpoId}<br>
+          Customer ID: ${customerId}
+        </p>
+      </div>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`[Email Success] Address update email sent for ${customerName}`);
+
+    await logCommunication({
+      from: "bookings@lpo.plus",
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      body: mailOptions.html,
+      type: 'sent',
+      metadata: {
+        lpoId,
+        customerId,
+        companyName: customerName,
+        type: 'address_update_notification'
+      }
+    });
+  } catch (error) {
+    console.error(`[Email Error] Failed to send address update email:`, error);
+  }
+});
+
 // Logic: sendEmailFromNetSuite (NetSuite API)
 export const sendEmailFromNetSuite = onRequest({
   secrets: [gmailAppPassword, netsuiteApiKey],

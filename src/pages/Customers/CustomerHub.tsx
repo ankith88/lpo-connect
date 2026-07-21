@@ -262,140 +262,200 @@ const CustomerHub: React.FC = () => {
              </div>
            ) : (
              <div className="customer-grid">
-                {filteredCustomers.map((customer) => (
-                   <div key={customer.id} className="customer-card glass-card">
-                       <div className="card-header-premium">
-                          <div className="header-top-row">
-                             <div className={`status-badge-premium ${customer.status === 'Active' ? 'active' : customer.status === 'cancelled' ? 'cancelled' : 'awaiting'}`}>
-                                {customer.status === 'Active' ? 'ACTIVE' : customer.status === 'cancelled' ? 'CANCELLED' : 'AWAITING T&C'}
-                             </div>
-                             <div className="card-actions-group">
-                                <button 
-                                  className="action-btn-pill" 
-                                  onClick={() => {
-                                    setEditingCustomer(customer);
-                                    setIsEditModalOpen(true);
-                                  }}
-                                  title="Edit Contact Details"
-                                >
-                                   <Edit2 size={14} />
-                                </button>
-                                <button 
-                                  className="action-btn-pill" 
-                                  onClick={() => {
-                                    setNotesCustomer(customer);
-                                    setIsNotesModalOpen(true);
-                                  }}
-                                  title="Customer Notes"
-                                >
-                                   <StickyNote size={14} />
-                                </button>
-                                {customer.status !== 'cancelled' && (
-                                  <button 
-                                    className="action-btn-pill cancel" 
-                                    onClick={() => {
-                                      setCancellingCustomer(customer);
-                                      setIsCancelModalOpen(true);
-                                    }}
-                                    title="Cancel Customer"
-                                  >
-                                     <UserMinus size={14} />
-                                  </button>
-                                )}
-                             </div>
-                          </div>
+                {filteredCustomers.map((customer) => {
+                    const targetLpo = allLpos.find(l => l.id === customer.lpo_id) || (customer.lpo_id === lpo?.id ? lpo : null);
+                    let parsedTerritories: any[] = [];
+                    if (targetLpo?.franchiseeTerritoryJSON) {
+                      let rawTerritories: any[] = [];
+                      if (Array.isArray(targetLpo.franchiseeTerritoryJSON)) {
+                        rawTerritories = targetLpo.franchiseeTerritoryJSON;
+                      } else {
+                        try {
+                          const parsed = JSON.parse(targetLpo.franchiseeTerritoryJSON);
+                          rawTerritories = Array.isArray(parsed) ? parsed : [];
+                        } catch (e) {
+                          console.error("Failed to parse territory JSON:", e);
+                        }
+                      }
+                      parsedTerritories = rawTerritories.map(item => {
+                        if (typeof item === 'string') {
+                          const parts = item.split(',');
+                          const suburb = parts[0]?.trim() || '';
+                          const rest = parts[1]?.trim() || '';
+                          const restParts = rest.split(' ');
+                          const state = restParts[0] || '';
+                          const postcode = restParts[restParts.length - 1] || '';
+                          return { suburb, state, postcode };
+                        }
+                        return {
+                          suburb: item.suburb || '',
+                          state: item.state || '',
+                          postcode: item.postcode || ''
+                        };
+                      });
+                    }
 
-                          <div className="header-main-row">
-                             <div className="avatar">
-                                {(customer.companyName || customer.company_name || '?').charAt(0)}
-                             </div>
-                             <div className="main-info">
-                                <h3>{customer.companyName || customer.company_name}</h3>
-                                <div className="info-tags">
-                                   {isAdmin && customer.lpoName && (
-                                     <div className="sub-info lpo-tag">
-                                        <Building2 size={12} />
-                                        <span>LPO: {customer.lpoName}</span>
-                                     </div>
-                                   )}
-                                   {customer.franchiseeText && (
-                                     <div className="sub-info franchisee-tag">
-                                        <Users size={12} />
-                                        <span>{customer.franchiseeText}</span>
-                                     </div>
-                                   )}
+                    const custSuburb = (customer.city || customer.address?.suburb || '').trim().toUpperCase();
+                    const custState = (customer.state || customer.address?.state || '').trim().toUpperCase();
+                    const custPostcode = (customer.postcode || customer.zip || customer.address?.postcode || '').toString().trim();
+
+                    const isAddressCovered = parsedTerritories.length > 0 ? parsedTerritories.some(t => {
+                      return t.suburb.toUpperCase() === custSuburb && 
+                             t.state.toUpperCase() === custState && 
+                             t.postcode === custPostcode;
+                    }) : true;
+
+                    const isOutsideCoverage = targetLpo?.franchiseeTerritoryJSON ? !isAddressCovered : false;
+
+                    return (
+                      <div key={customer.id} className="customer-card glass-card">
+                        <div className="card-header-premium">
+                           <div className="header-top-row">
+                              <div className={`status-badge-premium ${customer.status === 'Active' ? 'active' : customer.status === 'cancelled' ? 'cancelled' : 'awaiting'}`}>
+                                 {customer.status === 'Active' ? 'ACTIVE' : customer.status === 'cancelled' ? 'CANCELLED' : 'AWAITING T&C'}
+                              </div>
+                              <div className="card-actions-group">
+                                 <button 
+                                   className="action-btn-pill" 
+                                   onClick={() => {
+                                     setEditingCustomer(customer);
+                                     setIsEditModalOpen(true);
+                                   }}
+                                   title="Edit Contact Details"
+                                 >
+                                    <Edit2 size={14} />
+                                 </button>
+                                 <button 
+                                   className="action-btn-pill" 
+                                   onClick={() => {
+                                     setNotesCustomer(customer);
+                                     setIsNotesModalOpen(true);
+                                   }}
+                                   title="Customer Notes"
+                                 >
+                                    <StickyNote size={14} />
+                                 </button>
+                                 {customer.status !== 'cancelled' && (
+                                   <button 
+                                     className="action-btn-pill cancel" 
+                                     onClick={() => {
+                                       setCancellingCustomer(customer);
+                                       setIsCancelModalOpen(true);
+                                     }}
+                                     title="Cancel Customer"
+                                   >
+                                      <UserMinus size={14} />
+                                   </button>
+                                 )}
+                              </div>
+                           </div>
+
+                           <div className="header-main-row">
+                              <div className="avatar">
+                                 {(customer.companyName || customer.company_name || '?').charAt(0)}
+                              </div>
+                              <div className="main-info">
+                                 <h3>{customer.companyName || customer.company_name}</h3>
+                                 <div className="info-tags">
+                                    {isAdmin && customer.lpoName && (
+                                      <div className="sub-info lpo-tag">
+                                         <Building2 size={12} />
+                                         <span>LPO: {customer.lpoName}</span>
+                                      </div>
+                                    )}
+                                    {customer.franchiseeText && (
+                                      <div className="sub-info franchisee-tag">
+                                         <Users size={12} />
+                                         <span>{customer.franchiseeText}</span>
+                                      </div>
+                                    )}
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
+
+                        <div className="card-body">
+                           <div className="contact-item">
+                              <User size={14} />
+                              <span>{customer.firstName || customer.first_name ? `${customer.firstName || customer.first_name} ${customer.lastName || customer.last_name || ''}` : customer.contact || 'No contact name'}</span>
+                           </div>
+                           <div className="contact-item">
+                              <Mail size={14} />
+                              <span>{customer.customerEmail || customer.email || 'No email'}</span>
+                           </div>
+                           <div className="contact-item">
+                              <Phone size={14} />
+                              <span>{customer.customerPhone || customer.phone || 'No phone'}</span>
+                           </div>
+                           <div className="contact-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <MapPin size={14} />
+                                <span>{(customer.address1 || customer.address?.street || 'No address')}, {(customer.city || customer.address?.suburb || '')} {(customer.state || customer.address?.state || '')} {(customer.postcode || customer.zip || customer.address?.postcode || '')}</span>
+                              </div>
+                              {isOutsideCoverage && (
+                                <div className="coverage-warning" style={{ color: '#dc2626', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '6px', padding: '4px 8px', background: 'rgba(220, 38, 38, 0.08)', borderRadius: '6px' }}>
+                                  <MapPin size={12} />
+                                  <span>Outside LPO coverage area</span>
                                 </div>
+                              )}
+                           </div>
+                       </div>
+  
+                        <div className="services-setup-premium">
+                           <div className="setup-header">
+                              <Rocket size={12} />
+                              <span>SERVICES SETUP</span>
+                           </div>
+                           <div className="setup-tags">
+                              <span className={`service-tag-pill ${customer.lpoServiceAMPOInternalID && customer.lpoServiceAMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
+                                LPO ➔ Site
+                              </span>
+                              <span className={`service-tag-pill ${customer.lpoServicePMPOInternalID && customer.lpoServicePMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
+                                Site ➔ LPO
+                              </span>
+                              <span className={`service-tag-pill ${customer.lpoServiceAMPOPMPOInternalID && customer.lpoServiceAMPOPMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
+                                Round Trip
+                              </span>
+                           </div>
+                        </div>
+
+                       <div className="service-details-premium">
+                          <div className="detail-tag">
+                             <CreditCard size={12} />
+                             <span>Billing: <strong style={{ textTransform: 'uppercase' }}>{customer.billing || 'N/A'}</strong></span>
+                          </div>
+                          <div className="detail-tag">
+                             <Rocket size={12} />
+                             <span>Job Type: <strong style={{ textTransform: 'capitalize' }}>{customer.jobtype || customer.jobType || 'N/A'}</strong></span>
+                          </div>
+                       </div>
+
+                       <div className="card-footer">
+                          <div className="stats">
+                             <div className="stat-item">
+                              <label>Total Jobs</label>
+                              <span>{customer.totalJobs || 0}</span>
+                           </div>
+                           <div className="stat-item">
+                              <label>Last Service</label>
+                              <span>{customer.lastJobDate ? (customer.lastJobDate.includes('-') ? customer.lastJobDate.split('-').reverse().join('/') : new Date(customer.lastJobDate).toLocaleDateString()) : 'N/A'}</span>
                              </div>
                           </div>
+                          <button 
+                            className="view-details" 
+                            onClick={() => window.location.href = `/new-job?rebook=true&customerId=${customer.id}`} 
+                            title={isOutsideCoverage ? "Outside LPO Coverage" : "Book New Job"}
+                            disabled={isOutsideCoverage}
+                            style={isOutsideCoverage ? { opacity: 0.5, cursor: 'not-allowed', background: 'rgba(0, 0, 0, 0.05)', color: 'rgba(0, 0, 0, 0.3)' } : undefined}
+                          >
+                             <Plus size={18} />
+                          </button>
                        </div>
-
-                       <div className="card-body">
-                          <div className="contact-item">
-                             <User size={14} />
-                             <span>{customer.firstName || customer.first_name ? `${customer.firstName || customer.first_name} ${customer.lastName || customer.last_name || ''}` : customer.contact || 'No contact name'}</span>
-                          </div>
-                          <div className="contact-item">
-                             <Mail size={14} />
-                             <span>{customer.customerEmail || customer.email || 'No email'}</span>
-                          </div>
-                          <div className="contact-item">
-                             <Phone size={14} />
-                             <span>{customer.customerPhone || customer.phone || 'No phone'}</span>
-                          </div>
-                          <div className="contact-item">
-                             <MapPin size={14} />
-                             <span>{(customer.address1 || customer.address?.street || 'No address')}, {(customer.city || customer.address?.suburb || '')} {(customer.state || customer.address?.state || '')}</span>
-                          </div>
-                      </div>
- 
-                       <div className="services-setup-premium">
-                          <div className="setup-header">
-                             <Rocket size={12} />
-                             <span>SERVICES SETUP</span>
-                          </div>
-                          <div className="setup-tags">
-                             <span className={`service-tag-pill ${customer.lpoServiceAMPOInternalID && customer.lpoServiceAMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
-                               LPO ➔ Site
-                             </span>
-                             <span className={`service-tag-pill ${customer.lpoServicePMPOInternalID && customer.lpoServicePMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
-                               Site ➔ LPO
-                             </span>
-                             <span className={`service-tag-pill ${customer.lpoServiceAMPOPMPOInternalID && customer.lpoServiceAMPOPMPOInternalID !== 'null' ? 'enabled' : 'disabled'}`}>
-                               Round Trip
-                             </span>
-                          </div>
-                       </div>
-
-                      <div className="service-details-premium">
-                         <div className="detail-tag">
-                            <CreditCard size={12} />
-                            <span>Billing: <strong style={{ textTransform: 'uppercase' }}>{customer.billing || 'N/A'}</strong></span>
-                         </div>
-                         <div className="detail-tag">
-                            <Rocket size={12} />
-                            <span>Job Type: <strong style={{ textTransform: 'capitalize' }}>{customer.jobtype || customer.jobType || 'N/A'}</strong></span>
-                         </div>
-                      </div>
-
-                      <div className="card-footer">
-                         <div className="stats">
-                            <div className="stat-item">
-                             <label>Total Jobs</label>
-                             <span>{customer.totalJobs || 0}</span>
-                          </div>
-                          <div className="stat-item">
-                             <label>Last Service</label>
-                             <span>{customer.lastJobDate ? (customer.lastJobDate.includes('-') ? customer.lastJobDate.split('-').reverse().join('/') : new Date(customer.lastJobDate).toLocaleDateString()) : 'N/A'}</span>
-                            </div>
-                         </div>
-                         <button className="view-details" onClick={() => window.location.href = `/new-job?rebook=true&customerId=${customer.id}`} title="Book New Job">
-                            <Plus size={18} />
-                         </button>
-                      </div>
-                   </div>
-                ))}
-             </div>
-           )}
+                    </div>
+                 );
+                 })}
+              </div>
+            )}
         </div>
       </div>
 
