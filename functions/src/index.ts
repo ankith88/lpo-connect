@@ -1213,7 +1213,7 @@ export const sendTerritoryEscalation = onCall({
           <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 30px 0;">
           <p style="font-size: 12px; color: #94a3b8; text-align: center;">
             <strong>Source LPO:</strong> ${lpoName} (${lpoId})<br>
-            Sent via LocalMile.Plus Manual Review System
+            Sent via LPO.Plus Manual Review System
           </p>
         </div>
       </div>
@@ -1222,7 +1222,7 @@ export const sendTerritoryEscalation = onCall({
     const taggedHtml = injectMetadataTag(htmlContent, { lpo_id: lpoId, type: 'territory_escalation' });
 
     const mailOptions = {
-      from: '"LocalMile.Plus Manual Review" <bookings@lpo.plus>',
+      from: '"LPO.Plus" <bookings@lpo.plus>',
       to: recipients.join(","),
       subject: `TERRITORY ESCALATION: ${companyData.company} (${lpoName || lpoId})`,
       html: taggedHtml,
