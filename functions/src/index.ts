@@ -1177,6 +1177,26 @@ export const sendTerritoryEscalation = onCall({
 
     const recipients = ["mailplusit@mailplus.com.au", "michael.mcdaid@mailplus.com.au", "kerry.oneill@mailplus.com.au"];
 
+    const street = (companyData.address || '').trim();
+    const suburb = (companyData.suburb || '').trim();
+    const state = (companyData.state || '').trim();
+    const postcode = (companyData.postcode || '').trim();
+
+    const suburbStatePostcode = [suburb, state, postcode].filter(Boolean).join(' ');
+    let fullAddress = street;
+    if (suburbStatePostcode) {
+      if (street) {
+        const alreadyIncludesLocation = suburb
+          ? street.toLowerCase().includes(suburb.toLowerCase())
+          : (postcode && street.includes(postcode));
+        if (!alreadyIncludesLocation) {
+          fullAddress = `${street}, ${suburbStatePostcode}`;
+        }
+      } else {
+        fullAddress = suburbStatePostcode;
+      }
+    }
+
     const htmlContent = `
       <div style="font-family: sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto;">
         <div style="background: #dc2626; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
@@ -1190,7 +1210,7 @@ export const sendTerritoryEscalation = onCall({
             <h3 style="margin-top: 0; color: #1e3a8a; border-bottom: 2px solid #e2e8f0; padding-bottom: 8px;">Company Details</h3>
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
               <tr><td style="padding: 8px 0; color: #64748b; width: 140px;"><strong>Company Name:</strong></td><td style="font-weight: 600;">${companyData.company}</td></tr>
-              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Address:</strong></td><td>${companyData.address}</td></tr>
+              <tr><td style="padding: 8px 0; color: #64748b;"><strong>Address:</strong></td><td>${fullAddress || 'Not specified'}</td></tr>
               <tr><td style="padding: 8px 0; color: #64748b;"><strong>Contact Person:</strong></td><td>${companyData.firstName} ${companyData.lastName}</td></tr>
               <tr><td style="padding: 8px 0; color: #64748b;"><strong>Email:</strong></td><td>${companyData.email}</td></tr>
               <tr><td style="padding: 8px 0; color: #64748b;"><strong>Phone:</strong></td><td>${companyData.phone}</td></tr>
