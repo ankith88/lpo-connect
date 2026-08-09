@@ -910,7 +910,7 @@ const RequestPage: React.FC = () => {
                            <Clock size={20} className="pulse-clock" />
                         </div>
                         <div className="time-text-area">
-                           <label>SERVICE ON OR AFTER</label>
+                           <label>SERVICE {request.timeConstraintType === 'ON' ? 'ON' : 'AFTER'}</label>
                            <span className="time-value">{request.preferredTime}</span>
                         </div>
                      </div>

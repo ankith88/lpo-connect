@@ -872,6 +872,253 @@ export const onChatMessageSent = onDocumentUpdated({
   }
 });
 
+// Logic: onNewTimeProposed (Email Notification when franchisee proposes a new time)
+export const onNewTimeProposed = onDocumentUpdated({
+  document: "requests/{requestId}",
+  database: "lpoconnect",
+  secrets: [gmailAppPassword],
+}, async (event) => {
+  const afterData = event.data?.after.data();
+  const beforeData = event.data?.before.data();
+
+  if (!afterData || !beforeData) return;
+
+  const requestId = event.params.requestId;
+
+  // Trigger only when status changes to 'new-time-proposed'
+  if (afterData.status === "new-time-proposed" && beforeData.status !== "new-time-proposed") {
+    const lpoId = afterData.lpo_id;
+    const companyName = afterData.customer?.company || "Valued Customer";
+    const firstName = afterData.customer?.firstName || "there";
+    const proposedTime = afterData.preferredTime || "To be confirmed";
+    const date = afterData.date || "To be confirmed";
+    const serviceType = afterData.service || "Standard Service";
+
+    const db = getDB();
+    const recipientEmails: string[] = [];
+
+    // 1. Fetch user emails matching lpo_id from users collection
+    if (lpoId) {
+      try {
+        const usersSnap = await db.collection("users")
+          .where("lpo_id", "==", lpoId)
+          .get();
+
+        usersSnap.forEach((doc) => {
+          const userData = doc.data();
+          if (userData.email && typeof userData.email === "string") {
+            recipientEmails.push(userData.email.trim());
+          }
+        });
+      } catch (err) {
+        console.error(`[New Time Proposed] Error fetching users for lpo_id ${lpoId}:`, err);
+      }
+    }
+
+    // 2. Fallback to customer email on request if no user email found
+    if (recipientEmails.length === 0) {
+      const fallbackEmail = afterData.customer?.email || afterData.email;
+      if (fallbackEmail) {
+        recipientEmails.push(fallbackEmail.trim());
+      }
+    }
+
+    const uniqueRecipients = [...new Set(recipientEmails)].filter(Boolean);
+
+    if (uniqueRecipients.length === 0) {
+      console.warn(`[New Time Proposed] No user or customer email found for request ${requestId} (lpo_id: ${lpoId}). Skipping email notification.`);
+      return;
+    }
+
+    console.log(`[Email Automation] Preparing new-time-proposed email for ${uniqueRecipients.join(', ')} (Request: ${requestId}, lpo_id: ${lpoId})`);
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: "bookings@lpo.plus",
+        pass: gmailAppPassword.value(),
+      },
+    });
+
+    const displayService = typeof serviceType === 'string' 
+      ? serviceType.replace(/-/g, ' ').toUpperCase() 
+      : "SERVICE REQUESTED";
+
+    const refId = requestId.slice(0, 8).toUpperCase();
+    const portalUrl = `https://lpo.plus/request/${requestId}`;
+
+    const mailOptions = {
+      from: '"LPO.PLUS Notifications" <bookings@lpo.plus>',
+      to: uniqueRecipients.join(','),
+      cc: "dispatcher@mailplus.com.au",
+      replyTo: "dispatcher@mailplus.com.au",
+      subject: `New Time Proposed for Job Request #${refId} - ${companyName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            .email-container {
+              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+              max-width: 600px;
+              margin: 0 auto;
+              background-color: #ffffff;
+              border-radius: 12px;
+              overflow: hidden;
+              box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+              border: 1px solid #f0f0f0;
+            }
+            .header {
+              background-color: #095c7b;
+              padding: 40px 20px;
+              text-align: center;
+            }
+            .header h1 {
+              color: #ffffff;
+              margin: 0;
+              font-size: 24px;
+              font-weight: 300;
+              letter-spacing: 1px;
+            }
+            .header span {
+              color: #EAF044;
+              font-weight: bold;
+            }
+            .content {
+              padding: 40px 30px;
+              color: #333333;
+              line-height: 1.6;
+            }
+            .greeting {
+              font-size: 18px;
+              margin-bottom: 20px;
+              color: #095c7b;
+              font-weight: bold;
+            }
+            .job-details {
+              background-color: #f8fafb;
+              border-radius: 8px;
+              padding: 25px;
+              margin: 30px 0;
+              border-left: 4px solid #EAF044;
+            }
+            .detail-row {
+              margin-bottom: 12px;
+              display: flex;
+            }
+            .detail-label {
+              font-weight: bold;
+              width: 140px;
+              color: #666;
+              font-size: 13px;
+              text-transform: uppercase;
+            }
+            .detail-value {
+              color: #095c7b;
+              font-weight: 600;
+            }
+            .button-container {
+              text-align: center;
+              margin: 35px 0;
+            }
+            .btn-primary {
+              background-color: #095c7b;
+              color: #ffffff !important;
+              padding: 16px 32px;
+              text-decoration: none;
+              font-weight: bold;
+              border-radius: 8px;
+              display: inline-block;
+              box-shadow: 0 4px 12px rgba(9, 92, 123, 0.3);
+            }
+            .footer {
+              background-color: #f4f7f8;
+              padding: 30px;
+              text-align: center;
+              font-size: 12px;
+              color: #999;
+            }
+            .footer p {
+              margin: 5px 0;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="email-container">
+            <div class="header">
+              <h1>LPO<span>.PLUS</span></h1>
+            </div>
+            <div class="content">
+              <div class="greeting">Action Needed: New Time Proposed</div>
+              <p>Hello ${firstName},</p>
+              <p>The franchisee operator assigned to your job request for <strong>${companyName}</strong> has proposed a new service time.</p>
+              
+              <div class="job-details">
+                <div class="detail-row">
+                  <span class="detail-label">Reference ID:</span>
+                  <span class="detail-value">#${refId}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Service:</span>
+                  <span class="detail-value">${displayService}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Scheduled Date:</span>
+                  <span class="detail-value">${date}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Proposed Time:</span>
+                  <span class="detail-value" style="color: #d97706; font-size: 16px;">${proposedTime}</span>
+                </div>
+              </div>
+
+              <p>Please review and accept this proposed time in the portal or chat directly with the team if you have any questions.</p>
+              
+              <div class="button-container">
+                <a href="${portalUrl}" class="btn-primary">
+                  REVIEW & ACCEPT PROPOSED TIME
+                </a>
+              </div>
+
+              <p style="font-size: 14px; color: #666;">If you need to make any urgent changes, please reply directly to this email or contact us at <a href="mailto:dispatcher@mailplus.com.au">dispatcher@mailplus.com.au</a>.</p>
+            </div>
+            <div class="footer">
+              <p><strong>LPO.PLUS</strong> | Premium Logistics Solutions</p>
+              <p>Powered by MailPlus Australia</p>
+              <p style="margin-top: 15px;">&copy; ${new Date().getFullYear()} LPO.PLUS. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      console.log(`[Email Success] New-time-proposed email sent to ${uniqueRecipients.join(', ')} (CC: dispatcher@mailplus.com.au). Message ID: ${info.messageId}`);
+
+      await logCommunication({
+        from: "bookings@lpo.plus",
+        to: uniqueRecipients,
+        subject: mailOptions.subject,
+        body: mailOptions.html,
+        type: "sent",
+        metadata: {
+          requestId,
+          recipients: uniqueRecipients,
+          lpoId: lpoId || null,
+          companyName: afterData.customer?.company || null,
+          status: "new-time-proposed",
+          proposedTime
+        }
+      });
+    } catch (error) {
+      console.error(`[Email Error] Failed to send new-time-proposed email to ${uniqueRecipients.join(', ')}:`, error);
+    }
+  }
+});
+
 // Logic: updateJobStatus
 export const updateJobStatus = onCall(async (request) => {
   if (!request.auth) {

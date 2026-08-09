@@ -56,6 +56,7 @@ interface JobData {
   jobType: 'one-off' | 'scheduled';
   frequency: string[];
   preferredTime?: string;
+  timeConstraintType?: 'ON' | 'AFTER';
   additionalBagRate?: string;
 }
 
@@ -109,6 +110,7 @@ const NewJobForm: React.FC = () => {
     jobType: 'one-off',
     frequency: [],
     preferredTime: '',
+    timeConstraintType: 'AFTER',
     additionalBagRate: '',
   });
 
@@ -157,7 +159,8 @@ const NewJobForm: React.FC = () => {
           date: jobData.date,
           jobType: jobData.jobType,
           frequency: jobData.frequency || [],
-          preferredTime: jobData.preferredTime || ''
+          preferredTime: jobData.preferredTime || '',
+          timeConstraintType: jobData.timeConstraintType || 'AFTER'
         });
         setIsExistingCustomer(true);
       } catch (e) {
@@ -618,7 +621,8 @@ const NewJobForm: React.FC = () => {
           jobType: formData.jobType,
           startDate: formData.date,
           frequency: getShorthandFrequency(formData.frequency),
-          preferredTime: formData.preferredTime || ""
+          preferredTime: formData.preferredTime || "",
+          timeConstraintType: formData.timeConstraintType || "AFTER"
         });
 
         const nsResponse = await fetch(`${NETSUITE_API}&${params.toString()}`);
@@ -1185,14 +1189,58 @@ const NewJobForm: React.FC = () => {
                     </div>
 
                     <div className="selection-group flex-1">
-                      <label className="group-label">Service On or After Time (Optional)</label>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label className="group-label" style={{ margin: 0 }}>Service Time (Optional)</label>
+                        <div className="time-constraint-toggle" style={{ display: 'flex', gap: '4px', background: 'var(--cream-warm)', padding: '2px 4px', borderRadius: '10px' }}>
+                          <button 
+                            type="button"
+                            className={`type-tab ${formData.timeConstraintType === 'AFTER' || !formData.timeConstraintType ? 'active' : ''}`}
+                            style={{
+                              padding: '3px 10px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              borderRadius: '7px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              background: (formData.timeConstraintType === 'AFTER' || !formData.timeConstraintType) ? 'var(--ink)' : 'transparent',
+                              color: (formData.timeConstraintType === 'AFTER' || !formData.timeConstraintType) ? 'white' : 'var(--ink-soft)',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onClick={() => setFormData({...formData, timeConstraintType: 'AFTER'})}
+                          >
+                            AFTER
+                          </button>
+                          <button 
+                            type="button"
+                            className={`type-tab ${formData.timeConstraintType === 'ON' ? 'active' : ''}`}
+                            style={{
+                              padding: '3px 10px',
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              borderRadius: '7px',
+                              border: 'none',
+                              cursor: 'pointer',
+                              background: formData.timeConstraintType === 'ON' ? 'var(--ink)' : 'transparent',
+                              color: formData.timeConstraintType === 'ON' ? 'white' : 'var(--ink-soft)',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onClick={() => setFormData({...formData, timeConstraintType: 'ON'})}
+                          >
+                            ON
+                          </button>
+                        </div>
+                      </div>
                       <div className="custom-booking-time">
                         <CustomTimePicker 
                           value={formData.preferredTime}
                           onChange={(val) => setFormData({...formData, preferredTime: val})}
                         />
                       </div>
-                      <p className="field-hint">Specify a time only if the job needs to be completed on or after a certain time (e.g., when items are ready for collection). Leave blank if the operator can attend anytime during business hours.</p>
+                      <p className="field-hint">
+                        {formData.timeConstraintType === 'ON' 
+                          ? 'Specify a time if the job must be performed ON this time. Leave blank if operator can attend anytime during business hours.' 
+                          : 'Specify a time only if the job needs to be completed on or after a certain time (e.g., when items are ready for collection). Leave blank if operator can attend anytime.'}
+                      </p>
                     </div>
                   </div>
                   
@@ -1313,7 +1361,7 @@ const NewJobForm: React.FC = () => {
                       </div>
                       {formData.preferredTime && (
                         <div className="v-row">
-                          <span className="v-label">SERVICE ON/AFTER</span>
+                          <span className="v-label">SERVICE {formData.timeConstraintType === 'ON' ? 'ON' : 'AFTER'}</span>
                           <span className="v-val">{formData.preferredTime}</span>
                         </div>
                       )}
