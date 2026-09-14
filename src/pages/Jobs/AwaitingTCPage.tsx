@@ -28,7 +28,7 @@ import { useLpo } from '../../context/LpoContext';
 import CustomSelect from '../../components/CustomSelect';
 
 const AwaitingTCPage: React.FC = () => {
-  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
+  const { lpo, isAdmin, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,8 +55,13 @@ const AwaitingTCPage: React.FC = () => {
         let reqBaseQ = collection(db, 'requests');
         let constraints: any[] = [];
 
-        if (selectedLpoId !== 'all') {
-          constraints.push(where('lpo_id', '==', selectedLpoId));
+        const isFilteredByLpo = !selectedLpoIds.includes('all') && selectedLpoIds.length > 0;
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            constraints.push(where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            constraints.push(where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
         }
 
         const reqQ = query(reqBaseQ, ...constraints);
@@ -74,12 +79,12 @@ const AwaitingTCPage: React.FC = () => {
     if (lpo || isAdmin) {
       fetchData();
     }
-  }, [lpo, isAdmin, selectedLpoId]);
+  }, [lpo, isAdmin, selectedLpoIds]);
 
   const filteredRequests = requests.filter(j => {
-    const matchesSearch = j.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         j.customer.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         j.id.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (j.customer?.company || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         (j.customer?.address || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (j.id || '').toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSearch;
   });
 
@@ -212,13 +217,14 @@ const AwaitingTCPage: React.FC = () => {
             <div className="glass-card filter-bar">
               {isAdmin && (
                 <CustomSelect 
-                  value={selectedLpoId}
-                  onChange={(val) => setSelectedLpoId(val)}
+                  value={selectedLpoIds}
+                  onChange={(val) => setSelectedLpoIds(val)}
                   options={[
                     { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
                     ...allLpos.map(l => ({ value: l.id, label: l.name || l.id, icon: <MapPin size={14} /> }))
                   ]}
                   className="lpo-select-custom"
+                  multiple={true}
                 />
               )}
               <div className="search-pill">

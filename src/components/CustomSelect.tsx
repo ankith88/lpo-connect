@@ -1,21 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 
-interface Option {
+export interface Option {
   value: string;
   label: string;
   icon?: React.ReactNode;
 }
 
-interface CustomSelectProps {
-  value: string;
-  onChange: (value: string) => void;
+export interface CustomSelectProps {
+  value: string | string[];
+  onChange: (value: any) => void;
   options: Option[];
   placeholder?: string;
   className?: string;
+  multiple?: boolean;
 }
 
-const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder, className }) => {
+const CustomSelect: React.FC<CustomSelectProps> = ({ 
+  value, 
+  onChange, 
+  options, 
+  placeholder, 
+  className,
+  multiple = false 
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -29,7 +37,77 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectedOption = options.find(opt => opt.value === value);
+  // Normalize selected values
+  const selectedValues: string[] = Array.isArray(value) 
+    ? value 
+    : (value !== undefined && value !== null && value !== '' ? [value] : ['all']);
+
+  const isAllSelected = selectedValues.includes('all') || selectedValues.length === 0;
+
+  const isOptionSelected = (optVal: string) => {
+    if (optVal === 'all') {
+      return isAllSelected;
+    }
+    return !isAllSelected && selectedValues.includes(optVal);
+  };
+
+  const handleOptionClick = (optVal: string) => {
+    if (!multiple) {
+      onChange(optVal);
+      setIsOpen(false);
+      return;
+    }
+
+    // Multi-select logic
+    if (optVal === 'all') {
+      onChange(['all']);
+      return;
+    }
+
+    if (isAllSelected) {
+      // If was 'all', selecting a specific option narrows down to that option
+      onChange([optVal]);
+    } else {
+      let newSelected: string[];
+      if (selectedValues.includes(optVal)) {
+        newSelected = selectedValues.filter(v => v !== optVal);
+        if (newSelected.length === 0) {
+          newSelected = ['all'];
+        }
+      } else {
+        newSelected = [...selectedValues.filter(v => v !== 'all'), optVal];
+        // If all non-'all' options are now selected, normalize to 'all'
+        const nonAllOptions = options.filter(o => o.value !== 'all');
+        if (nonAllOptions.length > 0 && newSelected.length === nonAllOptions.length) {
+          newSelected = ['all'];
+        }
+      }
+      onChange(newSelected);
+    }
+  };
+
+  // Determine trigger label and icon
+  const allOption = options.find(opt => opt.value === 'all');
+  const matchedSelectedOptions = options.filter(opt => opt.value !== 'all' && selectedValues.includes(opt.value));
+
+  let triggerIcon: React.ReactNode = undefined;
+  let triggerLabel: React.ReactNode = placeholder || 'Select option';
+
+  if (isAllSelected) {
+    triggerIcon = allOption?.icon;
+    triggerLabel = allOption ? allOption.label : (placeholder || 'All');
+  } else if (matchedSelectedOptions.length === 1) {
+    triggerIcon = matchedSelectedOptions[0].icon;
+    triggerLabel = matchedSelectedOptions[0].label;
+  } else if (matchedSelectedOptions.length > 1) {
+    triggerIcon = matchedSelectedOptions[0]?.icon;
+    triggerLabel = (
+      <span className="multi-label-group">
+        <span className="primary-text">{matchedSelectedOptions[0]?.label}</span>
+        <span className="count-badge">+{matchedSelectedOptions.length - 1}</span>
+      </span>
+    );
+  }
 
   return (
     <div className={`custom-select-container ${className || ''}`} ref={containerRef}>
@@ -38,9 +116,9 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="trigger-content">
-          {selectedOption?.icon && <span className="option-icon">{selectedOption.icon}</span>}
-          <span className={selectedOption ? 'selected-label' : 'placeholder'}>
-            {selectedOption ? selectedOption.label : (placeholder || 'Select option')}
+          {triggerIcon && <span className="option-icon">{triggerIcon}</span>}
+          <span className={selectedValues.length > 0 ? 'selected-label' : 'placeholder'}>
+            {triggerLabel}
           </span>
         </div>
         <ChevronDown size={16} className={`chevron ${isOpen ? 'rotate' : ''}`} />
@@ -48,22 +126,44 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
 
       {isOpen && (
         <div className="select-dropdown glass fade-in">
-          {options.map((option) => (
-            <div 
-              key={option.value} 
-              className={`select-option ${option.value === value ? 'selected' : ''}`}
-              onClick={() => {
-                onChange(option.value);
-                setIsOpen(false);
-              }}
-            >
-              <div className="option-info">
-                {option.icon && <span className="option-icon">{option.icon}</span>}
-                <span className="option-label">{option.label}</span>
-              </div>
-              {option.value === value && <Check size={14} className="check-icon" />}
+          {multiple && options.length > 3 && (
+            <div className="dropdown-quick-actions">
+              <button 
+                type="button" 
+                className="quick-action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChange(['all']);
+                }}
+              >
+                Reset to All
+              </button>
             </div>
-          ))}
+          )}
+
+          <div className="options-scroll-list">
+            {options.map((option) => {
+              const selected = isOptionSelected(option.value);
+              return (
+                <div 
+                  key={option.value} 
+                  className={`select-option ${selected ? 'selected' : ''}`}
+                  onClick={() => handleOptionClick(option.value)}
+                >
+                  <div className="option-info">
+                    {multiple && (
+                      <div className={`custom-checkbox ${selected ? 'checked' : ''}`}>
+                        {selected && <Check size={12} strokeWidth={3} />}
+                      </div>
+                    )}
+                    {option.icon && <span className="option-icon">{option.icon}</span>}
+                    <span className="option-label">{option.label}</span>
+                  </div>
+                  {!multiple && selected && <Check size={14} className="check-icon" />}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -84,7 +184,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
           border-radius: 14px;
           cursor: pointer;
           transition: all 0.2s;
-          color: var(--ink);
+          color: var(--ink, #1a3d33);
           font-weight: 600;
           font-size: 0.9rem;
         }
@@ -92,11 +192,11 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
         .select-trigger:hover {
           background: white;
           box-shadow: 0 4px 12px rgba(26, 61, 51, 0.05);
-          border-color: var(--ink);
+          border-color: var(--ink, #1a3d33);
         }
 
         .select-trigger.open {
-          border-color: var(--ink);
+          border-color: var(--ink, #1a3d33);
           box-shadow: 0 0 0 4px rgba(26, 61, 51, 0.05);
         }
 
@@ -111,10 +211,35 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          display: flex;
+          align-items: center;
+        }
+
+        .multi-label-group {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .multi-label-group .primary-text {
+          max-width: 110px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .count-badge {
+          background: var(--ink, #1a3d33);
+          color: white;
+          font-size: 0.72rem;
+          font-weight: 700;
+          padding: 1px 6px;
+          border-radius: 10px;
+          line-height: 1.3;
         }
 
         .placeholder {
-          color: var(--ink-soft);
+          color: var(--ink-soft, #5a736c);
           opacity: 0.5;
         }
 
@@ -134,15 +259,44 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
           top: calc(100% + 8px);
           left: 0;
           right: 0;
+          min-width: 210px;
           z-index: 1100;
-          background: rgba(255, 255, 255, 0.95);
+          background: rgba(255, 255, 255, 0.96);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(255, 255, 255, 0.5);
+          border: 1px solid rgba(255, 255, 255, 0.6);
           border-radius: 18px;
           padding: 6px;
           box-shadow: 0 20px 50px rgba(26, 61, 51, 0.15);
-          max-height: 300px;
+        }
+
+        .dropdown-quick-actions {
+          display: flex;
+          justify-content: flex-end;
+          padding: 4px 8px 6px 8px;
+          border-bottom: 1px solid rgba(26, 61, 51, 0.08);
+          margin-bottom: 4px;
+        }
+
+        .quick-action-btn {
+          background: none;
+          border: none;
+          color: var(--ink-soft, #5a736c);
+          font-size: 0.75rem;
+          font-weight: 700;
+          cursor: pointer;
+          padding: 2px 6px;
+          border-radius: 6px;
+          transition: all 0.2s;
+        }
+
+        .quick-action-btn:hover {
+          color: var(--ink, #1a3d33);
+          background: rgba(26, 61, 51, 0.05);
+        }
+
+        .options-scroll-list {
+          max-height: 280px;
           overflow-y: auto;
         }
 
@@ -150,34 +304,55 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 10px 12px;
-          border-radius: 12px;
+          padding: 8px 10px;
+          border-radius: 10px;
           cursor: pointer;
-          transition: all 0.2s;
-          color: var(--ink-soft);
+          transition: all 0.15s;
+          color: var(--ink-soft, #5a736c);
           font-weight: 600;
-          font-size: 0.9rem;
+          font-size: 0.88rem;
         }
 
         .select-option:hover {
           background: rgba(26, 61, 51, 0.05);
-          color: var(--ink);
-          transform: translateX(4px);
+          color: var(--ink, #1a3d33);
         }
 
         .select-option.selected {
-          background: var(--paper);
-          color: var(--ink);
+          background: rgba(26, 61, 51, 0.07);
+          color: var(--ink, #1a3d33);
         }
 
         .option-info {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 9px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .custom-checkbox {
+          width: 16px;
+          height: 16px;
+          border-radius: 4px;
+          border: 1.5px solid rgba(26, 61, 51, 0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: white;
+          color: white;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .custom-checkbox.checked {
+          background: var(--ink, #1a3d33);
+          border-color: var(--ink, #1a3d33);
         }
 
         .check-icon {
-          color: var(--gold);
+          color: var(--gold, #d4af37);
         }
 
         .fade-in {
@@ -190,17 +365,17 @@ const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, p
         }
 
         /* Custom Scrollbar */
-        .select-dropdown::-webkit-scrollbar {
+        .options-scroll-list::-webkit-scrollbar {
           width: 6px;
         }
-        .select-dropdown::-webkit-scrollbar-track {
+        .options-scroll-list::-webkit-scrollbar-track {
           background: transparent;
         }
-        .select-dropdown::-webkit-scrollbar-thumb {
+        .options-scroll-list::-webkit-scrollbar-thumb {
           background: rgba(26, 61, 51, 0.1);
           border-radius: 10px;
         }
-        .select-dropdown::-webkit-scrollbar-thumb:hover {
+        .options-scroll-list::-webkit-scrollbar-thumb:hover {
           background: rgba(26, 61, 51, 0.2);
         }
       `}</style>

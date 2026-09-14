@@ -18,7 +18,7 @@ import { useLpo } from '../../context/LpoContext';
 import CustomSelect from '../../components/CustomSelect';
 
 const Reports: React.FC = () => {
-  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
+  const { lpo, isAdmin, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalJobs: 0,
@@ -48,8 +48,13 @@ const Reports: React.FC = () => {
         let jobsBaseQ = collection(db, 'jobs');
         let jobsConstraints: any[] = [];
 
-        if (selectedLpoId !== 'all') {
-          jobsConstraints.push(where('lpo_id', '==', selectedLpoId));
+        const isFilteredByLpo = !selectedLpoIds.includes('all') && selectedLpoIds.length > 0;
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            jobsConstraints.push(where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            jobsConstraints.push(where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
         }
 
         const jobsQ = query(jobsBaseQ, ...jobsConstraints);
@@ -114,7 +119,7 @@ const Reports: React.FC = () => {
 
         // Fetch customers count
         let totalCustomers = 0;
-        const lposToQuery = selectedLpoId === 'all' ? allLpos : allLpos.filter(l => l.id === selectedLpoId);
+        const lposToQuery = isFilteredByLpo ? allLpos.filter(l => selectedLpoIds.includes(l.id)) : [...allLpos];
         
         // Ensure we have at least the current LPO if nothing else is selected/available
         if (lposToQuery.length === 0 && lpo) {
@@ -155,7 +160,7 @@ const Reports: React.FC = () => {
     if (lpo || isAdmin) {
       fetchStats();
     }
-  }, [lpo, isAdmin, selectedLpoId]);
+  }, [lpo, isAdmin, selectedLpoIds, allLpos]);
 
   const serviceLabels: Record<string, string> = {
     'lpo-to-site': 'LPO ➔ Site',
@@ -184,13 +189,14 @@ const Reports: React.FC = () => {
           <div className="header-right">
             {isAdmin && (
               <CustomSelect 
-                value={selectedLpoId}
-                onChange={(val) => setSelectedLpoId(val)}
+                value={selectedLpoIds}
+                onChange={(val) => setSelectedLpoIds(val)}
                 options={[
                   { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
                   ...allLpos.map(l => ({ value: l.id, label: l.name || l.id, icon: <MapPin size={14} /> }))
                 ]}
                 className="lpo-select-custom"
+                multiple={true}
               />
             )}
             <div className="date-range-glass">

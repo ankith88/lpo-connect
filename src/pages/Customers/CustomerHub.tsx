@@ -25,14 +25,14 @@ import { useLpo } from '../../context/LpoContext';
 import CustomSelect from '../../components/CustomSelect';
 
 const CustomerHub: React.FC = () => {
-  const { lpo, isAdmin, allLpos, selectedLpoId, setSelectedLpoId } = useLpo();
+  const { lpo, isAdmin, allLpos, selectedLpoIds, setSelectedLpoIds } = useLpo();
   const [customers, setCustomers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [serviceFilter, setServiceFilter] = useState('all');
-  const [billingFilter, setBillingFilter] = useState('all');
-  const [jobTypeFilter, setJobTypeFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('active');
+  const [serviceFilter, setServiceFilter] = useState<string[]>(['all']);
+  const [billingFilter, setBillingFilter] = useState<string[]>(['all']);
+  const [jobTypeFilter, setJobTypeFilter] = useState<string[]>(['all']);
+  const [statusFilter, setStatusFilter] = useState<string[]>(['active']);
   const [editingCustomer, setEditingCustomer] = useState<any | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [cancellingCustomer, setCancellingCustomer] = useState<any | null>(null);
@@ -47,7 +47,8 @@ const CustomerHub: React.FC = () => {
         let allCustomers: any[] = [];
         let allRequests: any[] = [];
 
-        const lposToFetch = selectedLpoId === 'all' ? allLpos : allLpos.filter(l => l.id === selectedLpoId);
+        const isFilteredByLpo = !selectedLpoIds.includes('all') && selectedLpoIds.length > 0;
+        let lposToFetch = isFilteredByLpo ? allLpos.filter(l => selectedLpoIds.includes(l.id)) : [...allLpos];
 
         if (lposToFetch.length === 0 && lpo) {
           lposToFetch.push(lpo);
@@ -72,8 +73,12 @@ const CustomerHub: React.FC = () => {
         // Fetch Requests to calculate stats
         let reqBaseQ = collection(db, 'requests');
         let reqConstraints: any[] = [];
-        if (selectedLpoId !== 'all') {
-          reqConstraints.push(where('lpo_id', '==', selectedLpoId));
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            reqConstraints.push(where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            reqConstraints.push(where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
         }
         const requestsSnap = await getDocs(query(reqBaseQ, ...reqConstraints));
         allRequests = requestsSnap.docs.map(doc => doc.data());
@@ -122,7 +127,7 @@ const CustomerHub: React.FC = () => {
     if (lpo || isAdmin) {
       fetchCustomers();
     }
-  }, [lpo, isAdmin, selectedLpoId, allLpos]);
+  }, [lpo, isAdmin, selectedLpoIds, allLpos]);
 
   const filteredCustomers = customers.filter(c => {
     // 1. Search Filter
@@ -135,25 +140,29 @@ const CustomerHub: React.FC = () => {
     if (!matchesSearch) return false;
 
     // 2. Advanced Filters
-    if (serviceFilter !== 'all') {
-      if (serviceFilter === 'lpo-to-site' && !(c.lpoServiceAMPOInternalID && c.lpoServiceAMPOInternalID !== 'null')) return false;
-      if (serviceFilter === 'site-to-lpo' && !(c.lpoServicePMPOInternalID && c.lpoServicePMPOInternalID !== 'null')) return false;
-      if (serviceFilter === 'round-trip' && !(c.lpoServiceAMPOPMPOInternalID && c.lpoServiceAMPOPMPOInternalID !== 'null')) return false;
+    if (!serviceFilter.includes('all')) {
+      const matchesService = 
+        (serviceFilter.includes('lpo-to-site') && c.lpoServiceAMPOInternalID && c.lpoServiceAMPOInternalID !== 'null') ||
+        (serviceFilter.includes('site-to-lpo') && c.lpoServicePMPOInternalID && c.lpoServicePMPOInternalID !== 'null') ||
+        (serviceFilter.includes('round-trip') && c.lpoServiceAMPOPMPOInternalID && c.lpoServiceAMPOPMPOInternalID !== 'null');
+      if (!matchesService) return false;
     }
 
-    if (billingFilter !== 'all') {
+    if (!billingFilter.includes('all')) {
       const b = (c.billing || '').toLowerCase();
-      if (b !== billingFilter) return false;
+      if (!billingFilter.includes(b)) return false;
     }
 
-    if (jobTypeFilter !== 'all') {
+    if (!jobTypeFilter.includes('all')) {
       const jt = (c.jobtype || c.jobType || '').toLowerCase();
-      if (jt !== jobTypeFilter) return false;
+      if (!jobTypeFilter.includes(jt)) return false;
     }
 
-    if (statusFilter !== 'all') {
-      if (statusFilter === 'active' && c.status === 'cancelled') return false;
-      if (statusFilter === 'cancelled' && c.status !== 'cancelled') return false;
+    if (!statusFilter.includes('all')) {
+      const isCancelled = c.status === 'cancelled';
+      const matchesActive = statusFilter.includes('active') && !isCancelled;
+      const matchesCancelled = statusFilter.includes('cancelled') && isCancelled;
+      if (!matchesActive && !matchesCancelled) return false;
     }
 
     return true;
@@ -180,13 +189,14 @@ const CustomerHub: React.FC = () => {
            <div className="header-right">
               {isAdmin && (
                 <CustomSelect 
-                  value={selectedLpoId}
-                  onChange={(val) => setSelectedLpoId(val)}
+                  value={selectedLpoIds}
+                  onChange={(val) => setSelectedLpoIds(val)}
                   options={[
                     { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
                     ...allLpos.map(l => ({ value: l.id, label: l.name || l.id, icon: <MapPin size={14} /> }))
                   ]}
                   className="lpo-select-custom"
+                  multiple={true}
                 />
               )}
               <button className="btn-premium-action" onClick={() => window.location.href = '/new-job'}>
@@ -217,6 +227,7 @@ const CustomerHub: React.FC = () => {
                   { value: 'round-trip', label: 'Round Trip' }
                 ]}
                 className="hub-filter-custom"
+                multiple={true}
               />
               <CustomSelect 
                 value={billingFilter}
@@ -227,6 +238,7 @@ const CustomerHub: React.FC = () => {
                   { value: 'lpo', label: 'LPO Paid' }
                 ]}
                 className="hub-filter-custom"
+                multiple={true}
               />
               <CustomSelect 
                 value={jobTypeFilter}
@@ -237,16 +249,18 @@ const CustomerHub: React.FC = () => {
                   { value: 'scheduled', label: 'Recurring' }
                 ]}
                 className="hub-filter-custom"
+                multiple={true}
               />
               <CustomSelect 
                 value={statusFilter}
                 onChange={(val) => setStatusFilter(val)}
                 options={[
+                  { value: 'all', label: 'All Accounts' },
                   { value: 'active', label: 'Active Accounts', icon: <Users size={14} /> },
-                  { value: 'cancelled', label: 'Cancelled Only' },
-                  { value: 'all', label: 'All Accounts' }
+                  { value: 'cancelled', label: 'Cancelled Only' }
                 ]}
                 className="hub-filter-custom"
+                multiple={true}
               />
            </div>
         </div>

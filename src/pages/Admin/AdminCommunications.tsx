@@ -53,7 +53,9 @@ const AdminCommunications: React.FC = () => {
   const [communications, setCommunications] = useState<Communication[]>([]);
   const [selectedComm, setSelectedComm] = useState<Communication | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [pageLimit, setPageLimit] = useState(100);
   const [filterType, setFilterType] = useState<'all' | 'sent' | 'received'>('all');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -70,8 +72,9 @@ const AdminCommunications: React.FC = () => {
   useEffect(() => {
     if (!isAdmin) return;
 
+    setLoading(true);
     const commsRef = collection(db, 'communications');
-    const q = query(commsRef, orderBy('timestamp', 'desc'), limit(50));
+    const q = query(commsRef, orderBy('timestamp', 'desc'), limit(pageLimit));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({
@@ -80,10 +83,20 @@ const AdminCommunications: React.FC = () => {
       })) as Communication[];
       setCommunications(data);
       setLoading(false);
+      setLoadingMore(false);
+    }, (error) => {
+      console.error("Error fetching communications:", error);
+      setLoading(false);
+      setLoadingMore(false);
     });
 
     return () => unsubscribe();
-  }, [isAdmin]);
+  }, [isAdmin, pageLimit]);
+
+  const handleLoadMore = (increment = 100) => {
+    setLoadingMore(true);
+    setPageLimit(prev => prev + increment);
+  };
 
   const handleSummarize = async (comm: Communication) => {
     setIsSummarizing(true);
@@ -135,11 +148,64 @@ const AdminCommunications: React.FC = () => {
     }
   };
 
+  // Helper to extract known customer/LPO mappings if metadata is incomplete
+  const resolveMetadata = (comm: Communication) => {
+    let lpoId = comm.metadata?.lpoId || '';
+    let lpoName = comm.metadata?.lpoName || '';
+    let customerId = comm.metadata?.customerId || comm.metadata?.netsuiteCustomerId || '';
+    let customerName = comm.metadata?.companyName || comm.metadata?.customerName || '';
+
+    const cidStr = customerId ? customerId.toString() : '';
+
+    // Normalize known LPO aliases (e.g. 2042343 -> 1995870 for Marayong)
+    if (lpoId === '2042343' || (!lpoId && (cidStr === '2042345' || cidStr === '2042918'))) {
+      lpoId = '1995870';
+      lpoName = 'Marayong LPO';
+    }
+
+    // Infer from Subject if missing
+    if (!customerName) {
+      if (comm.subject.includes('Blacktown City Council') || cidStr === '2042345') {
+        customerName = 'Blacktown City Council';
+        if (!lpoId) { lpoId = '1995870'; lpoName = 'Marayong LPO'; }
+      } else if (comm.subject.includes('Ayam') || cidStr === '2042918') {
+        customerName = 'Ayam';
+        if (!lpoId) { lpoId = '1995870'; lpoName = 'Marayong LPO'; }
+      }
+    }
+
+    if (!lpoName && lpoId) {
+      lpoName = allLpos.find(l => l.id === lpoId)?.name || `LPO ${lpoId}`;
+    }
+
+    return {
+      lpoId: lpoId || 'global',
+      lpoName: lpoName || 'Global / Support',
+      customerId: cidStr || customerName || 'general',
+      customerName: customerName || (cidStr ? `Customer ID: ${cidStr}` : 'General Inquiries'),
+      jobId: comm.metadata?.jobId || 'direct'
+    };
+  };
+
   const filteredComms = communications.filter(comm => {
+    const term = searchTerm.toLowerCase().trim();
+    if (!term) {
+      return filterType === 'all' || comm.type === filterType;
+    }
+
+    const toStr = Array.isArray(comm.to) ? comm.to.join(' ') : (comm.to || '');
+    const resolved = resolveMetadata(comm);
+    const bodyText = comm.body ? comm.body.replace(/<[^>]+>/g, ' ').toLowerCase() : '';
+
     const matchesSearch = 
-      comm.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      comm.from.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      comm.metadata?.jobId?.toLowerCase().includes(searchTerm.toLowerCase());
+      comm.subject.toLowerCase().includes(term) ||
+      comm.from.toLowerCase().includes(term) ||
+      toStr.toLowerCase().includes(term) ||
+      (comm.metadata?.jobId && comm.metadata.jobId.toLowerCase().includes(term)) ||
+      resolved.customerName.toLowerCase().includes(term) ||
+      resolved.customerId.toLowerCase().includes(term) ||
+      resolved.lpoName.toLowerCase().includes(term) ||
+      bodyText.includes(term);
     
     const matchesType = filterType === 'all' || comm.type === filterType;
     
@@ -151,41 +217,41 @@ const AdminCommunications: React.FC = () => {
     if (searchTerm) {
       const newExpanded: Record<string, boolean> = { ...expandedNodes };
       filteredComms.forEach(comm => {
-        const lpoId = comm.metadata?.lpoId || 'global';
-        const customerId = comm.metadata?.customerId || 'general';
-        const jobId = comm.metadata?.jobId || 'direct';
-        
-        newExpanded[lpoId] = true;
-        newExpanded[`${lpoId}-${customerId}`] = true;
-        newExpanded[`${lpoId}-${customerId}-${jobId}`] = true;
+        const resolved = resolveMetadata(comm);
+        newExpanded[resolved.lpoId] = true;
+        newExpanded[`${resolved.lpoId}-${resolved.customerId}`] = true;
+        newExpanded[`${resolved.lpoId}-${resolved.customerId}-${resolved.jobId}`] = true;
       });
       setExpandedNodes(newExpanded);
     }
   }, [searchTerm]);
 
   const groupedComms = filteredComms.reduce((acc, comm) => {
-    const lpoId = comm.metadata?.lpoId || 'global';
-    const lpoName = comm.metadata?.lpoName || allLpos.find(l => l.id === lpoId)?.name || 'Global / Support';
+    const resolved = resolveMetadata(comm);
     
-    if (!acc[lpoId]) {
-      acc[lpoId] = { id: lpoId, name: lpoName, customers: {} };
+    if (!acc[resolved.lpoId]) {
+      acc[resolved.lpoId] = { id: resolved.lpoId, name: resolved.lpoName, customers: {} };
     }
     
-    const customerId = comm.metadata?.customerId || comm.metadata?.netsuiteCustomerId || comm.metadata?.companyName || 'general';
-    const customerName = comm.metadata?.companyName || comm.metadata?.customerName || (comm.metadata?.customerId ? `Customer ID: ${comm.metadata.customerId}` : 'General Inquiries');
-    
-    if (!acc[lpoId].customers[customerId]) {
-      acc[lpoId].customers[customerId] = { id: customerId, name: customerName, jobs: {} };
+    if (!acc[resolved.lpoId].customers[resolved.customerId]) {
+      acc[resolved.lpoId].customers[resolved.customerId] = { 
+        id: resolved.customerId, 
+        name: resolved.customerName, 
+        jobs: {} 
+      };
     }
     
-    const jobId = comm.metadata?.jobId || 'direct';
-    const jobLabel = jobId === 'direct' ? 'Direct Emails' : `Job: ${jobId}`;
+    const jobLabel = resolved.jobId === 'direct' ? 'Direct Emails' : `Job: ${resolved.jobId}`;
     
-    if (!acc[lpoId].customers[customerId].jobs[jobId]) {
-      acc[lpoId].customers[customerId].jobs[jobId] = { id: jobId, label: jobLabel, emails: [] };
+    if (!acc[resolved.lpoId].customers[resolved.customerId].jobs[resolved.jobId]) {
+      acc[resolved.lpoId].customers[resolved.customerId].jobs[resolved.jobId] = { 
+        id: resolved.jobId, 
+        label: jobLabel, 
+        emails: [] 
+      };
     }
     
-    acc[lpoId].customers[customerId].jobs[jobId].emails.push(comm);
+    acc[resolved.lpoId].customers[resolved.customerId].jobs[resolved.jobId].emails.push(comm);
     return acc;
   }, {} as any);
 
@@ -207,10 +273,19 @@ const AdminCommunications: React.FC = () => {
             <Search size={18} className="search-icon" />
             <input 
               type="text" 
-              placeholder="Search by Job ID, Subject or Email..." 
+              placeholder="Search by Subject, Customer, Job ID, Email or content..." 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+            {searchTerm && (
+              <button 
+                className="btn-clear-search" 
+                onClick={() => setSearchTerm('')} 
+                title="Clear search"
+              >
+                ×
+              </button>
+            )}
           </div>
           
           <div className="filter-group-glass">
@@ -232,6 +307,19 @@ const AdminCommunications: React.FC = () => {
             >
               Sent
             </button>
+          </div>
+
+          <div className="limit-selector-glass">
+            <span className="limit-label">Limit:</span>
+            {[100, 250, 500].map(lim => (
+              <button 
+                key={lim}
+                className={pageLimit === lim ? 'active' : ''} 
+                onClick={() => setPageLimit(lim)}
+              >
+                {lim}
+              </button>
+            ))}
           </div>
 
           <button 
@@ -348,6 +436,24 @@ const AdminCommunications: React.FC = () => {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {!loading && communications.length > 0 && (
+            <div className="comms-list-footer">
+              <span className="comms-count-indicator">
+                Showing <strong>{filteredComms.length}</strong> {searchTerm ? 'matching' : ''} of <strong>{communications.length}</strong> loaded
+              </span>
+              {communications.length >= pageLimit && (
+                <button 
+                  className="btn-load-more" 
+                  onClick={() => handleLoadMore(100)}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? <RefreshCw size={13} className="spin" /> : <ChevronDown size={13} />}
+                  Load More (+100)
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -546,6 +652,26 @@ const AdminCommunications: React.FC = () => {
           font-size: 0.9rem;
         }
 
+        .btn-clear-search {
+          background: rgba(0, 0, 0, 0.08);
+          border: none;
+          border-radius: 50%;
+          width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 14px;
+          cursor: pointer;
+          color: var(--ink-soft);
+          transition: background 0.2s;
+        }
+
+        .btn-clear-search:hover {
+          background: rgba(0, 0, 0, 0.15);
+          color: var(--ink);
+        }
+
         .filter-group-glass {
           background: rgba(0, 0, 0, 0.03);
           padding: 4px;
@@ -570,6 +696,41 @@ const AdminCommunications: React.FC = () => {
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
 
+        .limit-selector-glass {
+          background: rgba(0, 0, 0, 0.03);
+          padding: 4px 8px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+        }
+
+        .limit-label {
+          font-size: 0.75rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          color: var(--ink-soft);
+          margin-right: 2px;
+        }
+
+        .limit-selector-glass button {
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: none;
+          background: transparent;
+          font-size: 0.8rem;
+          font-weight: 700;
+          cursor: pointer;
+          color: var(--ink-soft);
+          transition: all 0.2s;
+        }
+
+        .limit-selector-glass button.active {
+          background: white;
+          color: var(--ink);
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
         .comms-layout {
           flex: 1;
           display: grid;
@@ -590,6 +751,55 @@ const AdminCommunications: React.FC = () => {
 
         .comms-list-panel {
           overflow-y: auto;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+
+        .comms-list-footer {
+          padding: 16px 20px;
+          border-top: 1px solid rgba(0, 0, 0, 0.05);
+          background: rgba(255, 255, 255, 0.5);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          margin-top: auto;
+          position: sticky;
+          bottom: 0;
+          backdrop-filter: blur(10px);
+        }
+
+        .comms-count-indicator {
+          font-size: 0.75rem;
+          color: var(--ink-soft);
+        }
+
+        .btn-load-more {
+          background: white;
+          border: 1px solid rgba(0, 0, 0, 0.1);
+          padding: 8px 18px;
+          border-radius: 10px;
+          font-size: 0.82rem;
+          font-weight: 700;
+          color: var(--ink);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+        }
+
+        .btn-load-more:hover:not(:disabled) {
+          background: var(--ink);
+          color: white;
+          transform: translateY(-1px);
+        }
+
+        .btn-load-more:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
         }
 
         .comm-items {

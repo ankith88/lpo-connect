@@ -29,7 +29,7 @@ import { getNextOccurrences, parseLocalDate } from '../../utils/scheduling';
 import CustomSelect from '../../components/CustomSelect';
 
 const Schedules: React.FC = () => {
-  const { lpo, isAdmin, selectedLpoId, setSelectedLpoId, allLpos, userData, user } = useLpo();
+  const { lpo, isAdmin, selectedLpoIds, setSelectedLpoIds, allLpos, userData, user } = useLpo();
   const [schedules, setSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,7 +39,7 @@ const Schedules: React.FC = () => {
   const [supportJobId, setSupportJobId] = useState('');
   const [supportMetadata, setSupportMetadata] = useState<any>(null);
   const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
-  const [billingFilter, setBillingFilter] = useState<'all' | 'lpo' | 'customer'>('all');
+  const [billingFilter, setBillingFilter] = useState<string[]>(['all']);
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
@@ -49,8 +49,13 @@ const Schedules: React.FC = () => {
         let baseQ = collection(db, 'scheduled_jobs');
         let constraints: any[] = [orderBy('createdAt', 'desc')];
 
-        if (selectedLpoId !== 'all') {
-          constraints.unshift(where('lpo_id', '==', selectedLpoId));
+        const isFilteredByLpo = !selectedLpoIds.includes('all') && selectedLpoIds.length > 0;
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            constraints.unshift(where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            constraints.unshift(where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
         }
 
         const q = query(baseQ, ...constraints);
@@ -60,7 +65,15 @@ const Schedules: React.FC = () => {
         console.error("Error fetching schedules:", error);
         // Fallback for missing indexes
         let baseQ = collection(db, 'scheduled_jobs');
-        const q = selectedLpoId !== 'all' ? query(baseQ, where('lpo_id', '==', selectedLpoId)) : baseQ;
+        const isFilteredByLpo = !selectedLpoIds.includes('all') && selectedLpoIds.length > 0;
+        let q: any = baseQ;
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            q = query(baseQ, where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            q = query(baseQ, where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
+        }
         const snapshot = await getDocs(q as any);
         setSchedules(snapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
       } finally {
@@ -71,7 +84,7 @@ const Schedules: React.FC = () => {
     if (lpo || isAdmin) {
       fetchSchedules();
     }
-  }, [lpo, isAdmin, selectedLpoId]);
+  }, [lpo, isAdmin, selectedLpoIds]);
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -206,10 +219,10 @@ const Schedules: React.FC = () => {
   };
 
   const filteredSchedules = schedules.filter(s => {
-    const matchesSearch = s.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         s.customer.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = (s.customer?.company || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         (s.customer?.address || '').toLowerCase().includes(searchTerm.toLowerCase());
     const isActive = s.recurrenceStatus !== 'stopped';
-    const matchesBilling = billingFilter === 'all' || s.billing === billingFilter;
+    const matchesBilling = billingFilter.includes('all') || billingFilter.includes(s.billing);
     return matchesSearch && isActive && matchesBilling;
   });
 
@@ -290,13 +303,14 @@ const Schedules: React.FC = () => {
             <div className="glass-card filter-bar">
                {isAdmin && (
                  <CustomSelect 
-                   value={selectedLpoId}
-                   onChange={(val) => setSelectedLpoId(val)}
+                   value={selectedLpoIds}
+                   onChange={(val) => setSelectedLpoIds(val)}
                    options={[
                      { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
                      ...allLpos.map(l => ({ value: l.id, label: l.name || l.id, icon: <MapPin size={14} /> }))
                    ]}
                    className="lpo-select-custom"
+                   multiple={true}
                  />
                )}
                <div className="search-pill">
@@ -311,13 +325,14 @@ const Schedules: React.FC = () => {
 
                <CustomSelect 
                  value={billingFilter}
-                 onChange={(val) => setBillingFilter(val as any)}
+                 onChange={(val) => setBillingFilter(val)}
                  options={[
                    { value: 'all', label: 'All Billing', icon: <CreditCard size={14} /> },
                    { value: 'lpo', label: 'LPO Pays', icon: <CreditCard size={14} style={{ color: '#1a3d33' }} /> },
                    { value: 'customer', label: 'Customer Pays', icon: <CreditCard size={14} style={{ color: '#eaf044' }} /> }
                  ]}
                  className="billing-select-custom"
+                 multiple={true}
                />
                
                <div className="view-toggle-pills">

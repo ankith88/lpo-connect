@@ -40,7 +40,7 @@ import CustomSelect from '../../components/CustomSelect';
 
 
 const Dashboard: React.FC = () => {
-  const { lpo, isAdmin, userData, selectedLpoId, setSelectedLpoId, allLpos } = useLpo();
+  const { lpo, isAdmin, userData, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
   const [jobs, setJobs] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -49,8 +49,8 @@ const Dashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'pending' | 'expired-requests' | 'upcoming' | 'in-progress' | 'history' | 'declined' | 'cancelled'>('in-progress');
-  const [serviceFilter, setServiceFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [serviceFilter, setServiceFilter] = useState<string[]>(['all']);
+  const [statusFilter, setStatusFilter] = useState<string[]>(['all']);
   const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set());
   
   const [isCommModalOpen, setIsCommModalOpen] = useState(false);
@@ -100,9 +100,15 @@ const Dashboard: React.FC = () => {
         let jobsConstraints: any[] = [orderBy('createdAt', 'desc')];
         let reqConstraints: any[] = [orderBy('createdAt', 'desc')];
 
-        if (selectedLpoId !== 'all') {
-          jobsConstraints.unshift(where('lpo_id', '==', selectedLpoId));
-          reqConstraints.unshift(where('lpo_id', '==', selectedLpoId));
+        const isFilteredByLpo = !selectedLpoIds.includes('all') && selectedLpoIds.length > 0;
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            jobsConstraints.unshift(where('lpo_id', '==', selectedLpoIds[0]));
+            reqConstraints.unshift(where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            jobsConstraints.unshift(where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+            reqConstraints.unshift(where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
         }
 
         // Fetch Jobs
@@ -117,7 +123,14 @@ const Dashboard: React.FC = () => {
 
         // Fetch Schedules
         let schedBaseQ = collection(db, 'scheduled_jobs');
-        const schedQ = selectedLpoId !== 'all' ? query(schedBaseQ, where('lpo_id', '==', selectedLpoId)) : schedBaseQ;
+        let schedQ: any = schedBaseQ;
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            schedQ = query(schedBaseQ, where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            schedQ = query(schedBaseQ, where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
+        }
         const schedSnapshot = await getDocs(schedQ);
         const allFetchedSchedules = schedSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id }));
         setSchedules(allFetchedSchedules);
@@ -127,8 +140,8 @@ const Dashboard: React.FC = () => {
         const allFetchedRequests = reqSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id }));
         
         const lpoIds = new Set<string>();
-        if (selectedLpoId !== 'all') {
-          lpoIds.add(selectedLpoId);
+        if (isFilteredByLpo) {
+          selectedLpoIds.forEach(id => lpoIds.add(id));
         } else {
           allFetchedJobs.forEach(j => lpoIds.add(j.lpo_id));
           allFetchedRequests.forEach(r => lpoIds.add(r.lpo_id));
@@ -160,22 +173,36 @@ const Dashboard: React.FC = () => {
         let jobsBaseQ = collection(db, 'jobs');
         let reqBaseQ = collection(db, 'requests');
         
-        const jobsQ = selectedLpoId !== 'all' ? query(jobsBaseQ, where('lpo_id', '==', selectedLpoId)) : jobsBaseQ;
-        const jobsSnapshot = await getDocs(jobsQ as any);
+        const isFilteredByLpo = !selectedLpoIds.includes('all') && selectedLpoIds.length > 0;
+        let jobsQ: any = jobsBaseQ;
+        let reqQ: any = reqBaseQ;
+        let schedQ: any = collection(db, 'scheduled_jobs');
+
+        if (isFilteredByLpo) {
+          if (selectedLpoIds.length === 1) {
+            jobsQ = query(jobsBaseQ, where('lpo_id', '==', selectedLpoIds[0]));
+            reqQ = query(reqBaseQ, where('lpo_id', '==', selectedLpoIds[0]));
+            schedQ = query(collection(db, 'scheduled_jobs'), where('lpo_id', '==', selectedLpoIds[0]));
+          } else {
+            jobsQ = query(jobsBaseQ, where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+            reqQ = query(reqBaseQ, where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+            schedQ = query(collection(db, 'scheduled_jobs'), where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+          }
+        }
+
+        const jobsSnapshot = await getDocs(jobsQ);
         setJobs(jobsSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
         
-        const reqQ = selectedLpoId !== 'all' ? query(reqBaseQ, where('lpo_id', '==', selectedLpoId)) : reqBaseQ;
-        const reqSnapshot = await getDocs(reqQ as any);
+        const reqSnapshot = await getDocs(reqQ);
         setRequests(reqSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
 
-        const schedQ = selectedLpoId !== 'all' ? query(collection(db, 'scheduled_jobs'), where('lpo_id', '==', selectedLpoId)) : collection(db, 'scheduled_jobs');
         const schedSnapshot = await getDocs(schedQ);
         setSchedules(schedSnapshot.docs.map(doc => ({ ...doc.data() as any, id: doc.id })));
 
         // Fallback customer details fetching
         const fallBackLpoIds = new Set<string>();
-        if (selectedLpoId !== 'all') {
-          fallBackLpoIds.add(selectedLpoId);
+        if (isFilteredByLpo) {
+          selectedLpoIds.forEach(id => fallBackLpoIds.add(id));
         } else {
           jobsSnapshot.docs.forEach(doc => fallBackLpoIds.add((doc.data() as any).lpo_id));
           reqSnapshot.docs.forEach(doc => fallBackLpoIds.add((doc.data() as any).lpo_id));
@@ -202,7 +229,7 @@ const Dashboard: React.FC = () => {
     if (lpo || isAdmin) {
       fetchData();
     }
-  }, [lpo, isAdmin, selectedLpoId]);
+  }, [lpo, isAdmin, selectedLpoIds]);
 
   const handleCommunication = (job: any) => {
     setSelectedJobForComm(job);
@@ -251,12 +278,12 @@ const Dashboard: React.FC = () => {
 
   // Global Filter Function
   const applyGlobalFilters = (item: any) => {
-    const matchesSearch = item.customer.company.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         item.customer.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.id.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesService = serviceFilter === 'all' || item.service === serviceFilter;
+    const matchesSearch = (item.customer?.company || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         (item.customer?.address || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (item.id || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesService = serviceFilter.includes('all') || serviceFilter.includes(item.service);
     const matchesDate = !dateFilter || item.date === dateFilter;
-    const matchesStatus = statusFilter === 'all' || item.status === statusFilter;
+    const matchesStatus = statusFilter.includes('all') || statusFilter.includes(item.status);
     return matchesSearch && matchesService && matchesDate && matchesStatus;
   };
 
@@ -644,13 +671,14 @@ const Dashboard: React.FC = () => {
                 <div className="filter-actions">
                    {isAdmin && (
                      <CustomSelect 
-                       value={selectedLpoId}
-                       onChange={(val) => setSelectedLpoId(val)}
+                       value={selectedLpoIds}
+                       onChange={(val) => setSelectedLpoIds(val)}
                        options={[
                           { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
                           ...allLpos.map(l => ({ value: l.id, label: l.name || l.id, icon: <MapPin size={14} /> }))
                        ]}
                        className="lpo-select-custom"
+                       multiple={true}
                      />
                    )}
                    <div className="custom-filter-date" style={{ position: 'relative', zIndex: 10 }}>
@@ -670,6 +698,7 @@ const Dashboard: React.FC = () => {
                         { value: 'round-trip', label: 'Round Trip' }
                       ]}
                       className="service-select-custom"
+                      multiple={true}
                     />
                     <CustomSelect 
                       value={statusFilter}
@@ -685,6 +714,7 @@ const Dashboard: React.FC = () => {
                         { value: 'cancelled', label: 'Cancelled' }
                       ]}
                       className="status-select-custom"
+                      multiple={true}
                     />
                   <button className="btn-secondary-glass" onClick={() => window.location.reload()}><RefreshCw size={18} /></button>
                   <button className="btn-secondary-glass icon-only" onClick={exportJobsCSV} title="Export Jobs">
