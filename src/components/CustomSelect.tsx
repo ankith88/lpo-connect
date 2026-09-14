@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Check } from 'lucide-react';
+import { ChevronDown, Check, Search, X } from 'lucide-react';
 
 export interface Option {
   value: string;
@@ -14,6 +14,8 @@ export interface CustomSelectProps {
   placeholder?: string;
   className?: string;
   multiple?: boolean;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }
 
 const CustomSelect: React.FC<CustomSelectProps> = ({ 
@@ -22,10 +24,16 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
   options, 
   placeholder, 
   className,
-  multiple = false 
+  multiple = false,
+  searchable,
+  searchPlaceholder = 'Search options...'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const isSearchEnabled = searchable !== undefined ? searchable : options.length > 5;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -36,6 +44,17 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSearchQuery('');
+      if (isSearchEnabled) {
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+        }, 50);
+      }
+    }
+  }, [isOpen, isSearchEnabled]);
 
   // Normalize selected values
   const selectedValues: string[] = Array.isArray(value) 
@@ -86,6 +105,13 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
     }
   };
 
+  // Filter options based on search query
+  const filteredOptions = options.filter(opt => {
+    if (!searchQuery.trim()) return true;
+    if (opt.value === 'all') return true;
+    return opt.label.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
   // Determine trigger label and icon
   const allOption = options.find(opt => opt.value === 'all');
   const matchedSelectedOptions = options.filter(opt => opt.value !== 'all' && selectedValues.includes(opt.value));
@@ -126,6 +152,29 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
 
       {isOpen && (
         <div className="select-dropdown glass fade-in">
+          {isSearchEnabled && (
+            <div className="dropdown-search-wrapper" onClick={(e) => e.stopPropagation()}>
+              <Search size={14} className="dropdown-search-icon" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="dropdown-search-input"
+                placeholder={searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button 
+                  type="button" 
+                  className="dropdown-search-clear" 
+                  onClick={() => setSearchQuery('')}
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+          )}
+
           {multiple && options.length > 3 && (
             <div className="dropdown-quick-actions">
               <button 
@@ -142,27 +191,31 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
           )}
 
           <div className="options-scroll-list">
-            {options.map((option) => {
-              const selected = isOptionSelected(option.value);
-              return (
-                <div 
-                  key={option.value} 
-                  className={`select-option ${selected ? 'selected' : ''}`}
-                  onClick={() => handleOptionClick(option.value)}
-                >
-                  <div className="option-info">
-                    {multiple && (
-                      <div className={`custom-checkbox ${selected ? 'checked' : ''}`}>
-                        {selected && <Check size={12} strokeWidth={3} />}
-                      </div>
-                    )}
-                    {option.icon && <span className="option-icon">{option.icon}</span>}
-                    <span className="option-label">{option.label}</span>
+            {filteredOptions.length === 0 ? (
+              <div className="no-options-found">No matching options</div>
+            ) : (
+              filteredOptions.map((option) => {
+                const selected = isOptionSelected(option.value);
+                return (
+                  <div 
+                    key={option.value} 
+                    className={`select-option ${selected ? 'selected' : ''}`}
+                    onClick={() => handleOptionClick(option.value)}
+                  >
+                    <div className="option-info">
+                      {multiple && (
+                        <div className={`custom-checkbox ${selected ? 'checked' : ''}`}>
+                          {selected && <Check size={12} strokeWidth={3} />}
+                        </div>
+                      )}
+                      {option.icon && <span className="option-icon">{option.icon}</span>}
+                      <span className="option-label">{option.label}</span>
+                    </div>
+                    {!multiple && selected && <Check size={14} className="check-icon" />}
                   </div>
-                  {!multiple && selected && <Check size={14} className="check-icon" />}
-                </div>
-              );
-            })}
+                );
+              })
+            )}
           </div>
         </div>
       )}
@@ -259,21 +312,88 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
           top: calc(100% + 8px);
           left: 0;
           right: 0;
-          min-width: 210px;
+          min-width: 220px;
           z-index: 1100;
           background: rgba(255, 255, 255, 0.96);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
           border: 1px solid rgba(255, 255, 255, 0.6);
           border-radius: 18px;
-          padding: 6px;
+          padding: 8px;
           box-shadow: 0 20px 50px rgba(26, 61, 51, 0.15);
+        }
+
+        .dropdown-search-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 10px;
+          background: rgba(26, 61, 51, 0.04);
+          border: 1px solid rgba(26, 61, 51, 0.1);
+          border-radius: 10px;
+          margin-bottom: 6px;
+          transition: all 0.2s ease;
+        }
+
+        .dropdown-search-wrapper:focus-within {
+          background: white;
+          border-color: var(--ink, #1a3d33);
+          box-shadow: 0 0 0 3px rgba(26, 61, 51, 0.05);
+        }
+
+        .dropdown-search-icon {
+          color: var(--ink-soft, #5a736c);
+          opacity: 0.6;
+          flex-shrink: 0;
+        }
+
+        .dropdown-search-input {
+          width: 100%;
+          border: none;
+          background: transparent;
+          font-size: 0.82rem;
+          font-weight: 500;
+          color: var(--ink, #1a3d33);
+          outline: none;
+        }
+
+        .dropdown-search-input::placeholder {
+          color: var(--ink-soft, #5a736c);
+          opacity: 0.6;
+        }
+
+        .dropdown-search-clear {
+          background: none;
+          border: none;
+          color: var(--ink-soft, #5a736c);
+          padding: 2px;
+          cursor: pointer;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0.7;
+          transition: all 0.15s;
+        }
+
+        .dropdown-search-clear:hover {
+          opacity: 1;
+          background: rgba(26, 61, 51, 0.1);
+        }
+
+        .no-options-found {
+          padding: 16px 12px;
+          text-align: center;
+          font-size: 0.82rem;
+          font-weight: 500;
+          color: var(--ink-soft, #5a736c);
+          opacity: 0.7;
         }
 
         .dropdown-quick-actions {
           display: flex;
           justify-content: flex-end;
-          padding: 4px 8px 6px 8px;
+          padding: 2px 8px 6px 8px;
           border-bottom: 1px solid rgba(26, 61, 51, 0.08);
           margin-bottom: 4px;
         }
