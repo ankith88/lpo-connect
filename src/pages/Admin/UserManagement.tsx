@@ -403,7 +403,7 @@ const UserManagement: React.FC = () => {
                   >
                     <option value="">Select an LPO Account</option>
                     {allLpos.map(l => (
-                      <option key={l.id} value={l.id}>{l.name}</option>
+                      <option key={l.id} value={l.id}>{l.name || l.id}</option>
                     ))}
                   </select>
                 </div>

@@ -184,7 +184,7 @@ const CustomerHub: React.FC = () => {
                   onChange={(val) => setSelectedLpoId(val)}
                   options={[
                     { value: 'all', label: 'All LPOs', icon: <MapPin size={14} /> },
-                    ...allLpos.map(l => ({ value: l.id, label: l.name, icon: <MapPin size={14} /> }))
+                    ...allLpos.map(l => ({ value: l.id, label: l.name || l.id, icon: <MapPin size={14} /> }))
                   ]}
                   className="lpo-select-custom"
                 />

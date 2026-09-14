@@ -135,7 +135,19 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (user.uid === SUPER_ADMIN_ID || userDoc.data()?.role === 'admin' || userDoc.data()?.role === 'superadmin') {
             const { getDocs, collection } = await import('firebase/firestore');
             const lposSnapshot = await getDocs(collection(db, 'lpo'));
-            setAllLpos(lposSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LpoMetadata)));
+            const sanitizedLpos = lposSnapshot.docs
+              .map(doc => {
+                const data = doc.data();
+                const resolvedName = (data.name && data.name.trim()) || (data.location && data.location.trim()) || (data.address && data.address.trim()) || doc.id;
+                return {
+                  id: doc.id,
+                  ...data,
+                  name: resolvedName,
+                } as LpoMetadata;
+              })
+              .filter(l => Boolean(l.id && l.name))
+              .sort((a, b) => a.name.localeCompare(b.name));
+            setAllLpos(sanitizedLpos);
           }
 
         } catch (error) {
