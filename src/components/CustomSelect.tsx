@@ -136,7 +136,7 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
   }
 
   return (
-    <div className={`custom-select-container ${className || ''}`} ref={containerRef}>
+    <div className={`custom-select-container ${isOpen ? 'open' : ''} ${className || ''}`} ref={containerRef}>
       <div 
         className={`select-trigger glass ${isOpen ? 'open' : ''}`} 
         onClick={() => setIsOpen(!isOpen)}
@@ -227,6 +227,10 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
           user-select: none;
         }
 
+        .custom-select-container.open {
+          z-index: 9999;
+        }
+
         .select-trigger {
           display: flex;
           align-items: center;
@@ -313,14 +317,12 @@ const CustomSelect: React.FC<CustomSelectProps> = ({
           left: 0;
           right: 0;
           min-width: 220px;
-          z-index: 1100;
-          background: rgba(255, 255, 255, 0.96);
-          backdrop-filter: blur(20px);
-          -webkit-backdrop-filter: blur(20px);
-          border: 1px solid rgba(255, 255, 255, 0.6);
+          z-index: 99999;
+          background: #ffffff;
+          border: 1px solid rgba(26, 61, 51, 0.15);
           border-radius: 18px;
           padding: 8px;
-          box-shadow: 0 20px 50px rgba(26, 61, 51, 0.15);
+          box-shadow: 0 20px 50px rgba(26, 61, 51, 0.25);
         }
 
         .dropdown-search-wrapper {

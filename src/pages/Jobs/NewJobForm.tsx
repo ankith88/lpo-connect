@@ -23,6 +23,7 @@ import { useJsApiLoader } from '@react-google-maps/api';
 import { formatDateForInput, getDefaultBookingDate } from '../../utils/scheduling';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import CustomTimePicker from '../../components/CustomTimePicker';
+import CustomSelect from '../../components/CustomSelect';
 import { useLpo } from '../../context/LpoContext';
 import { collection, query, where, getDocs, addDoc, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -63,7 +64,12 @@ interface JobData {
 const LIBRARIES: ("places")[] = ["places"];
 
 const NewJobForm: React.FC = () => {
-  const { lpo } = useLpo();
+  const { lpo: contextLpo, isAdmin, allLpos } = useLpo();
+  const [selectedLpoId, setSelectedLpoId] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('lpoId') || contextLpo?.id || '';
+  });
+
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -123,6 +129,23 @@ const NewJobForm: React.FC = () => {
   const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
   const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
 
+  // Sync default selected LPO ID when context or allLpos loads
+  useEffect(() => {
+    if (!selectedLpoId) {
+      if (contextLpo?.id) {
+        setSelectedLpoId(contextLpo.id);
+      } else if (allLpos.length > 0) {
+        setSelectedLpoId(allLpos[0].id);
+      }
+    }
+  }, [contextLpo, allLpos, selectedLpoId]);
+
+  // Compute active target LPO based on selectedLpoId
+  const lpo = allLpos.find(l => l.id === selectedLpoId) || 
+              (contextLpo?.id === selectedLpoId ? contextLpo : null) || 
+              contextLpo || 
+              (allLpos.length > 0 ? allLpos[0] : null);
+
   useEffect(() => {
     const draft = localStorage.getItem('rebook_draft');
     const editDraft = localStorage.getItem('edit_request_draft');
@@ -170,6 +193,11 @@ const NewJobForm: React.FC = () => {
   }, [lpo]);
 
   const selectCustomer = (c: any) => {
+    // Automatically switch active LPO to the customer's linked LPO
+    if (c.lpo_id || c.lpoId) {
+      setSelectedLpoId(c.lpo_id || c.lpoId);
+    }
+
     const displayName = c.companyName || c.company_name || '';
     const parts = displayName.split(' ');
     
@@ -251,13 +279,28 @@ const NewJobForm: React.FC = () => {
     }
   }, [isExistingCustomer]);
 
+  // Fetch customers (Across all LPOs for Admins, or active LPO for operators)
   useEffect(() => {
-    if (lpo) {
-      const fetchAll = async () => {
-        try {
-          const q = query(collection(db, `lpo/${lpo.id}/customers`));
-          const snapshot = await getDocs(q);
-          const customers = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    const fetchAll = async () => {
+      try {
+        if (isAdmin && allLpos.length > 0) {
+          const promises = allLpos.map(async (targetLpo) => {
+            try {
+              const q = query(collection(db, `lpo/${targetLpo.id}/customers`));
+              const snapshot = await getDocs(q);
+              return snapshot.docs.map(doc => ({ 
+                ...doc.data(), 
+                id: doc.id,
+                lpo_id: targetLpo.id,
+                lpoName: targetLpo.name || targetLpo.location || targetLpo.id
+              }));
+            } catch (err) {
+              console.error(`Error fetching customers for LPO ${targetLpo.id}:`, err);
+              return [];
+            }
+          });
+          const results = await Promise.all(promises);
+          const customers = results.flat();
           setAllCustomers(customers);
 
           // Handle pre-fill from URL params (e.g. from Customer Hub)
@@ -269,13 +312,33 @@ const NewJobForm: React.FC = () => {
               selectCustomer(customer);
             }
           }
-        } catch (error) {
-          console.error("Error fetching customers for cache:", error);
+        } else if (lpo) {
+          const q = query(collection(db, `lpo/${lpo.id}/customers`));
+          const snapshot = await getDocs(q);
+          const customers = snapshot.docs.map(doc => ({ 
+            ...doc.data(), 
+            id: doc.id,
+            lpo_id: lpo.id,
+            lpoName: lpo.name || lpo.location || lpo.id
+          }));
+          setAllCustomers(customers);
+
+          // Handle pre-fill from URL params (e.g. from Customer Hub)
+          const params = new URLSearchParams(window.location.search);
+          const customerId = params.get('customerId');
+          if (customerId) {
+            const customer = customers.find(c => c.id === customerId);
+            if (customer) {
+              selectCustomer(customer);
+            }
+          }
         }
-      };
-      fetchAll();
-    }
-  }, [lpo]);
+      } catch (error) {
+        console.error("Error fetching customers for cache:", error);
+      }
+    };
+    fetchAll();
+  }, [lpo?.id, isAdmin, allLpos]);
 
   useEffect(() => {
     const term = formData.customer.company.toLowerCase();
@@ -920,6 +983,76 @@ const NewJobForm: React.FC = () => {
                     <h3>Site Information</h3>
                   </div>
 
+                  {/* Admin Target LPO Assignment for New Customer */}
+                  {!isExistingCustomer && isAdmin && allLpos.length > 0 && (
+                    <div className="admin-lpo-selection-banner glass fade-in">
+                      <div className="assign-header">
+                        <div className="assign-icon-box">
+                          <Building2 size={18} />
+                        </div>
+                        <div className="assign-text">
+                          <span className="assign-tag">ADMIN ASSIGNMENT</span>
+                          <h4>Target LPO Facility</h4>
+                          <p>Select which LPO this new subcustomer and job will belong to.</p>
+                        </div>
+                      </div>
+                      <div className="assign-select-wrapper">
+                        <CustomSelect
+                          value={selectedLpoId}
+                          onChange={(val) => {
+                            setSelectedLpoId(val);
+                          }}
+                          options={allLpos.map(l => ({
+                            value: l.id,
+                            label: l.name || l.location || l.id,
+                            icon: <Building2 size={14} />
+                          }))}
+                          placeholder="Select LPO Facility"
+                          className="lpo-select-main"
+                          searchable={true}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Prominent Linked LPO Display for Selected Subcustomer */}
+                  {isExistingCustomer && lpo && (
+                    <div className="linked-lpo-card glass fade-in">
+                      <div className="linked-lpo-icon-box">
+                        <Building2 size={22} className="text-gold" />
+                      </div>
+                      <div className="linked-lpo-content">
+                        <div className="linked-lpo-tag">
+                          <span className="live-dot"></span>
+                          <span>LINKED LPO FACILITY</span>
+                        </div>
+                        <h4 className="linked-lpo-title">{lpo.name || lpo.location || lpo.id}</h4>
+                        <p className="linked-lpo-subtitle">
+                          <MapPin size={13} />
+                          <span>{(lpo.address1 || lpo.address || 'Address on file')}, {(lpo.city || lpo.suburb || lpo.location || '')} {lpo.state || ''} {lpo.zip || lpo.postcode || ''}</span>
+                        </p>
+                      </div>
+                      {isAdmin && allLpos.length > 1 && (
+                        <div className="linked-lpo-reassign">
+                          <label className="reassign-label">Switch LPO</label>
+                          <CustomSelect
+                            value={selectedLpoId}
+                            onChange={(val) => {
+                              setSelectedLpoId(val);
+                            }}
+                            options={allLpos.map(l => ({
+                              value: l.id,
+                              label: l.name || l.location || l.id,
+                              icon: <Building2 size={14} />
+                            }))}
+                            className="lpo-select-compact"
+                            searchable={true}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="input-grid">
                     <div className="input-pill full has-suggestions">
                       <Building2 size={18} />
@@ -945,9 +1078,17 @@ const NewJobForm: React.FC = () => {
                             <span>MATCHED FROM ADDRESS BOOK</span>
                           </div>
                           {searchResults.map(c => (
-                            <div key={c.id} className="search-item-premium" onClick={() => selectCustomer(c)}>
+                            <div key={`${c.lpo_id || 'lpo'}_${c.id}`} className="search-item-premium" onClick={() => selectCustomer(c)}>
                               <div className="item-info">
-                                <div className="company-name">{c.companyName || c.company_name}</div>
+                                <div className="company-name-row">
+                                  <span className="company-name">{c.companyName || c.company_name}</span>
+                                  {(c.lpoName || (isAdmin && c.lpo_id)) && (
+                                    <span className="lpo-badge-mini" title={`Linked to ${c.lpoName || c.lpo_id}`}>
+                                      <Building2 size={11} />
+                                      <span>LPO: {c.lpoName || c.lpo_id}</span>
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="sub">{(c.city || c.address?.suburb)}, {(c.zip || c.address?.postcode)}</div>
                               </div>
                               <div className="item-action">
@@ -1459,6 +1600,91 @@ const NewJobForm: React.FC = () => {
         .search-item-premium:hover { background: var(--paper); border-color: var(--cream-warm); transform: translateX(4px); }
         .company-name { font-weight: 800; color: var(--ink); font-size: 1rem; }
         .search-item-premium .sub { font-size: 0.75rem; color: var(--ink-soft); opacity: 0.6; margin-top: 2px; }
+
+        /* Search Item Company Row & LPO Badge */
+        .company-name-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .lpo-badge-mini {
+          display: inline-flex; align-items: center; gap: 4px;
+          font-family: var(--font-ui); font-size: 0.6rem; font-weight: 700;
+          color: var(--ink); background: var(--cream-warm);
+          padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(26, 61, 51, 0.08);
+        }
+
+        /* Admin LPO Assignment Banner */
+        .admin-lpo-selection-banner {
+          position: relative;
+          z-index: 50;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: rgba(255, 255, 255, 0.95);
+          border: 1px solid var(--cream-warm);
+          border-left: 5px solid var(--gold);
+          border-radius: 20px;
+          padding: 18px 24px;
+          margin-bottom: 28px;
+          gap: 20px;
+        }
+        .assign-header { display: flex; align-items: center; gap: 14px; }
+        .assign-icon-box {
+          width: 42px; height: 42px; border-radius: 12px;
+          background: rgba(234, 240, 68, 0.15); color: var(--ink);
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+        }
+        .assign-tag {
+          font-family: var(--font-ui); font-size: 0.55rem; font-weight: 800;
+          color: var(--ink-soft); letter-spacing: 0.1em; text-transform: uppercase;
+          display: block; margin-bottom: 2px;
+        }
+        .assign-text h4 { font-family: var(--font-headings); font-size: 1.05rem; margin: 0 0 2px; color: var(--ink); }
+        .assign-text p { font-size: 0.78rem; color: var(--ink-soft); margin: 0; }
+        .assign-select-wrapper { min-width: 240px; }
+        .lpo-select-main { width: 100%; min-width: 240px; }
+
+        /* Linked LPO Card for Selected Subcustomer */
+        .linked-lpo-card {
+          position: relative;
+          z-index: 50;
+          display: flex;
+          align-items: center;
+          background: rgba(26, 61, 51, 0.04);
+          border: 1px solid rgba(26, 61, 51, 0.1);
+          border-left: 5px solid var(--ink);
+          border-radius: 20px;
+          padding: 16px 20px;
+          margin-bottom: 28px;
+          gap: 16px;
+        }
+        .linked-lpo-icon-box {
+          width: 44px; height: 44px; border-radius: 12px;
+          background: var(--ink); color: var(--gold);
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0;
+        }
+        .linked-lpo-content { flex: 1; }
+        .linked-lpo-tag {
+          display: inline-flex; align-items: center; gap: 6px;
+          font-family: var(--font-ui); font-size: 0.55rem; font-weight: 800;
+          letter-spacing: 0.1em; color: var(--ink-soft); text-transform: uppercase;
+          margin-bottom: 2px;
+        }
+        .live-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #10b981; animation: livePulse 2s infinite;
+        }
+        @keyframes livePulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.3); } }
+        .linked-lpo-title {
+          font-family: var(--font-headings); font-size: 1.1rem;
+          color: var(--ink); margin: 0 0 3px; font-weight: 600;
+        }
+        .linked-lpo-subtitle {
+          display: flex; align-items: center; gap: 6px;
+          font-size: 0.78rem; color: var(--ink-soft); margin: 0;
+        }
+        .linked-lpo-reassign { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+        .reassign-label { font-size: 0.65rem; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.05em; }
+        .lpo-select-compact { font-size: 0.85rem; }
         
         .item-action { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 800; color: var(--ink); opacity: 0; transition: opacity 0.2s; }
         .search-item-premium:hover .item-action { opacity: 1; }
@@ -1473,7 +1699,7 @@ const NewJobForm: React.FC = () => {
         .sparkle-icon { animation: sparkleSpin 2s infinite linear; }
         @keyframes sparkleSpin { 0% { transform: rotate(0); } 50% { transform: scale(1.2); } 100% { transform: rotate(360deg); } }
 
-        .input-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .input-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
         .input-pill { display: flex; align-items: center; gap: 12px; background: white; border-radius: 18px; padding: 12px 20px; border: 1px solid var(--cream-warm); transition: border-color 0.2s; }
         .input-pill:focus-within { border-color: var(--ink); }
         

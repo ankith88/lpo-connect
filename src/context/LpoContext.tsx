@@ -1,18 +1,25 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, type User } from 'firebase/auth';
-import { doc, getDoc, updateDoc, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { requestNotificationPermission, saveTokenToFirestore } from '../utils/notifications';
 
-interface LpoMetadata {
+export interface LpoMetadata {
   id: string;
   name: string;
-  location: string;
-  address: string;
-  latitude?: number;
-  longitude?: number;
+  location?: string;
+  address?: string;
+  address1?: string;
+  city?: string;
+  suburb?: string;
+  state?: string;
+  zip?: string;
+  postcode?: string;
+  latitude?: number | string;
+  longitude?: number | string;
   franchiseeTerritoryJSON?: string | string[];
   lpoServiceAdditionalLPOBagRate?: string;
+  [key: string]: any;
 }
 
 interface UserMetadata {
@@ -66,6 +73,64 @@ const LpoContext = createContext<LpoContextType>({
   awaitingTcCount: 0,
 });
 
+export const resolveLpoName = (docId: string, data: any): string => {
+  if (!data) return docId;
+  
+  // List of possible text fields that hold the human-readable name in priority order
+  const textCandidates = [
+    data.name,
+    data.lpoName,
+    data.lpo_name,
+    data.lponame,
+    data.companyName,
+    data.company_name,
+    data.companyname,
+    data.franchiseeText,
+    data.franchiseeName,
+    data.franchisee_name,
+    data.altname,
+    data.altName,
+    data.title,
+    data.location,
+    data.lpoLocation,
+    data.suburb,
+    data.city,
+    data.address,
+    data.address1
+  ];
+
+  // 1. Look for the first non-empty candidate that is NOT purely numbers and not just the docId
+  for (const candidate of textCandidates) {
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (trimmed && !/^\d+$/.test(trimmed) && trimmed !== docId) {
+        return trimmed.replace(/\s+lpo\s+lpo$/i, ' LPO');
+      }
+    }
+  }
+
+  // 2. If all text candidates were numeric or identical to docId, check if suburb/city/location can be formatted
+  const locationPart = (typeof data.suburb === 'string' && data.suburb.trim()) || 
+                       (typeof data.city === 'string' && data.city.trim()) || 
+                       (typeof data.location === 'string' && data.location.trim()) || 
+                       (typeof data.address === 'string' && data.address.trim()) ||
+                       '';
+
+  if (locationPart && !/^\d+$/.test(locationPart)) {
+    const cleanLocation = locationPart.replace(/\s+lpo$/i, '').trim();
+    return `${cleanLocation} LPO`;
+  }
+
+  // 3. Fallback to candidate if any string exists
+  for (const candidate of textCandidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return docId;
+};
+
 export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [userData, setUserData] = useState<UserMetadata | null>(null);
@@ -103,24 +168,33 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             userDoc = await getDoc(doc(db, 'users', user.email));
           }
 
+          let isUserAdmin = user.uid === SUPER_ADMIN_ID;
+
           if (userDoc.exists()) {
             const data = userDoc.data() as UserMetadata;
             setUserData({ ...data, uid: user.uid });
             const lpoId = data.lpo_id;
             setHasCompletedTour(data.hasCompletedTour || false);
             
-            const isUserAdmin = data.role === 'admin' || data.role === 'superadmin' || user.uid === SUPER_ADMIN_ID;
+            isUserAdmin = isUserAdmin || data.role === 'admin' || data.role === 'superadmin';
 
             // Set initial filter to user's LPO if they are not an admin
-            if (!isUserAdmin) {
+            if (!isUserAdmin && lpoId) {
               setSelectedLpoIds([lpoId]);
             }
 
             if (lpoId) {
               const lpoDoc = await getDoc(doc(db, 'lpo', lpoId));
               if (lpoDoc.exists()) {
-                setLpo({ id: lpoId, ...lpoDoc.data() } as LpoMetadata);
+                const docData = lpoDoc.data();
+                const resolvedName = resolveLpoName(lpoId, docData);
+                const userLpo = { id: lpoId, ...docData, name: resolvedName } as LpoMetadata;
+                setLpo(userLpo);
                 
+                if (!isUserAdmin) {
+                  setAllLpos([userLpo]);
+                }
+
                 // Request and save FCM token for operator
                 requestNotificationPermission().then(token => {
                   if (token) {
@@ -139,27 +213,36 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               hasCompletedTour: true
             };
             setUserData(adminData);
+            isUserAdmin = true;
             
             // Create the document asynchronously
-            const { setDoc, doc } = await import('firebase/firestore');
             setDoc(doc(db, 'users', user.uid), adminData).catch(e => console.error("Auto-seed error:", e));
           }
 
-          // If admin, fetch all LPOs for the filter list
-          if (user.uid === SUPER_ADMIN_ID || userDoc.data()?.role === 'admin' || userDoc.data()?.role === 'superadmin') {
-            const { getDocs, collection } = await import('firebase/firestore');
+          // If admin, fetch all active LPOs for the filter list
+          if (isUserAdmin) {
             const lposSnapshot = await getDocs(collection(db, 'lpo'));
             const sanitizedLpos = lposSnapshot.docs
+              .filter(doc => {
+                const data = doc.data();
+                // Filter out disabled or lost accounts
+                if (data.disabled === true || data.status === 'Lost' || data.status === 'inactive') {
+                  return false;
+                }
+                // Must have at least one valid name/location field
+                const hasName = data.name || data.location || data.companyName || data.lpoName || data.franchiseeText || data.city || data.suburb;
+                return Boolean(hasName);
+              })
               .map(doc => {
                 const data = doc.data();
-                const resolvedName = (data.name && data.name.trim()) || (data.location && data.location.trim()) || (data.address && data.address.trim()) || doc.id;
+                const resolvedName = resolveLpoName(doc.id, data);
                 return {
                   id: doc.id,
                   ...data,
                   name: resolvedName,
                 } as LpoMetadata;
               })
-              .filter(l => Boolean(l.id && l.name))
+              .filter(l => Boolean(l.id && l.name && !/^\d+$/.test(l.name)))
               .sort((a, b) => a.name.localeCompare(b.name));
             setAllLpos(sanitizedLpos);
           }

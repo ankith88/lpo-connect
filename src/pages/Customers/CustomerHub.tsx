@@ -199,7 +199,13 @@ const CustomerHub: React.FC = () => {
                   multiple={true}
                 />
               )}
-              <button className="btn-premium-action" onClick={() => window.location.href = '/new-job'}>
+              <button 
+                className="btn-premium-action" 
+                onClick={() => {
+                  const targetLpoParam = selectedLpoIds.length === 1 && selectedLpoIds[0] !== 'all' ? `?lpoId=${selectedLpoIds[0]}` : '';
+                  window.location.href = `/new-job${targetLpoParam}`;
+                }}
+              >
                 <Plus size={20} />
                 <span>NEW JOB FOR CUSTOMER</span>
               </button>
@@ -457,7 +463,7 @@ const CustomerHub: React.FC = () => {
                           </div>
                           <button 
                             className="view-details" 
-                            onClick={() => window.location.href = `/new-job?rebook=true&customerId=${customer.id}`} 
+                            onClick={() => window.location.href = `/new-job?rebook=true&customerId=${customer.id}&lpoId=${customer.lpo_id || ''}`} 
                             title={isOutsideCoverage ? "Outside LPO Coverage" : "Book New Job"}
                             disabled={isOutsideCoverage}
                             style={isOutsideCoverage ? { opacity: 0.5, cursor: 'not-allowed', background: 'rgba(0, 0, 0, 0.05)', color: 'rgba(0, 0, 0, 0.3)' } : undefined}
