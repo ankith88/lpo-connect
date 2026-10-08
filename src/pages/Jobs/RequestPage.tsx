@@ -71,10 +71,11 @@ const RequestPage: React.FC = () => {
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const [tentativeTime, setTentativeTime] = useState('');
 
-  // Identity: If lpo exists, person is the LPO User.
+  // Identity: If lpo exists and not admin, person is the LPO User.
+  // If admin, they have administrative control (can act as operator/admin).
   // Otherwise, they are an External User.
-  const isLpoUser = !!lpo;
-  const isExternalUser = !lpo;
+  const isLpoUser = !!lpo && !isAdmin;
+  const isExternalUser = !lpo && !isAdmin;
 
   const today = formatDateForInput(new Date());
   const isHistory = request?.date < today;
@@ -125,8 +126,8 @@ const RequestPage: React.FC = () => {
           
           setFranchisees(list);
 
-          // Default zee for operator if missing
-          if (isLpoUser && !zeeParam && list.length > 0) {
+          // Default zee for operator or admin if missing
+          if ((isLpoUser || isAdmin) && !zeeParam && list.length > 0) {
             setSearchParams({ zee: list[0].id }, { replace: true });
           }
         }
@@ -136,14 +137,14 @@ const RequestPage: React.FC = () => {
     };
 
     fetchCustomer();
-  }, [request?.lpo_id, request?.netsuiteCustomerId, isLpoUser, zeeParam, setSearchParams]);
+  }, [request?.lpo_id, request?.netsuiteCustomerId, isLpoUser, isAdmin, zeeParam, setSearchParams]);
 
   useEffect(() => {
     // Request notification permission and save token
     const setupNotifications = async () => {
       const token = await requestNotificationPermission();
       if (token) {
-        if (isLpoUser && userData?.uid) {
+        if ((isLpoUser || isAdmin) && userData?.uid) {
           saveTokenToFirestore(token, 'operator', userData.uid); 
         } else if (id) {
           saveTokenToFirestore(token, 'customer', id);
@@ -200,7 +201,7 @@ const RequestPage: React.FC = () => {
     if (!lastMsg) return;
 
     // If a new message arrived from the OTHER person
-    const isFromOther = (isLpoUser && lastMsg.sender === 'user') || (!isLpoUser && lastMsg.sender === 'operator');
+    const isFromOther = ((isLpoUser || isAdmin) && lastMsg.sender === 'user') || (!isLpoUser && !isAdmin && lastMsg.sender === 'operator');
     
     if (isFromOther) {
       if (audioRef.current) {
@@ -210,7 +211,7 @@ const RequestPage: React.FC = () => {
         setHasNewMessage(true);
       }
     }
-  }, [request?.chat?.length, isLpoUser]);
+  }, [request?.chat?.length, isLpoUser, isAdmin]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -221,7 +222,7 @@ const RequestPage: React.FC = () => {
     if (!message.trim() || !id) return;
 
     const newMessage = {
-      sender: isLpoUser ? 'operator' : 'user',
+      sender: (isLpoUser || isAdmin) ? 'operator' : 'user',
       text: message.trim(),
       timestamp: new Date().toISOString(),
       zee: zeeParam || null
@@ -308,7 +309,7 @@ const RequestPage: React.FC = () => {
 
   const handleAccept = async () => {
     if (!request) return;
-    if (isLpoUser && !lpo) return;
+    if (isLpoUser && !lpo && !isAdmin) return;
 
     const lpoId = lpo?.id || request.lpo_id;
     if (!lpoId) {
@@ -321,8 +322,8 @@ const RequestPage: React.FC = () => {
       return;
     }
 
-    if (request.status === 'new-time-proposed' && isLpoUser) {
-      // Bypass modal if accepting a proposed time
+    if (request.status === 'new-time-proposed' && isLpoUser && !isAdmin) {
+      // Bypass modal if accepting a proposed time as a regular LPO user
       confirmAccept(request.preferredTime);
     } else {
       setIsAcceptModalOpen(true);
@@ -605,13 +606,13 @@ const RequestPage: React.FC = () => {
   };
 
   const handleReject = () => {
-    if (!isExternalUser && !isLpoUser) return;
+    if (!isExternalUser && !isLpoUser && !isAdmin) return;
     setIsRejectModalOpen(true);
   };
 
   const submitReject = async () => {
     if (!request) return;
-    if (!isLpoUser && !isExternalUser) return;
+    if (!isLpoUser && !isExternalUser && !isAdmin) return;
     if (!rejectReason || !rejectNotes.trim()) {
       alert("Please select a reason and provide notes.");
       return;
@@ -630,7 +631,7 @@ const RequestPage: React.FC = () => {
         rejectionReason: rejectReason,
         rejectionNotes: rejectNotes.trim(),
         rejectedAt: new Date().toISOString(),
-        rejectedBy: isLpoUser ? (lpo?.id || 'operator') : 'customer',
+        rejectedBy: isAdmin ? 'admin' : (isLpoUser ? (lpo?.id || 'operator') : 'customer'),
         chat: arrayUnion(sysMessage)
       });
 
@@ -797,7 +798,34 @@ const RequestPage: React.FC = () => {
            
            {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && !isHistory && (
              <div className="operator-actions desktop-only">
-               {isLpoUser || isAdmin ? (
+               {isAdmin ? (
+                 <>
+                   <button className="btn-reject" onClick={handleCancelRequest}>
+                     <XCircle size={18} /> CANCEL REQUEST
+                   </button>
+                   <button className="btn-reject" onClick={handleReject}>
+                     <XCircle size={18} /> DECLINE JOB
+                   </button>
+                   {request.preferredTime && (
+                     <button className="btn-propose" onClick={() => setIsTimeModalOpen(true)}>
+                       <Clock size={18} /> PROPOSE NEW TIME
+                     </button>
+                   )}
+                   <button 
+                     className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
+                     onClick={handleAccept}
+                     title={request.status === 'awaiting-activation' ? "Awaiting Customer T&C Activation" : ""}
+                   >
+                     <div className="accept-content">
+                       <CheckCircle2 size={18} /> 
+                       <span>{request.status === 'new-time-proposed' ? 'ACCEPT NEW TIME' : 'ACCEPT JOB'}</span>
+                     </div>
+                     {request.preferredTime && (
+                       <div className="btn-badge">Time Priority</div>
+                     )}
+                   </button>
+                 </>
+               ) : isLpoUser ? (
                  <>
                    <button className="btn-reject" onClick={handleCancelRequest}>
                      <XCircle size={18} /> CANCEL REQUEST
@@ -929,7 +957,7 @@ const RequestPage: React.FC = () => {
                 </div>
               )}
 
-              {isLpoUser && franchisees.length > 1 && (
+               {(isLpoUser || isAdmin) && franchisees.length > 1 && (
                 <div className="detail-section">
                   <div className="section-title">
                     <Building2 size={18} />
@@ -954,7 +982,7 @@ const RequestPage: React.FC = () => {
                 </div>
                )}
 
-               {isLpoUser && (
+               {(isLpoUser || isAdmin) && (
                 <div className="detail-section">
                    <button className="copy-link-btn" onClick={() => {
                       const url = `${window.location.origin}/request/${id}?zee=${zeeParam || ''}`;
@@ -1041,7 +1069,7 @@ const RequestPage: React.FC = () => {
                  ) : (
                     request.chat
                       .filter((msg: any) => {
-                        if (isLpoUser) return true;
+                        if (isLpoUser || isAdmin) return true;
                         if (msg.sender === 'system') return true;
                         // For franchisees, show messages that match their zee OR have no zee (global/legacy)
                         return !msg.zee || msg.zee === zeeParam;
@@ -1062,7 +1090,7 @@ const RequestPage: React.FC = () => {
                         }
                         
                         const senderName = msg.sender === 'operator' ? 'LPO' : 'Franchisee';
-                        const zeeInfo = isLpoUser && msg.zee ? franchisees.find(f => f.id === msg.zee) : null;
+                        const zeeInfo = (isLpoUser || isAdmin) && msg.zee ? franchisees.find(f => f.id === msg.zee) : null;
 
                         return (
                            <div key={idx} className={`message-bubble ${msg.sender}`}>
@@ -1140,7 +1168,28 @@ const RequestPage: React.FC = () => {
        {(request.status === 'pending' || request.status === 'new-time-proposed' || request.status === 'awaiting-activation') && !isHistory && (
         <div className="mobile-operator-actions mobile-only">
           <div className="actions-container">
-            {isLpoUser || isAdmin ? (
+            {isAdmin ? (
+              <>
+                <button className="btn-reject" onClick={handleCancelRequest}>
+                  <XCircle size={18} /> CANCEL
+                </button>
+                <button className="btn-reject" onClick={handleReject}>
+                  <XCircle size={18} /> DECLINE
+                </button>
+                {request.preferredTime && (
+                  <button className="btn-propose-mobile" onClick={() => setIsTimeModalOpen(true)}>
+                    <Clock size={18} /> PROPOSE TIME
+                  </button>
+                )}
+                <button 
+                  className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
+                  onClick={handleAccept}
+                >
+                  <CheckCircle2 size={18} /> 
+                  <span>{request.status === 'new-time-proposed' ? 'ACCEPT TIME' : 'ACCEPT'}</span>
+                </button>
+              </>
+            ) : isLpoUser ? (
               <>
                 <button className="btn-reject" style={{ width: '100%' }} onClick={handleCancelRequest}>
                   <XCircle size={18} /> CANCEL REQUEST

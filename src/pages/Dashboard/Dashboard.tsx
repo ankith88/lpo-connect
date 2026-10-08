@@ -30,7 +30,7 @@ import {
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
 import CancelJobModal from '../../components/CancelJobModal';
-import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy, arrayUnion } from 'firebase/firestore';
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy, arrayUnion, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { formatDateForInput, parseLocalDate } from '../../utils/scheduling';
@@ -79,6 +79,10 @@ const Dashboard: React.FC = () => {
   // Cancellation Modal State
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [selectedJobForCancel, setSelectedJobForCancel] = useState<any>(null);
+
+  // NetSuite Sync & History Recreation State
+  const [syncingJobIds, setSyncingJobIds] = useState<Set<string>>(new Set());
+  const [recreatingJobIds, setRecreatingJobIds] = useState<Set<string>>(new Set());
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -268,6 +272,191 @@ const Dashboard: React.FC = () => {
       alert("Failed to send message. Please try again.");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleSyncJobNetSuite = async (job: any) => {
+    if (!job || !job.id) return;
+
+    const lpoId = job.lpo_id || lpo?.id;
+    if (!lpoId) {
+      alert("Cannot sync: Missing LPO ID.");
+      return;
+    }
+
+    const netsuiteCustomerId = job.netsuiteCustomerId || job.customer?.netsuiteId || "";
+    let currentAcceptedCustId = job.jobAcceptedCustInternalId || "";
+    let currentServiceInternalId = job.serviceInternalId || "";
+
+    // Fallback ID lookup from customer cache if needed
+    if (!currentServiceInternalId && customerDetailsMap[`${lpoId}_${job.customer?.company}`]) {
+      const c = customerDetailsMap[`${lpoId}_${job.customer?.company}`];
+      if (job.service === 'lpo-to-site') {
+        currentServiceInternalId = c.lpoServiceAMPOInternalID || '';
+      } else if (job.service === 'site-to-lpo') {
+        currentServiceInternalId = c.lpoServicePMPOInternalID || '';
+      } else if (job.service === 'round-trip') {
+        currentServiceInternalId = c.lpoServiceAMPOPMPOInternalID || '';
+      }
+    }
+    if (!currentAcceptedCustId && customerDetailsMap[`${lpoId}_${job.customer?.company}`]) {
+      const c = customerDetailsMap[`${lpoId}_${job.customer?.company}`];
+      currentAcceptedCustId = c.franchisee || c.companyId || '';
+    }
+
+    setSyncingJobIds(prev => new Set(prev).add(job.id));
+
+    try {
+      // Step 1: Script 2536 - ID Confirmation / Retrieval
+      const SECOND_NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2536&deploy=1&compid=1048144&ns-at=AAEJ7tMQhaB4QYR7Pw-EtSlrxcIMl2il8br6cxfmm6xmf7VP-1w";
+      
+      const params2536 = new URLSearchParams({
+        job_id: job.id,
+        lpo_id: lpoId,
+        customer_id: netsuiteCustomerId,
+        email: job.customer?.email || "",
+        firstName: job.customer?.firstName || "",
+        service: job.service || "",
+        date: job.date || "null",
+        frequency: (job.jobType === 'scheduled' || job.jobType === 'scheduled_instance') ? (job.frequency?.join(',') || "null") : "null",
+        zee_id: currentAcceptedCustId
+      });
+
+      console.log("Triggering NetSuite Confirmation (2536) for job:", job.id, Object.fromEntries(params2536));
+
+      try {
+        const res2536 = await fetch(`${SECOND_NETSUITE_API}&${params2536.toString()}`);
+        const data2536 = await res2536.json();
+        console.log("NetSuite Confirmation (2536) Response:", data2536);
+
+        if (data2536.jobAcceptedCustInternalId) {
+          currentAcceptedCustId = data2536.jobAcceptedCustInternalId;
+        }
+        if (data2536.serviceInternalId) {
+          currentServiceInternalId = data2536.serviceInternalId;
+        }
+      } catch (err) {
+        console.warn("NetSuite Confirmation (2536) warning:", err);
+      }
+
+      // Step 2: Script 2529 - Job Sync
+      const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2529&deploy=1&compid=1048144&ns-at=AAEJ7tMQUHvAyCn2ri9BfAPTI9fsSABUWunIfqrEj4J_2hC-e3o";
+
+      const params2529 = new URLSearchParams({
+        job_id: job.id,
+        billing: job.billing || "",
+        customer_id: netsuiteCustomerId,
+        accepted_cust_id: currentAcceptedCustId,
+        jobAcceptedCustInternalId: currentAcceptedCustId,
+        instructions: job.customer?.instructions || "",
+        job_type: job.jobType || "",
+        lpo_id: lpoId,
+        request_id: job.originalRequestId || job.id,
+        preferred_time: job.preferredTime || "",
+        service_name: job.service || "null",
+        service_internal_id: currentServiceInternalId || "null",
+        date: job.date || "null"
+      });
+
+      console.log("Triggering NetSuite Job Sync (2529) for job:", job.id, Object.fromEntries(params2529));
+
+      const res2529 = await fetch(`${NETSUITE_API}&${params2529.toString()}`);
+      const data2529 = await res2529.json();
+      console.log("NetSuite Sync (2529) Response:", data2529);
+
+      // Step 3: Update Firestore job document
+      const updates: any = {
+        syncedWithNetSuite: true,
+        syncedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      if (currentAcceptedCustId) updates.jobAcceptedCustInternalId = currentAcceptedCustId;
+      if (currentServiceInternalId) updates.serviceInternalId = currentServiceInternalId;
+
+      await updateDoc(doc(db, 'jobs', job.id), updates);
+
+      // Update local state
+      setJobs(prev => prev.map(j => j.id === job.id ? { ...j, ...updates, syncedWithNetSuite: true } : j));
+      
+      alert(`Job successfully synced with NetSuite!${data2529?.message ? ` (${data2529.message})` : ''}`);
+    } catch (error: any) {
+      console.error("NetSuite Sync Error:", error);
+      alert(`Failed to sync job with NetSuite: ${error.message || 'Network error'}`);
+    } finally {
+      setSyncingJobIds(prev => {
+        const next = new Set(prev);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
+  const handleRecreateJobForToday = async (sourceJob: any) => {
+    if (!sourceJob) return;
+    if (!window.confirm(`Are you sure you want to recreate this unperformed job for today (${today})?`)) {
+      return;
+    }
+
+    setRecreatingJobIds(prev => new Set(prev).add(sourceJob.id));
+    try {
+      const lpoId = sourceJob.lpo_id || lpo?.id;
+      if (!lpoId) throw new Error("Missing LPO ID for job recreation");
+
+      // Reset stops to pending status
+      const resetStops = (sourceJob.stops || []).map((stop: any) => ({
+        ...stop,
+        status: 'pending'
+      }));
+
+      const newJobPayload: any = {
+        customer: sourceJob.customer || {},
+        service: sourceJob.service,
+        billing: sourceJob.billing,
+        date: today,
+        status: 'awaiting-driver',
+        jobType: sourceJob.jobType === 'scheduled_instance' || sourceJob.jobType === 'scheduled' ? 'scheduled_instance' : 'one-off',
+        stops: resetStops,
+        lpo_id: lpoId,
+        timeConstraintType: sourceJob.timeConstraintType || 'AFTER',
+        preferredTime: sourceJob.preferredTime || '',
+        tentativeTime: sourceJob.tentativeTime || '',
+        serviceInternalId: sourceJob.serviceInternalId || null,
+        serviceRate: sourceJob.serviceRate || null,
+        jobAcceptedCustInternalId: sourceJob.jobAcceptedCustInternalId || null,
+        netsuiteCustomerId: sourceJob.netsuiteCustomerId || sourceJob.customer?.netsuiteId || null,
+        originalRequestId: sourceJob.originalRequestId || (sourceJob.status ? sourceJob.id : null),
+        scheduledJobId: sourceJob.scheduledJobId || null,
+        recreatedFromJobId: sourceJob.id,
+        recreatedAt: serverTimestamp(),
+        syncedWithNetSuite: false,
+        operatorNetSuiteId: null,
+        operatorName: null,
+        operatorEmail: null,
+        operatorPhone: null,
+        createdAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(collection(db, 'jobs'), newJobPayload);
+      const createdJob = { ...newJobPayload, id: docRef.id, createdAt: new Date() };
+
+      setJobs(prev => [createdJob, ...prev]);
+
+      const shouldSync = window.confirm(`Job successfully recreated for today! (Job ID: ${docRef.id})\n\nWould you like to sync this job with NetSuite now?`);
+      if (shouldSync) {
+        await handleSyncJobNetSuite(createdJob);
+      }
+
+      // Switch to Active Today tab to show the recreated job
+      setActiveTab('in-progress');
+    } catch (err: any) {
+      console.error("Error recreating job for today:", err);
+      alert(`Failed to recreate job: ${err.message || 'Unknown error'}`);
+    } finally {
+      setRecreatingJobIds(prev => {
+        const next = new Set(prev);
+        next.delete(sourceJob.id);
+        return next;
+      });
     }
   };
 
@@ -873,6 +1062,21 @@ const Dashboard: React.FC = () => {
 
                                     </div>
                                     <div className="header-meta-group">
+                                       {isAdmin && job.date === today && (
+                                         <div className={`ns-sync-badge ${job.syncedWithNetSuite ? 'synced' : 'unsynced'}`}>
+                                           {job.syncedWithNetSuite ? (
+                                             <>
+                                               <CheckCircle2 size={11} />
+                                               <span>NetSuite Synced</span>
+                                             </>
+                                           ) : (
+                                             <>
+                                               <AlertCircle size={11} />
+                                               <span>NetSuite Unsynced</span>
+                                             </>
+                                           )}
+                                         </div>
+                                       )}
                                        <div className={`type-tag type-${job.jobType === 'scheduled' || job.jobType === 'scheduled_instance' ? 'recurring' : 'one-off'}`}>
                                           {job.jobType === 'scheduled' || job.jobType === 'scheduled_instance' ? <Repeat size={10} /> : <Clock size={10} />}
                                           <span>{job.jobType === 'scheduled' || job.jobType === 'scheduled_instance' ? 'Recurring' : 'One-off'}</span>
@@ -1042,6 +1246,47 @@ const Dashboard: React.FC = () => {
                                 </div>
 
                                 <div className="card-actions">
+                                      {/* NetSuite Sync Button for Active Unsynced Jobs (Admin / SuperAdmin) */}
+                                      {isAdmin && job.date === today && !job.syncedWithNetSuite && (
+                                        <button 
+                                          className="btn-sync-netsuite"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSyncJobNetSuite(job);
+                                          }}
+                                          disabled={syncingJobIds.has(job.id)}
+                                          title="Sync this job with NetSuite"
+                                        >
+                                          <RefreshCw size={14} className={syncingJobIds.has(job.id) ? "spin" : ""} />
+                                          <span>{syncingJobIds.has(job.id) ? "SYNCING..." : "SYNC NETSUITE"}</span>
+                                        </button>
+                                      )}
+
+                                      {/* Recreate Button for Unperformed History Jobs (Admin / SuperAdmin) */}
+                                      {isAdmin && activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver' || job.status === 'in-progress') && (
+                                        <button 
+                                          className="btn-recreate-today"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRecreateJobForToday(job);
+                                          }}
+                                          disabled={recreatingJobIds.has(job.id)}
+                                          title="Recreate this unperformed job for today"
+                                        >
+                                          {recreatingJobIds.has(job.id) ? (
+                                            <>
+                                              <RefreshCw size={14} className="spin" />
+                                              <span>RECREATING...</span>
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Plus size={14} />
+                                              <span>RECREATE FOR TODAY</span>
+                                            </>
+                                          )}
+                                        </button>
+                                      )}
+
                                       {activeTab === 'expired-requests' ? (
                                        <div className="messaging-group">
                                          <button className="btn-primary-glass mini-chat" onClick={() => handleRebook(job)}>
@@ -1051,6 +1296,17 @@ const Dashboard: React.FC = () => {
                                        </div>
                                       ) : activeTab === 'pending' || activeTab === 'declined' ? (
                                        <div className="messaging-group">
+                                          {isAdmin && activeTab === 'pending' && (
+                                            <button 
+                                              className="btn-primary-glass mini-chat" 
+                                              style={{ background: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.4)', color: '#4ade80' }}
+                                              onClick={() => window.open(`/request/${job.id}`, '_blank')}
+                                              title="Review and Accept Job Request"
+                                            >
+                                              <CheckCircle2 size={16} />
+                                              <span>ACCEPT JOB</span>
+                                            </button>
+                                          )}
                                          <button className="btn-primary-glass mini-chat" onClick={() => window.open(`/request/${job.id}`, '_blank')}>
                                             <MessageSquare size={16} />
                                             <span>CHAT & MANAGE</span>
@@ -1078,6 +1334,14 @@ const Dashboard: React.FC = () => {
                                              <div className="menu-dropdown glass">
                                                 {activeTab === 'pending' || activeTab === 'declined' ? (
                                                   <>
+                                                     {isAdmin && activeTab === 'pending' && (
+                                                       <button 
+                                                         onClick={() => window.open(`/request/${job.id}`, '_blank')}
+                                                         style={{ color: '#4ade80' }}
+                                                       >
+                                                         <CheckCircle2 size={14} /> Review & Accept Request
+                                                       </button>
+                                                     )}
                                                     <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
                                                     {isAdmin ? (
                                                       <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
@@ -1087,6 +1351,33 @@ const Dashboard: React.FC = () => {
                                                   </>
                                                 ) : (
                                                   <>
+                                                    {/* NetSuite Sync Option in Dropdown */}
+                                                    {isAdmin && job.date === today && (
+                                                      <button 
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleSyncJobNetSuite(job);
+                                                        }}
+                                                        disabled={syncingJobIds.has(job.id)}
+                                                      >
+                                                        <RefreshCw size={14} className={syncingJobIds.has(job.id) ? "spin" : ""} />
+                                                        {job.syncedWithNetSuite ? "Re-sync with NetSuite" : "Sync with NetSuite"}
+                                                      </button>
+                                                    )}
+
+                                                    {/* Recreate Job Option in Dropdown */}
+                                                    {isAdmin && activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver' || job.status === 'in-progress') && (
+                                                      <button 
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleRecreateJobForToday(job);
+                                                        }}
+                                                        disabled={recreatingJobIds.has(job.id)}
+                                                      >
+                                                        <Plus size={14} /> Recreate for Today
+                                                      </button>
+                                                    )}
+
                                                     <button onClick={() => handleRebook(job)}><RotateCcw size={14} /> Rebook</button>
                                                     {(job.status !== 'accepted' && job.status !== 'rejected' && job.status !== 'in-progress' && job.status !== 'completed') && (
                                                       <button className="cancel" onClick={() => handleDelete(job.id)}><Trash2 size={14} /> {job.status === 'awaiting-driver' ? 'Cancel Job' : 'Cancel'}</button>
@@ -2018,6 +2309,84 @@ const Dashboard: React.FC = () => {
           color: white;
           transform: scale(1.15);
           border-color: var(--ink);
+        }
+
+        /* NetSuite Sync Badge */
+        .ns-sync-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px;
+          border-radius: 50px;
+          font-size: 0.7rem;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+          text-transform: uppercase;
+          transition: all 0.2s ease;
+        }
+        .ns-sync-badge.synced {
+          background: rgba(39, 110, 89, 0.12);
+          color: #1a5a43;
+          border: 1px solid rgba(39, 110, 89, 0.25);
+        }
+        .ns-sync-badge.unsynced {
+          background: rgba(220, 107, 30, 0.12);
+          color: #b85412;
+          border: 1px solid rgba(220, 107, 30, 0.3);
+        }
+
+        /* Sync NetSuite Button */
+        .btn-sync-netsuite {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          background: #b85412;
+          color: white;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 10px rgba(184, 84, 18, 0.2);
+        }
+        .btn-sync-netsuite:hover:not(:disabled) {
+          background: #9a440c;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 14px rgba(184, 84, 18, 0.3);
+        }
+        .btn-sync-netsuite:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
+        }
+
+        /* Recreate For Today Button */
+        .btn-recreate-today {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          background: var(--ink);
+          color: white;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 12px rgba(26, 61, 51, 0.2);
+        }
+        .btn-recreate-today:hover:not(:disabled) {
+          transform: translateY(-2px);
+          filter: brightness(1.15);
+          box-shadow: 0 6px 16px rgba(26, 61, 51, 0.3);
+        }
+        .btn-recreate-today:disabled {
+          opacity: 0.65;
+          cursor: not-allowed;
         }
       `}</style>
     </div>
