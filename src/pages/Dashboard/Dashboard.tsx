@@ -25,11 +25,15 @@ import {
   Phone,
   Repeat,
   Copy,
-  AlertCircle
+  AlertCircle,
+  Camera,
+  Upload,
+  Eye
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
 import CancelJobModal from '../../components/CancelJobModal';
+import PodModal from '../../components/PodModal';
 import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, orderBy, arrayUnion, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
@@ -84,7 +88,30 @@ const Dashboard: React.FC = () => {
   const [syncingJobIds, setSyncingJobIds] = useState<Set<string>>(new Set());
   const [recreatingJobIds, setRecreatingJobIds] = useState<Set<string>>(new Set());
 
+  // Proof of Delivery (POD) State
+  const [isPodModalOpen, setIsPodModalOpen] = useState(false);
+  const [selectedJobForPod, setSelectedJobForPod] = useState<any>(null);
+  const [podModalMode, setPodModalMode] = useState<'upload' | 'view'>('view');
+  const [podInitialPhotoIndex, setPodInitialPhotoIndex] = useState<number>(0);
+
+  const handleOpenPod = (job: any, mode: 'upload' | 'view' = 'view', photoIndex: number = 0) => {
+    setSelectedJobForPod(job);
+    setPodModalMode(mode);
+    setPodInitialPhotoIndex(photoIndex);
+    setIsPodModalOpen(true);
+  };
+
+  const handlePodSuccess = (updatedJob: any) => {
+    if (!updatedJob || !updatedJob.id) return;
+    setJobs(prevJobs => prevJobs.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
+    setRequests(prevReqs => prevReqs.map(r => r.id === updatedJob.id ? { ...r, ...updatedJob } : r));
+    if (selectedJobForPod?.id === updatedJob.id) {
+      setSelectedJobForPod({ ...selectedJobForPod, ...updatedJob });
+    }
+  };
+
   const toggleExpand = (jobId: string) => {
+
     const newExpanded = new Set(expandedJobIds);
     if (newExpanded.has(jobId)) {
       newExpanded.delete(jobId);
@@ -1062,6 +1089,32 @@ const Dashboard: React.FC = () => {
 
                                     </div>
                                     <div className="header-meta-group">
+                                       {/* POD Badge */}
+                                       {job.podPhotos && job.podPhotos.length > 0 ? (
+                                         <div 
+                                           className="pod-badge available"
+                                           onClick={(e) => {
+                                             e.stopPropagation();
+                                             handleOpenPod(job, 'view');
+                                           }}
+                                           title="Proof of Delivery verified - Click to view photos"
+                                         >
+                                           <Camera size={11} />
+                                           <span>POD ({job.podPhotos.length})</span>
+                                         </div>
+                                       ) : isAdmin ? (
+                                         <div 
+                                           className="pod-badge upload-prompt"
+                                           onClick={(e) => {
+                                             e.stopPropagation();
+                                             handleOpenPod(job, 'upload');
+                                           }}
+                                           title="Admin: Upload Proof of Delivery"
+                                         >
+                                           <Camera size={11} />
+                                           <span>+ POD</span>
+                                         </div>
+                                       ) : null}
                                        {isAdmin && job.date === today && (
                                          <div className={`ns-sync-badge ${job.syncedWithNetSuite ? 'synced' : 'unsynced'}`}>
                                            {job.syncedWithNetSuite ? (
@@ -1183,6 +1236,74 @@ const Dashboard: React.FC = () => {
                                            </div>
                                          </div>
                                        )}
+
+                                       {/* Proof of Delivery (POD) Section */}
+                                       <div className="pod-details-section">
+                                         <div className="pod-section-header">
+                                           <div className="pod-title-group">
+                                             <Camera size={14} />
+                                             <h4>Proof of Delivery (POD)</h4>
+                                             {job.podPhotos && job.podPhotos.length > 0 && (
+                                               <span className="pod-count-badge">
+                                                 <CheckCircle2 size={11} />
+                                                 {job.podPhotos.length} {job.podPhotos.length === 1 ? 'Photo' : 'Photos'}
+                                               </span>
+                                             )}
+                                           </div>
+                                           {isAdmin && (
+                                             <button 
+                                               className="btn-pod-inline-action"
+                                               onClick={(e) => {
+                                                 e.stopPropagation();
+                                                 handleOpenPod(job, 'upload');
+                                               }}
+                                             >
+                                               <Upload size={12} />
+                                               <span>{job.podPhotos && job.podPhotos.length > 0 ? 'Manage POD' : 'Upload POD'}</span>
+                                             </button>
+                                           )}
+                                         </div>
+
+                                         {job.podPhotos && job.podPhotos.length > 0 ? (
+                                           <div className="pod-inline-gallery">
+                                             <div className="pod-inline-grid">
+                                               {job.podPhotos.map((photo: any, pIdx: number) => (
+                                                 <div 
+                                                   key={photo.id || pIdx} 
+                                                   className="pod-inline-card"
+                                                   onClick={(e) => {
+                                                     e.stopPropagation();
+                                                     handleOpenPod(job, 'view', pIdx);
+                                                   }}
+                                                   title="Click to view full image"
+                                                 >
+                                                   <img src={photo.url} alt={`POD ${pIdx + 1}`} className="pod-inline-img" />
+                                                   <div className="pod-inline-overlay">
+                                                     <Eye size={15} />
+                                                     <span>View</span>
+                                                   </div>
+                                                   {photo.uploadedAt && (
+                                                     <div className="pod-inline-time">
+                                                       {new Date(photo.uploadedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                     </div>
+                                                   )}
+                                                 </div>
+                                               ))}
+                                             </div>
+                                             {job.podNotes && (
+                                               <div className="pod-inline-notes">
+                                                 <MessageSquare size={12} />
+                                                 <span>{job.podNotes}</span>
+                                               </div>
+                                             )}
+                                           </div>
+                                         ) : (
+                                           <div className="pod-inline-empty">
+                                             <Camera size={16} className="pod-empty-icon" />
+                                             <span>{isAdmin ? "No Proof of Delivery uploaded yet. Click '+ Upload POD' to attach photos." : "No Proof of Delivery photos uploaded for this job yet."}</span>
+                                           </div>
+                                         )}
+                                       </div>
                                    </div>
                                  )}
 
@@ -1287,6 +1408,36 @@ const Dashboard: React.FC = () => {
                                         </button>
                                       )}
 
+                                      {/* View POD Button for Operators & Admins if POD exists */}
+                                      {job.podPhotos && job.podPhotos.length > 0 && (
+                                        <button 
+                                          className="btn-view-pod"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenPod(job, 'view');
+                                          }}
+                                          title="View Proof of Delivery photos"
+                                        >
+                                          <Camera size={14} />
+                                          <span>VIEW POD ({job.podPhotos.length})</span>
+                                        </button>
+                                      )}
+
+                                      {/* Upload POD Button for Admins / Superadmins if no POD exists */}
+                                      {isAdmin && (!job.podPhotos || job.podPhotos.length === 0) && (
+                                        <button 
+                                          className="btn-upload-pod"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenPod(job, 'upload');
+                                          }}
+                                          title="Upload Proof of Delivery"
+                                        >
+                                          <Upload size={14} />
+                                          <span>UPLOAD POD</span>
+                                        </button>
+                                      )}
+
                                       {activeTab === 'expired-requests' ? (
                                        <div className="messaging-group">
                                          <button className="btn-primary-glass mini-chat" onClick={() => handleRebook(job)}>
@@ -1342,6 +1493,26 @@ const Dashboard: React.FC = () => {
                                                          <CheckCircle2 size={14} /> Review & Accept Request
                                                        </button>
                                                      )}
+                                                    {/* POD Option */}
+                                                    {isAdmin ? (
+                                                      <button 
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleOpenPod(job, 'upload');
+                                                        }}
+                                                      >
+                                                        <Camera size={14} /> {job.podPhotos && job.podPhotos.length > 0 ? "Manage POD Photos" : "Upload Proof of Delivery"}
+                                                      </button>
+                                                    ) : (job.podPhotos && job.podPhotos.length > 0) ? (
+                                                      <button 
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleOpenPod(job, 'view');
+                                                        }}
+                                                      >
+                                                        <Camera size={14} /> View Proof of Delivery
+                                                      </button>
+                                                    ) : null}
                                                     <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
                                                     {isAdmin ? (
                                                       <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
@@ -1351,6 +1522,26 @@ const Dashboard: React.FC = () => {
                                                   </>
                                                 ) : (
                                                   <>
+                                                    {/* POD Option */}
+                                                    {isAdmin ? (
+                                                      <button 
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleOpenPod(job, 'upload');
+                                                        }}
+                                                      >
+                                                        <Camera size={14} /> {job.podPhotos && job.podPhotos.length > 0 ? "Manage POD Photos" : "Upload Proof of Delivery"}
+                                                      </button>
+                                                    ) : (job.podPhotos && job.podPhotos.length > 0) ? (
+                                                      <button 
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleOpenPod(job, 'view');
+                                                        }}
+                                                      >
+                                                        <Camera size={14} /> View Proof of Delivery
+                                                      </button>
+                                                    ) : null}
                                                     {/* NetSuite Sync Option in Dropdown */}
                                                     {isAdmin && job.date === today && (
                                                       <button 
@@ -1476,6 +1667,16 @@ const Dashboard: React.FC = () => {
           }
           alert("Job cancelled and dispatch notified.");
         }}
+      />
+
+      <PodModal 
+        isOpen={isPodModalOpen}
+        onClose={() => setIsPodModalOpen(false)}
+        job={selectedJobForPod}
+        isAdmin={isAdmin}
+        mode={podModalMode}
+        initialPhotoIndex={podInitialPhotoIndex}
+        onSuccess={handlePodSuccess}
       />
 
       <style>{`
@@ -2387,6 +2588,276 @@ const Dashboard: React.FC = () => {
         .btn-recreate-today:disabled {
           opacity: 0.65;
           cursor: not-allowed;
+        }
+
+        /* Proof of Delivery (POD) Styles */
+        .pod-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 3px 8px;
+          border-radius: 8px;
+          font-family: var(--font-ui);
+          font-size: 0.58rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .pod-badge.available {
+          background: rgba(34, 197, 94, 0.12);
+          color: #16a34a;
+          border: 1px solid rgba(34, 197, 94, 0.35);
+          box-shadow: 0 2px 6px rgba(34, 197, 94, 0.15);
+        }
+
+        .pod-badge.available:hover {
+          background: #16a34a;
+          color: white;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 10px rgba(34, 197, 94, 0.3);
+        }
+
+        .pod-badge.upload-prompt {
+          background: rgba(9, 92, 123, 0.08);
+          color: #095c7b;
+          border: 1px dashed rgba(9, 92, 123, 0.35);
+        }
+
+        .pod-badge.upload-prompt:hover {
+          background: #095c7b;
+          color: white;
+          border-style: solid;
+          transform: translateY(-1px);
+        }
+
+        .pod-details-section {
+          margin: 16px 24px 16px 44px;
+          padding: 16px 20px;
+          background: rgba(255, 255, 255, 0.45);
+          border-radius: 18px;
+          border: 1px solid rgba(255, 255, 255, 0.7);
+          backdrop-filter: blur(8px);
+        }
+
+        .pod-section-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 12px;
+        }
+
+        .pod-title-group {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: var(--ink);
+        }
+
+        .pod-title-group h4 {
+          margin: 0;
+          font-family: var(--font-headings);
+          font-size: 0.85rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+        }
+
+        .pod-count-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 20px;
+          font-size: 0.68rem;
+          font-weight: 700;
+          background: rgba(34, 197, 94, 0.12);
+          color: #16a34a;
+          border: 1px solid rgba(34, 197, 94, 0.25);
+        }
+
+        .btn-pod-inline-action {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 5px 12px;
+          border-radius: 8px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          background: #095c7b;
+          color: white;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-pod-inline-action:hover {
+          background: #0d7ba5;
+          transform: translateY(-1px);
+        }
+
+        .pod-inline-gallery {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .pod-inline-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+          gap: 10px;
+        }
+
+        .pod-inline-card {
+          position: relative;
+          height: 80px;
+          border-radius: 12px;
+          overflow: hidden;
+          cursor: pointer;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+          transition: all 0.2s;
+        }
+
+        .pod-inline-card:hover {
+          transform: translateY(-2px) scale(1.02);
+          box-shadow: 0 6px 16px rgba(9, 92, 123, 0.2);
+          border-color: #095c7b;
+        }
+
+        .pod-inline-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .pod-inline-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(9, 92, 123, 0.65);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-size: 0.65rem;
+          font-weight: 700;
+          opacity: 0;
+          transition: opacity 0.2s;
+          gap: 2px;
+        }
+
+        .pod-inline-card:hover .pod-inline-overlay {
+          opacity: 1;
+        }
+
+        .pod-inline-time {
+          position: absolute;
+          bottom: 4px;
+          left: 4px;
+          right: 4px;
+          background: rgba(0, 0, 0, 0.6);
+          color: white;
+          padding: 2px 4px;
+          border-radius: 4px;
+          font-size: 0.58rem;
+          font-weight: 600;
+          text-align: center;
+          backdrop-filter: blur(2px);
+        }
+
+        .pod-inline-notes {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 0.78rem;
+          color: var(--ink-soft);
+          font-style: italic;
+          background: rgba(255, 255, 255, 0.6);
+          padding: 6px 12px;
+          border-radius: 8px;
+          border: 1px solid rgba(0, 0, 0, 0.04);
+        }
+
+        .pod-inline-empty {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          background: rgba(0, 0, 0, 0.02);
+          border-radius: 12px;
+          border: 1px dashed rgba(0, 0, 0, 0.08);
+          font-size: 0.78rem;
+          color: var(--ink-soft);
+          opacity: 0.8;
+        }
+
+        .pod-empty-icon {
+          color: var(--gold);
+          flex-shrink: 0;
+        }
+
+        .btn-pod-mini-upload {
+          margin-left: auto;
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.68rem;
+          font-weight: 700;
+          background: #095c7b;
+          color: white;
+          border: none;
+          cursor: pointer;
+        }
+
+        .btn-view-pod {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          background: linear-gradient(135deg, #10b981, #059669);
+          color: white;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+        }
+
+        .btn-view-pod:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+          filter: brightness(1.08);
+        }
+
+        .btn-upload-pod {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border-radius: 12px;
+          font-size: 0.75rem;
+          font-weight: 800;
+          letter-spacing: 0.5px;
+          background: #095c7b;
+          color: white;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 12px rgba(9, 92, 123, 0.2);
+        }
+
+        .btn-upload-pod:hover {
+          background: #0d7ba5;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(9, 92, 123, 0.3);
         }
       `}</style>
     </div>

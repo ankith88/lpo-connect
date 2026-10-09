@@ -27,11 +27,15 @@ import {
   Mail,
   User as UserIcon,
   Zap,
-  Info
+  Info,
+  Camera,
+  Upload,
+  Eye
 } from 'lucide-react';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import LoadingScreen from '../../components/LoadingScreen';
 import AcceptingProgress from '../../components/AcceptingProgress';
+import PodModal from '../../components/PodModal';
 import { db } from '../../firebase/config';
 import { useLpo } from '../../context/LpoContext';
 import { formatDateForInput, parseLocalDate, getDayName } from '../../utils/scheduling';
@@ -70,6 +74,22 @@ const RequestPage: React.FC = () => {
   // Accept with Tentative Time Modal State
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const [tentativeTime, setTentativeTime] = useState('');
+
+  // Proof of Delivery (POD) State
+  const [isPodModalOpen, setIsPodModalOpen] = useState(false);
+  const [podModalMode, setPodModalMode] = useState<'upload' | 'view'>('view');
+  const [podInitialPhotoIndex, setPodInitialPhotoIndex] = useState(0);
+
+  const handleOpenPod = (mode: 'upload' | 'view' = 'view', photoIndex: number = 0) => {
+    setPodModalMode(mode);
+    setPodInitialPhotoIndex(photoIndex);
+    setIsPodModalOpen(true);
+  };
+
+  const handlePodSuccess = (updatedJob: any) => {
+    if (!updatedJob) return;
+    setRequest((prev: any) => prev ? { ...prev, ...updatedJob } : prev);
+  };
 
   // Identity: If lpo exists and not admin, person is the LPO User.
   // If admin, they have administrative control (can act as operator/admin).
@@ -957,6 +977,59 @@ const RequestPage: React.FC = () => {
                 </div>
               )}
 
+              {/* Proof of Delivery (POD) Section */}
+              <div className="detail-section">
+                <div className="section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Camera size={18} />
+                    <h3>Proof of Delivery (POD)</h3>
+                  </div>
+                  {isAdmin && (
+                    <button 
+                      className="btn-pod-mini-action"
+                      onClick={() => handleOpenPod('upload')}
+                      title="Upload or manage Proof of Delivery"
+                    >
+                      <Upload size={12} />
+                      <span>{request.podPhotos && request.podPhotos.length > 0 ? 'Manage' : 'Upload'}</span>
+                    </button>
+                  )}
+                </div>
+
+                {request.podPhotos && request.podPhotos.length > 0 ? (
+                  <div className="pod-req-gallery">
+                    <div className="pod-req-grid">
+                      {request.podPhotos.map((photo: any, idx: number) => (
+                        <div 
+                          key={photo.id || idx}
+                          className="pod-req-thumb"
+                          onClick={() => handleOpenPod('view', idx)}
+                          title="View high-resolution POD photo"
+                        >
+                          <img src={photo.url} alt={`POD ${idx + 1}`} />
+                          <div className="pod-req-overlay">
+                            <Eye size={14} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button className="btn-view-all-pod" onClick={() => handleOpenPod('view', 0)}>
+                      <Eye size={14} />
+                      <span>View Full POD ({request.podPhotos.length})</span>
+                    </button>
+                    {request.podNotes && (
+                      <div className="pod-req-notes">
+                        <span>Note: {request.podNotes}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="pod-req-empty">
+                    <span>{isAdmin ? "No POD attached. Click 'Upload' to attach delivery photos." : "No Proof of Delivery photos uploaded yet."}</span>
+                  </div>
+                )}
+              </div>
+
                {(isLpoUser || isAdmin) && franchisees.length > 1 && (
                 <div className="detail-section">
                   <div className="section-title">
@@ -1331,6 +1404,17 @@ const RequestPage: React.FC = () => {
         </div>
       )}
 
+      <PodModal 
+        isOpen={isPodModalOpen}
+        onClose={() => setIsPodModalOpen(false)}
+        job={request}
+        isAdmin={isAdmin}
+        mode={podModalMode}
+        initialPhotoIndex={podInitialPhotoIndex}
+        collectionName="requests"
+        onSuccess={handlePodSuccess}
+      />
+
       <style>{`
         .request-page-premium { min-height: 100vh; background: var(--offwhite); padding: 40px 24px; position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
@@ -1600,6 +1684,117 @@ const RequestPage: React.FC = () => {
         .copy-link-btn { width: 100%; padding: 14px; background: var(--cream-warm); border: 1px dashed var(--gold); color: var(--gold); border-radius: 14px; font-weight: 800; font-size: 0.8rem; cursor: pointer; transition: all 0.2s; }
         .copy-link-btn:hover { background: var(--paper); border-style: solid; }
         .zee-label-inline { color: var(--gold); font-weight: 900; }
+
+        /* POD Styles for RequestPage */
+        .btn-pod-mini-action {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 10px;
+          border-radius: 8px;
+          font-size: 0.72rem;
+          font-weight: 700;
+          background: #095c7b;
+          color: white;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-pod-mini-action:hover { background: #0d7ba5; transform: translateY(-1px); }
+
+        .pod-req-gallery {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          margin-top: 8px;
+        }
+
+        .pod-req-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+
+        .pod-req-thumb {
+          position: relative;
+          height: 70px;
+          border-radius: 8px;
+          overflow: hidden;
+          cursor: pointer;
+          border: 1px solid rgba(0, 0, 0, 0.08);
+          transition: all 0.2s;
+        }
+
+        .pod-req-thumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .pod-req-thumb:hover {
+          transform: scale(1.05);
+          border-color: #095c7b;
+          box-shadow: 0 4px 12px rgba(9, 92, 123, 0.2);
+        }
+
+        .pod-req-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(9, 92, 123, 0.6);
+          color: white;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          opacity: 0;
+          transition: opacity 0.2s;
+        }
+
+        .pod-req-thumb:hover .pod-req-overlay {
+          opacity: 1;
+        }
+
+        .btn-view-all-pod {
+          width: 100%;
+          padding: 8px 12px;
+          border-radius: 8px;
+          font-size: 0.75rem;
+          font-weight: 700;
+          background: rgba(9, 92, 123, 0.08);
+          color: #095c7b;
+          border: 1px solid rgba(9, 92, 123, 0.2);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .btn-view-all-pod:hover {
+          background: #095c7b;
+          color: white;
+        }
+
+        .pod-req-notes {
+          font-size: 0.75rem;
+          color: var(--ink-soft);
+          font-style: italic;
+          background: var(--paper);
+          padding: 6px 10px;
+          border-radius: 6px;
+          border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        .pod-req-empty {
+          padding: 12px;
+          background: var(--paper);
+          border-radius: 8px;
+          border: 1px dashed rgba(0,0,0,0.1);
+          font-size: 0.78rem;
+          color: var(--ink-soft);
+          opacity: 0.8;
+          text-align: center;
+        }
       `}</style>
     </div>
   );
