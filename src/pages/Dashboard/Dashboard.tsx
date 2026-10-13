@@ -44,7 +44,25 @@ import CustomSelect from '../../components/CustomSelect';
 
 
 const Dashboard: React.FC = () => {
-  const { lpo, isAdmin, userData, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
+  const { user, lpo, isAdmin, userData, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
+  const SUPER_ADMIN_ID = 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
+  const isPrivilegedUser = isAdmin || userData?.role === 'admin' || userData?.role === 'superadmin' || user?.uid === SUPER_ADMIN_ID || userData?.uid === SUPER_ADMIN_ID;
+  const today = formatDateForInput(new Date());
+
+  const isUnperformedJob = (job: any) => {
+    if (!job) return false;
+    return (
+      job.status === 'unperformed' ||
+      (job.date < today &&
+        job.status !== 'completed' &&
+        job.status !== 'cancelled' &&
+        job.status !== 'rejected' &&
+        job.status !== 'pending' &&
+        job.status !== 'new-time-proposed' &&
+        job.status !== 'awaiting-activation')
+    );
+  };
+
   const [jobs, setJobs] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -257,10 +275,10 @@ const Dashboard: React.FC = () => {
       }
     };
 
-    if (lpo || isAdmin) {
+    if (lpo || isPrivilegedUser) {
       fetchData();
     }
-  }, [lpo, isAdmin, selectedLpoIds]);
+  }, [lpo, isPrivilegedUser, selectedLpoIds]);
 
   const handleCommunication = (job: any) => {
     setSelectedJobForComm(job);
@@ -420,20 +438,29 @@ const Dashboard: React.FC = () => {
 
   const handleRecreateJobForToday = async (sourceJob: any) => {
     if (!sourceJob) return;
-    if (!window.confirm(`Are you sure you want to recreate this unperformed job for today (${today})?`)) {
+
+    const isAlreadyRecreated = Boolean(sourceJob.recreatedToJobId || sourceJob.recreatedToDate === today);
+    const confirmMessage = isAlreadyRecreated
+      ? `This unperformed job was already recreated for today (${sourceJob.recreatedToDate || today}). Are you sure you want to recreate it again?`
+      : `Are you sure you want to recreate this unperformed job for today (${today})?`;
+
+    if (!window.confirm(confirmMessage)) {
       return;
     }
 
     setRecreatingJobIds(prev => new Set(prev).add(sourceJob.id));
     try {
-      const lpoId = sourceJob.lpo_id || lpo?.id;
+      const lpoId = sourceJob.lpo_id || sourceJob.lpoId || sourceJob.customer?.lpo_id || sourceJob.customer?.lpoId || lpo?.id || selectedLpoIds.find((id: string) => id !== 'all');
       if (!lpoId) throw new Error("Missing LPO ID for job recreation");
 
-      // Reset stops to pending status
-      const resetStops = (sourceJob.stops || []).map((stop: any) => ({
-        ...stop,
-        status: 'pending'
-      }));
+      // Reset stops to pending status and strip previous completion metadata
+      const resetStops = (sourceJob.stops || []).map((stop: any) => {
+        const { completedAt, completedBy, driverName, signature, photos, ...rest } = stop;
+        return {
+          ...rest,
+          status: 'pending'
+        };
+      });
 
       const newJobPayload: any = {
         customer: sourceJob.customer || {},
@@ -453,8 +480,16 @@ const Dashboard: React.FC = () => {
         netsuiteCustomerId: sourceJob.netsuiteCustomerId || sourceJob.customer?.netsuiteId || null,
         originalRequestId: sourceJob.originalRequestId || (sourceJob.status ? sourceJob.id : null),
         scheduledJobId: sourceJob.scheduledJobId || null,
+        instructions: sourceJob.instructions || '',
+        driverInstructions: sourceJob.driverInstructions || '',
+        notes: sourceJob.notes || '',
+        reference: sourceJob.reference || '',
+        frequency: sourceJob.frequency || '',
         recreatedFromJobId: sourceJob.id,
+        recreatedFromDate: sourceJob.date,
         recreatedAt: serverTimestamp(),
+        recreatedByName: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email : 'Admin',
+        recreatedByRole: userData?.role || 'admin',
         syncedWithNetSuite: false,
         operatorNetSuiteId: null,
         operatorName: null,
@@ -466,7 +501,26 @@ const Dashboard: React.FC = () => {
       const docRef = await addDoc(collection(db, 'jobs'), newJobPayload);
       const createdJob = { ...newJobPayload, id: docRef.id, createdAt: new Date() };
 
-      setJobs(prev => [createdJob, ...prev]);
+      // Update source document in Firestore with link to recreated job
+      const sourceCol = jobs.some(j => j.id === sourceJob.id) ? 'jobs' : 'requests';
+      try {
+        await updateDoc(doc(db, sourceCol, sourceJob.id), {
+          recreatedToJobId: docRef.id,
+          recreatedToDate: today,
+          recreatedForTodayAt: serverTimestamp(),
+          recreatedByName: userData ? `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email : 'Admin',
+          recreatedByRole: userData?.role || 'admin'
+        });
+      } catch (updateErr) {
+        console.warn("Could not update source job with recreation link:", updateErr);
+      }
+
+      // Update local state with the new job and updated source job
+      setJobs(prev => [
+        createdJob,
+        ...prev.map(j => j.id === sourceJob.id ? { ...j, recreatedToJobId: docRef.id, recreatedToDate: today } : j)
+      ]);
+      setRequests(prev => prev.map(r => r.id === sourceJob.id ? { ...r, recreatedToJobId: docRef.id, recreatedToDate: today } : r));
 
       const shouldSync = window.confirm(`Job successfully recreated for today! (Job ID: ${docRef.id})\n\nWould you like to sync this job with NetSuite now?`);
       if (shouldSync) {
@@ -487,8 +541,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const today = formatDateForInput(new Date());
-
   // Projections are now managed exclusively in the Schedules page calendar
   const projectedJobs: any[] = [];
 
@@ -499,7 +551,7 @@ const Dashboard: React.FC = () => {
                          (item.id || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesService = serviceFilter.includes('all') || serviceFilter.includes(item.service);
     const matchesDate = !dateFilter || item.date === dateFilter;
-    const matchesStatus = statusFilter.includes('all') || statusFilter.includes(item.status);
+    const matchesStatus = statusFilter.includes('all') || statusFilter.includes(item.status) || (statusFilter.includes('unperformed') && isUnperformedJob(item));
     return matchesSearch && matchesService && matchesDate && matchesStatus;
   };
 
@@ -772,9 +824,8 @@ const Dashboard: React.FC = () => {
     if (tabId === 'cancelled') return globalFilteredRequests.filter(r => r.status === 'cancelled').length + globalFilteredJobs.filter(j => j.status === 'cancelled').length;
     
     if (tabId === 'history') {
-      const pastJobs = globalFilteredJobs.filter(j => j.date < today && j.status !== 'cancelled' && j.status !== 'rejected').length;
-      const pastReqs = globalFilteredRequests.filter(r => r.date < today && r.status !== 'cancelled' && r.status !== 'rejected' && r.status !== 'pending' && r.status !== 'new-time-proposed' && r.status !== 'awaiting-activation').length;
-      return pastJobs + pastReqs;
+      const isHistoryItem = (item: any) => item.date < today && item.status !== 'cancelled' && item.status !== 'rejected' && item.status !== 'pending' && item.status !== 'new-time-proposed' && item.status !== 'awaiting-activation';
+      return globalFilteredJobs.filter(isHistoryItem).length + globalFilteredRequests.filter(isHistoryItem).length;
     }
 
     return globalFilteredJobs.filter(j => {
@@ -885,7 +936,7 @@ const Dashboard: React.FC = () => {
                 />
               </div>
                 <div className="filter-actions">
-                   {isAdmin && (
+                   {isPrivilegedUser && (
                      <CustomSelect 
                        value={selectedLpoIds}
                        onChange={(val) => setSelectedLpoIds(val)}
@@ -926,6 +977,7 @@ const Dashboard: React.FC = () => {
                         { value: 'awaiting-driver', label: 'Awaiting Driver' },
                         { value: 'in-progress', label: 'In Progress' },
                         { value: 'completed', label: 'Completed' },
+                        { value: 'unperformed', label: 'Unperformed' },
                         { value: 'rejected', label: 'Rejected' },
                         { value: 'cancelled', label: 'Cancelled' }
                       ]}
@@ -1019,7 +1071,7 @@ const Dashboard: React.FC = () => {
                                     <div className="customer-block">
                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                           <h3 className="company-name">{job.customer.company}</h3>
-                                          {isAdmin && (
+                                          {isPrivilegedUser && (
                                             <span className="lpo-badge-inline">
                                               {getLpoName(job.lpo_id)}
                                             </span>
@@ -1102,7 +1154,7 @@ const Dashboard: React.FC = () => {
                                            <Camera size={11} />
                                            <span>POD ({job.podPhotos.length})</span>
                                          </div>
-                                       ) : isAdmin ? (
+                                       ) : (isPrivilegedUser && (job.date === today || job.status === 'completed')) ? (
                                          <div 
                                            className="pod-badge upload-prompt"
                                            onClick={(e) => {
@@ -1115,7 +1167,7 @@ const Dashboard: React.FC = () => {
                                            <span>+ POD</span>
                                          </div>
                                        ) : null}
-                                       {isAdmin && job.date === today && (
+                                       {isPrivilegedUser && job.date === today && (
                                          <div className={`ns-sync-badge ${job.syncedWithNetSuite ? 'synced' : 'unsynced'}`}>
                                            {job.syncedWithNetSuite ? (
                                              <>
@@ -1136,16 +1188,28 @@ const Dashboard: React.FC = () => {
                                        </div>
                                        <div className={`status-tag status-${
                                          ((activeTab === 'history' || activeTab === 'expired-requests') && job.date < today && (job.status === 'pending' || job.status === 'new-time-proposed' || job.status === 'awaiting-activation')) ? 'not-accepted' :
-                                         (activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver')) ? 'unperformed' :
+                                         isUnperformedJob(job) ? 'unperformed' :
                                          job.status
                                        }`}>
                                           {(activeTab === 'history' || activeTab === 'expired-requests') && job.date < today && (job.status === 'pending' || job.status === 'new-time-proposed' || job.status === 'awaiting-activation') ? 'Not Accepted' :
-                                           activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver') ? 'Unperformed' :
+                                           isUnperformedJob(job) ? 'Unperformed' :
                                            job.status === 'awaiting-driver' ? 'Awaiting Driver' : 
                                            job.status === 'new-time-proposed' ? 'Time Proposed' :
                                            job.status === 'awaiting-activation' ? 'Awaiting Activation' :
                                            job.status}
                                         </div>
+                                       {(job.recreatedToJobId || job.recreatedToDate === today) && activeTab === 'history' && (
+                                         <div className="recreated-indicator-pill" title={`Recreated for today (Job ID: ${job.recreatedToJobId || ''})`}>
+                                           <RotateCcw size={10} />
+                                           <span>Recreated for Today</span>
+                                         </div>
+                                       )}
+                                       {job.recreatedFromJobId && job.date === today && (
+                                         <div className="recreated-indicator-pill" title={`Recreated from past job #${job.recreatedFromJobId}`}>
+                                           <RotateCcw size={10} />
+                                           <span>Recreated</span>
+                                         </div>
+                                       )}
                                        <div className="expand-icon">
                                          {expandedJobIds.has(job.id) ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                        </div>
@@ -1250,7 +1314,7 @@ const Dashboard: React.FC = () => {
                                                </span>
                                              )}
                                            </div>
-                                           {isAdmin && (
+                                           {isPrivilegedUser && (
                                              <button 
                                                className="btn-pod-inline-action"
                                                onClick={(e) => {
@@ -1300,7 +1364,7 @@ const Dashboard: React.FC = () => {
                                          ) : (
                                            <div className="pod-inline-empty">
                                              <Camera size={16} className="pod-empty-icon" />
-                                             <span>{isAdmin ? "No Proof of Delivery uploaded yet. Click '+ Upload POD' to attach photos." : "No Proof of Delivery photos uploaded for this job yet."}</span>
+                                             <span>{isPrivilegedUser ? "No Proof of Delivery uploaded yet. Click '+ Upload POD' to attach photos." : "No Proof of Delivery photos uploaded for this job yet."}</span>
                                            </div>
                                          )}
                                        </div>
@@ -1368,7 +1432,7 @@ const Dashboard: React.FC = () => {
 
                                 <div className="card-actions">
                                       {/* NetSuite Sync Button for Active Unsynced Jobs (Admin / SuperAdmin) */}
-                                      {isAdmin && job.date === today && !job.syncedWithNetSuite && (
+                                      {isPrivilegedUser && job.date === today && !job.syncedWithNetSuite && (
                                         <button 
                                           className="btn-sync-netsuite"
                                           onClick={(e) => {
@@ -1384,7 +1448,7 @@ const Dashboard: React.FC = () => {
                                       )}
 
                                       {/* Recreate Button for Unperformed History Jobs (Admin / SuperAdmin) */}
-                                      {isAdmin && activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver' || job.status === 'in-progress') && (
+                                      {isPrivilegedUser && activeTab === 'history' && isUnperformedJob(job) && (
                                         <button 
                                           className="btn-recreate-today"
                                           onClick={(e) => {
@@ -1392,7 +1456,7 @@ const Dashboard: React.FC = () => {
                                             handleRecreateJobForToday(job);
                                           }}
                                           disabled={recreatingJobIds.has(job.id)}
-                                          title="Recreate this unperformed job for today"
+                                          title={job.recreatedToJobId || job.recreatedToDate === today ? `Recreate this unperformed job for today again (already recreated as #${job.recreatedToJobId || ''})` : "Recreate this unperformed job for today"}
                                         >
                                           {recreatingJobIds.has(job.id) ? (
                                             <>
@@ -1402,7 +1466,7 @@ const Dashboard: React.FC = () => {
                                           ) : (
                                             <>
                                               <Plus size={14} />
-                                              <span>RECREATE FOR TODAY</span>
+                                              <span>{job.recreatedToJobId || job.recreatedToDate === today ? "RECREATE AGAIN" : "RECREATE FOR TODAY"}</span>
                                             </>
                                           )}
                                         </button>
@@ -1424,7 +1488,7 @@ const Dashboard: React.FC = () => {
                                       )}
 
                                       {/* Upload POD Button for Admins / Superadmins if no POD exists */}
-                                      {isAdmin && (!job.podPhotos || job.podPhotos.length === 0) && (
+                                      {isPrivilegedUser && (!job.podPhotos || job.podPhotos.length === 0) && (job.date === today || job.status === 'completed') && (
                                         <button 
                                           className="btn-upload-pod"
                                           onClick={(e) => {
@@ -1447,7 +1511,7 @@ const Dashboard: React.FC = () => {
                                        </div>
                                       ) : activeTab === 'pending' || activeTab === 'declined' ? (
                                        <div className="messaging-group">
-                                          {isAdmin && activeTab === 'pending' && (
+                                          {isPrivilegedUser && activeTab === 'pending' && (
                                             <button 
                                               className="btn-primary-glass mini-chat" 
                                               style={{ background: 'rgba(34, 197, 94, 0.15)', borderColor: 'rgba(34, 197, 94, 0.4)', color: '#4ade80' }}
@@ -1485,7 +1549,7 @@ const Dashboard: React.FC = () => {
                                              <div className="menu-dropdown glass">
                                                 {activeTab === 'pending' || activeTab === 'declined' ? (
                                                   <>
-                                                     {isAdmin && activeTab === 'pending' && (
+                                                     {isPrivilegedUser && activeTab === 'pending' && (
                                                        <button 
                                                          onClick={() => window.open(`/request/${job.id}`, '_blank')}
                                                          style={{ color: '#4ade80' }}
@@ -1494,7 +1558,7 @@ const Dashboard: React.FC = () => {
                                                        </button>
                                                      )}
                                                     {/* POD Option */}
-                                                    {isAdmin ? (
+                                                    {isPrivilegedUser ? (
                                                       <button 
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -1514,7 +1578,7 @@ const Dashboard: React.FC = () => {
                                                       </button>
                                                     ) : null}
                                                     <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
-                                                    {isAdmin ? (
+                                                    {isPrivilegedUser ? (
                                                       <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
                                                     ) : (
                                                       <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
@@ -1523,7 +1587,7 @@ const Dashboard: React.FC = () => {
                                                 ) : (
                                                   <>
                                                     {/* POD Option */}
-                                                    {isAdmin ? (
+                                                    {isPrivilegedUser ? (
                                                       <button 
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -1543,7 +1607,7 @@ const Dashboard: React.FC = () => {
                                                       </button>
                                                     ) : null}
                                                     {/* NetSuite Sync Option in Dropdown */}
-                                                    {isAdmin && job.date === today && (
+                                                    {isPrivilegedUser && job.date === today && (
                                                       <button 
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -1557,7 +1621,7 @@ const Dashboard: React.FC = () => {
                                                     )}
 
                                                     {/* Recreate Job Option in Dropdown */}
-                                                    {isAdmin && activeTab === 'history' && job.date < today && (job.status === 'accepted' || job.status === 'awaiting-driver' || job.status === 'in-progress') && (
+                                                    {isPrivilegedUser && activeTab === 'history' && isUnperformedJob(job) && (
                                                       <button 
                                                         onClick={(e) => {
                                                           e.stopPropagation();
@@ -1565,7 +1629,7 @@ const Dashboard: React.FC = () => {
                                                         }}
                                                         disabled={recreatingJobIds.has(job.id)}
                                                       >
-                                                        <Plus size={14} /> Recreate for Today
+                                                        <Plus size={14} /> {job.recreatedToJobId || job.recreatedToDate === today ? "Recreate for Today Again" : "Recreate for Today"}
                                                       </button>
                                                     )}
 
@@ -1673,7 +1737,7 @@ const Dashboard: React.FC = () => {
         isOpen={isPodModalOpen}
         onClose={() => setIsPodModalOpen(false)}
         job={selectedJobForPod}
-        isAdmin={isAdmin}
+        isAdmin={isPrivilegedUser}
         mode={podModalMode}
         initialPhotoIndex={podInitialPhotoIndex}
         onSuccess={handlePodSuccess}
@@ -1960,7 +2024,7 @@ const Dashboard: React.FC = () => {
         }
         .status-tag.status-awaiting-driver { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-not-accepted { background: var(--cream-warm); color: var(--gold); }
-        .status-tag.status-unperformed { background: var(--cream-warm); color: var(--danger); }
+        .status-tag.status-unperformed { background: var(--cream-warm); color: var(--danger); font-weight: 700; }
         .status-tag.status-accepted { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-in-progress { background: var(--cream-warm); color: var(--ink); }
         .status-tag.status-completed { background: var(--ink); color: white; }
@@ -2588,6 +2652,22 @@ const Dashboard: React.FC = () => {
         .btn-recreate-today:disabled {
           opacity: 0.65;
           cursor: not-allowed;
+        }
+
+        .recreated-indicator-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 8px;
+          border-radius: 8px;
+          font-family: var(--font-ui);
+          font-size: 0.58rem;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+          background: rgba(39, 174, 96, 0.12);
+          color: #27ae60;
+          border: 1px solid rgba(39, 174, 96, 0.25);
         }
 
         /* Proof of Delivery (POD) Styles */

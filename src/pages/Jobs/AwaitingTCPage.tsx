@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import LoadingScreen from '../../components/LoadingScreen';
 import SupportEmailModal from '../../components/SupportEmailModal';
-import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, deleteDoc, doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { sortStops } from '../../utils/stops';
 
 import { db } from '../../firebase/config';
@@ -28,7 +28,7 @@ import { useLpo } from '../../context/LpoContext';
 import CustomSelect from '../../components/CustomSelect';
 
 const AwaitingTCPage: React.FC = () => {
-  const { lpo, isAdmin, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
+  const { lpo, isAdmin, userData, user, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -37,6 +37,10 @@ const AwaitingTCPage: React.FC = () => {
   const [supportJobId, setSupportJobId] = useState('');
   const [supportMetadata, setSupportMetadata] = useState<any>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [acceptingTcId, setAcceptingTcId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const isPrivilegedUser = isAdmin || userData?.role === 'admin' || userData?.role === 'superadmin' || userData?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -89,28 +93,170 @@ const AwaitingTCPage: React.FC = () => {
   });
 
   const handleDeleteRequest = async (id: string) => {
-    const request = requests.find(r => r.id === id);
-    if (window.confirm('Are you sure you want to delete this job request?')) {
-      if (request) {
-        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
-        
-        const params = new URLSearchParams({
-          job_id: id,
-          request_id: id,
-          customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
-          lpo_id: request.lpo_id || ""
-        });
+    if (!isPrivilegedUser) {
+      alert("Only administrators and superadmins can delete job requests.");
+      return;
+    }
 
-        console.log("Syncing T&C request deletion with NetSuite (2533)...", Object.fromEntries(params));
-        
-        fetch(`${NETSUITE_API}&${params.toString()}`)
-          .then(res => res.json())
-          .then(data => console.log("NetSuite T&C Sync Response:", data))
-          .catch(err => console.error("NetSuite T&C Sync Error:", err));
+    const request = requests.find(r => r.id === id);
+    const companyName = request?.customer?.company || "this";
+
+    if (window.confirm(`Are you sure you want to delete the job request for "${companyName}"?\n\nThis action cannot be undone.`)) {
+      setDeletingId(id);
+      try {
+        if (request) {
+          const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2533&deploy=1&compid=1048144&ns-at=AAEJ7tMQft1Dl2RVClm4B9TZr9MEKQ4mSl-fhRftfdOXMPsHlRI";
+          
+          const params = new URLSearchParams({
+            job_id: id,
+            request_id: id,
+            customer_id: request.netsuiteCustomerId || request.customer?.netsuiteId || "",
+            lpo_id: request.lpo_id || ""
+          });
+
+          console.log("Syncing T&C request deletion with NetSuite (2533)...", Object.fromEntries(params));
+          
+          try {
+            const res = await fetch(`${NETSUITE_API}&${params.toString()}`);
+            const data = await res.json();
+            console.log("NetSuite T&C Sync Response:", data);
+          } catch (netErr) {
+            console.error("NetSuite T&C Sync Error:", netErr);
+          }
+        }
+
+        // Clean up any stray child jobs or scheduled jobs
+        try {
+          const jobsQ = query(collection(db, 'jobs'), where('originalRequestId', '==', id));
+          const jobsSnap = await getDocs(jobsQ);
+          for (const jobDoc of jobsSnap.docs) {
+            await deleteDoc(doc(db, 'jobs', jobDoc.id));
+          }
+
+          const schedQ = query(collection(db, 'scheduled_jobs'), where('originalRequestId', '==', id));
+          const schedSnap = await getDocs(schedQ);
+          for (const schedDoc of schedSnap.docs) {
+            await deleteDoc(doc(db, 'scheduled_jobs', schedDoc.id));
+          }
+        } catch (cleanupErr) {
+          console.warn("Child cleanup warning:", cleanupErr);
+        }
+
+        await deleteDoc(doc(db, 'requests', id));
+        setRequests(prev => prev.filter(r => r.id !== id));
+      } catch (error) {
+        console.error("Error deleting request:", error);
+        alert("Failed to delete request. Please try again.");
+      } finally {
+        setDeletingId(null);
+      }
+    }
+  };
+
+  const handleAcceptTcOnBehalf = async (job: any) => {
+    if (!isPrivilegedUser) {
+      alert("Only administrators and superadmins can accept Terms & Conditions on behalf of customers.");
+      return;
+    }
+
+    const companyName = job.customer?.company || "the customer";
+    const confirmed = window.confirm(
+      `Accept Terms & Conditions on behalf of "${companyName}"?\n\nThis will mark the customer as Active and transition this request to Pending.`
+    );
+    if (!confirmed) return;
+
+    setAcceptingTcId(job.id);
+    try {
+      const adminName = userData?.first_name 
+        ? `${userData.first_name} ${userData.last_name || ''}`.trim() 
+        : (user?.displayName || user?.email || 'Admin');
+      const adminRole = userData?.role === 'superadmin' ? 'Super Admin' : 'Admin';
+      const adminEmail = user?.email || userData?.email || '';
+
+      const targetLpoId = job.lpo_id || lpo?.id;
+      if (targetLpoId) {
+        const custColl = collection(db, `lpo/${targetLpoId}/customers`);
+        const custId = job.netsuiteCustomerId || job.customer?.netsuiteId;
+        let custDocs: any[] = [];
+
+        if (custId) {
+          const q1 = query(custColl, where('companyId', 'in', [custId.toString(), Number(custId)]));
+          const snap1 = await getDocs(q1);
+          if (!snap1.empty) {
+            custDocs = snap1.docs;
+          } else {
+            const q2 = query(custColl, where('customerInternalId', 'in', [custId.toString(), Number(custId)]));
+            const snap2 = await getDocs(q2);
+            if (!snap2.empty) custDocs = snap2.docs;
+          }
+        }
+
+        if (custDocs.length === 0 && job.customer?.company) {
+          const q3 = query(custColl, where('companyName', '==', job.customer.company));
+          const snap3 = await getDocs(q3);
+          if (!snap3.empty) {
+            custDocs = snap3.docs;
+          } else {
+            const q4 = query(custColl, where('company_name', '==', job.customer.company));
+            const snap4 = await getDocs(q4);
+            if (!snap4.empty) custDocs = snap4.docs;
+          }
+        }
+
+        if (custDocs.length === 0 && job.customer?.email) {
+          const q5 = query(custColl, where('customerEmail', '==', job.customer.email));
+          const snap5 = await getDocs(q5);
+          if (!snap5.empty) {
+            custDocs = snap5.docs;
+          } else {
+            const q6 = query(custColl, where('email', '==', job.customer.email));
+            const snap6 = await getDocs(q6);
+            if (!snap6.empty) custDocs = snap6.docs;
+          }
+        }
+
+        for (const cDoc of custDocs) {
+          await updateDoc(cDoc.ref, {
+            status: 'Active',
+            termsAccepted: true,
+            tcAccepted: true,
+            tcAcceptedOnBehalf: true,
+            tcAcceptedBy: adminName,
+            tcAcceptedByEmail: adminEmail,
+            tcAcceptedByRole: adminRole,
+            tcAcceptedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
       }
 
-      await deleteDoc(doc(db, 'requests', id));
-      setRequests(requests.filter(r => r.id !== id));
+      const sysMessage = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `Terms & Conditions accepted on behalf of ${companyName} by ${adminName} (${adminRole}). Request moved to Pending.`,
+        timestamp: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'requests', job.id), {
+        status: 'pending',
+        activatedAt: serverTimestamp(),
+        activationReason: `T&C accepted on behalf of customer by ${adminName} (${adminRole})`,
+        tcAcceptedOnBehalf: true,
+        tcAcceptedBy: adminName,
+        tcAcceptedByEmail: adminEmail,
+        tcAcceptedByRole: adminRole,
+        tcAcceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        chat: arrayUnion(sysMessage)
+      });
+
+      setRequests(prev => prev.filter(r => r.id !== job.id));
+      alert(`Success! Terms & Conditions accepted on behalf of "${companyName}". The request has been moved to Pending.`);
+    } catch (error) {
+      console.error("Error accepting T&C on behalf of customer:", error);
+      alert("Failed to accept Terms & Conditions. Please try again.");
+    } finally {
+      setAcceptingTcId(null);
     }
   };
 
@@ -120,29 +266,40 @@ const AwaitingTCPage: React.FC = () => {
   };
 
   const handleVerifyStatus = async (request: any) => {
-    if (!lpo || !request.customer.company) return;
+    const targetLpoId = request.lpo_id || lpo?.id;
+    if (!targetLpoId || !request.customer?.company) {
+      alert("Missing customer or LPO details to verify status.");
+      return;
+    }
     
     setLoading(true);
     try {
-      // Check the customer's current status in Firestore
-      const q = query(
-        collection(db, `lpo/${lpo.id}/customers`), 
-        where('companyName', '==', request.customer.company)
-      );
-      const snap = await getDocs(q);
+      const custColl = collection(db, `lpo/${targetLpoId}/customers`);
+      const custId = request.netsuiteCustomerId || request.customer?.netsuiteId;
+      let snap;
+      if (custId) {
+        snap = await getDocs(query(custColl, where('companyId', 'in', [custId.toString(), Number(custId)])));
+        if (snap.empty) {
+          snap = await getDocs(query(custColl, where('customerInternalId', 'in', [custId.toString(), Number(custId)])));
+        }
+      }
+      if (!snap || snap.empty) {
+        snap = await getDocs(query(custColl, where('companyName', '==', request.customer.company)));
+      }
+      if (!snap || snap.empty) {
+        snap = await getDocs(query(custColl, where('company_name', '==', request.customer.company)));
+      }
       
-      if (!snap.empty) {
+      if (snap && !snap.empty) {
         const c = snap.docs[0].data();
         if (c.status === "Active") {
-          // Update the request status to pending
           await updateDoc(doc(db, 'requests', request.id), {
             status: 'pending',
             activatedAt: serverTimestamp(),
             activationReason: "Manual verification from Awaiting T&C page"
           });
           
-          // Remove from local state
-          setRequests(requests.filter(r => r.id !== request.id));
+          setRequests(prev => prev.filter(r => r.id !== request.id));
           alert(`Success! ${request.customer.company} is now Active. The request has been moved to Pending.`);
         } else {
           alert(`Status for ${request.customer.company} is still "${c.status || 'Pending'}".`);
@@ -367,6 +524,17 @@ const AwaitingTCPage: React.FC = () => {
                                         <MessageSquare size={16} />
                                         <span>CHAT & MANAGE</span>
                                      </button>
+                                     {isPrivilegedUser && (
+                                       <button 
+                                         className="btn-primary-glass mini-chat btn-accept-tc-admin"
+                                         onClick={() => handleAcceptTcOnBehalf(job)}
+                                         disabled={acceptingTcId === job.id || deletingId === job.id}
+                                         title="Accept Terms & Conditions on behalf of customer"
+                                       >
+                                         <CheckCircle2 size={16} className={acceptingTcId === job.id ? 'spin' : ''} />
+                                         <span>{acceptingTcId === job.id ? 'ACCEPTING...' : 'ACCEPT T&C'}</span>
+                                       </button>
+                                     )}
                                      <button className="btn-secondary-glass mini-chat" onClick={() => handleVerifyStatus(job)}>
                                         <RefreshCw size={16} />
                                         <span>VERIFY STATUS</span>
@@ -374,19 +542,47 @@ const AwaitingTCPage: React.FC = () => {
                                      <button 
                                         className="btn-secondary-glass mini-chat" 
                                         onClick={() => handleResendSCF(job)}
-                                        disabled={resendingId === job.id}
+                                        disabled={resendingId === job.id || acceptingTcId === job.id || deletingId === job.id}
                                       >
                                          <Mail size={16} className={resendingId === job.id ? 'spin' : ''} />
                                          <span>{resendingId === job.id ? 'RESENDING...' : 'RESEND SCF'}</span>
                                       </button>
+                                     {isPrivilegedUser && (
+                                       <button 
+                                         className="btn-secondary-glass mini-chat btn-delete-req-admin"
+                                         onClick={() => handleDeleteRequest(job.id)}
+                                         disabled={deletingId === job.id || acceptingTcId === job.id}
+                                         title="Delete this job request"
+                                       >
+                                         <Trash2 size={16} className={deletingId === job.id ? 'spin' : ''} />
+                                         <span>{deletingId === job.id ? 'DELETING...' : 'DELETE'}</span>
+                                       </button>
+                                     )}
                                    </div>
                                   
                                   <div className="overflow-menu">
                                      <div className="menu-trigger">
                                         <MoreHorizontal size={18} />
                                         <div className="menu-dropdown glass">
+                                           {isPrivilegedUser && (
+                                             <button 
+                                               onClick={() => handleAcceptTcOnBehalf(job)}
+                                               disabled={acceptingTcId === job.id}
+                                               style={{ color: '#059669' }}
+                                             >
+                                               <CheckCircle2 size={14} /> Accept T&C on Behalf
+                                             </button>
+                                           )}
                                            <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
-                                           <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
+                                           {isPrivilegedUser && (
+                                             <button 
+                                               className="cancel" 
+                                               onClick={() => handleDeleteRequest(job.id)}
+                                               disabled={deletingId === job.id}
+                                             >
+                                               <Trash2 size={14} /> Delete Request
+                                             </button>
+                                           )}
                                         </div>
                                      </div>
                                   </div>
@@ -557,8 +753,43 @@ const AwaitingTCPage: React.FC = () => {
         .card-actions {
           display: flex; justify-content: space-between; align-items: center;
           padding-top: 16px; border-top: 1px solid rgba(0,0,0,0.03);
+          gap: 12px; flex-wrap: wrap;
         }
-        .messaging-group { display: flex; gap: 8px; }
+        .messaging-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+        .btn-accept-tc-admin {
+          background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+          color: white !important;
+          box-shadow: 0 4px 15px rgba(16, 185, 129, 0.25) !important;
+        }
+        .btn-accept-tc-admin:hover {
+          background: linear-gradient(135deg, #047857 0%, #059669 100%) !important;
+          box-shadow: 0 8px 25px rgba(16, 185, 129, 0.35) !important;
+          color: white !important;
+        }
+        .btn-accept-tc-admin:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none !important;
+        }
+
+        .btn-delete-req-admin {
+          background: rgba(239, 68, 68, 0.08) !important;
+          border: 1px solid rgba(239, 68, 68, 0.3) !important;
+          color: #ef4444 !important;
+          transition: all 0.2s ease;
+        }
+        .btn-delete-req-admin:hover {
+          background: #ef4444 !important;
+          color: white !important;
+          border-color: #ef4444 !important;
+          box-shadow: 0 4px 15px rgba(239, 68, 68, 0.25) !important;
+        }
+        .btn-delete-req-admin:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+          transform: none !important;
+        }
 
         .overflow-menu { position: relative; }
         .menu-trigger { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--ink-soft); cursor: pointer; }

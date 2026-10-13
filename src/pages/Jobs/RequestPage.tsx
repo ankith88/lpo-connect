@@ -10,7 +10,8 @@ import {
   arrayUnion,
   query,
   where,
-  getDocs
+  getDocs,
+  serverTimestamp
 } from 'firebase/firestore';
 import { 
   Building2, 
@@ -43,9 +44,10 @@ import { requestNotificationPermission, saveTokenToFirestore, onForegroundMessag
 
 const RequestPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { lpo, userData, loading: lpoLoading, isAdmin } = useLpo();
+  const { lpo, userData, user, loading: lpoLoading, isAdmin } = useLpo();
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [isAcceptingTc, setIsAcceptingTc] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
   const [acceptProgress, setAcceptProgress] = useState(0);
   const [acceptStatus, setAcceptStatus] = useState('');
@@ -324,6 +326,115 @@ const RequestPage: React.FC = () => {
       } finally {
         setLoading(false);
       }
+    }
+  };
+
+  const handleAcceptTcOnBehalf = async () => {
+    if (!isAdmin || !request) return;
+    const companyName = request.customer?.company || "the customer";
+    if (!window.confirm(`Accept Terms & Conditions on behalf of "${companyName}"?\n\nThis will mark the customer as Active and transition this request to Pending.`)) {
+      return;
+    }
+
+    setIsAcceptingTc(true);
+    try {
+      const adminName = userData?.first_name 
+        ? `${userData.first_name} ${userData.last_name || ''}`.trim() 
+        : (user?.displayName || user?.email || 'Admin');
+      const adminRole = userData?.role === 'superadmin' ? 'Super Admin' : 'Admin';
+      const adminEmail = user?.email || userData?.email || '';
+
+      const targetLpoId = request.lpo_id || lpo?.id;
+      if (targetLpoId) {
+        const custColl = collection(db, `lpo/${targetLpoId}/customers`);
+        const custId = request.netsuiteCustomerId || request.customer?.netsuiteId;
+        let custDocs: any[] = [];
+
+        if (custId) {
+          const q1 = query(custColl, where('companyId', 'in', [custId.toString(), Number(custId)]));
+          const snap1 = await getDocs(q1);
+          if (!snap1.empty) {
+            custDocs = snap1.docs;
+          } else {
+            const q2 = query(custColl, where('customerInternalId', 'in', [custId.toString(), Number(custId)]));
+            const snap2 = await getDocs(q2);
+            if (!snap2.empty) custDocs = snap2.docs;
+          }
+        }
+
+        if (custDocs.length === 0 && request.customer?.company) {
+          const q3 = query(custColl, where('companyName', '==', request.customer.company));
+          const snap3 = await getDocs(q3);
+          if (!snap3.empty) {
+            custDocs = snap3.docs;
+          } else {
+            const q4 = query(custColl, where('company_name', '==', request.customer.company));
+            const snap4 = await getDocs(q4);
+            if (!snap4.empty) custDocs = snap4.docs;
+          }
+        }
+
+        if (custDocs.length === 0 && request.customer?.email) {
+          const q5 = query(custColl, where('customerEmail', '==', request.customer.email));
+          const snap5 = await getDocs(q5);
+          if (!snap5.empty) {
+            custDocs = snap5.docs;
+          } else {
+            const q6 = query(custColl, where('email', '==', request.customer.email));
+            const snap6 = await getDocs(q6);
+            if (!snap6.empty) custDocs = snap6.docs;
+          }
+        }
+
+        for (const cDoc of custDocs) {
+          await updateDoc(cDoc.ref, {
+            status: 'Active',
+            termsAccepted: true,
+            tcAccepted: true,
+            tcAcceptedOnBehalf: true,
+            tcAcceptedBy: adminName,
+            tcAcceptedByEmail: adminEmail,
+            tcAcceptedByRole: adminRole,
+            tcAcceptedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+
+      const sysMessage = {
+        id: Date.now().toString(),
+        sender: 'system',
+        text: `Terms & Conditions accepted on behalf of ${companyName} by ${adminName} (${adminRole}). Request moved to Pending.`,
+        timestamp: new Date().toISOString()
+      };
+
+      await updateDoc(doc(db, 'requests', request.id), {
+        status: 'pending',
+        activatedAt: serverTimestamp(),
+        activationReason: `T&C accepted on behalf of customer by ${adminName} (${adminRole})`,
+        tcAcceptedOnBehalf: true,
+        tcAcceptedBy: adminName,
+        tcAcceptedByEmail: adminEmail,
+        tcAcceptedByRole: adminRole,
+        tcAcceptedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        chat: arrayUnion(sysMessage)
+      });
+
+      setRequest((prev: any) => ({
+        ...prev,
+        status: 'pending',
+        activationReason: `T&C accepted on behalf of customer by ${adminName} (${adminRole})`,
+        tcAcceptedOnBehalf: true,
+        tcAcceptedBy: adminName
+      }));
+
+      alert(`Success! Terms & Conditions accepted on behalf of "${companyName}". The request has been moved to Pending.`);
+    } catch (error) {
+      console.error("Error accepting T&C on behalf of customer:", error);
+      alert("Failed to accept Terms & Conditions. Please try again.");
+    } finally {
+      setIsAcceptingTc(false);
     }
   };
 
@@ -812,6 +923,17 @@ const RequestPage: React.FC = () => {
                   <div className="tc-text">
                     <strong>Awaiting T&C:</strong> The system is still waiting for the customer to accept the Terms & Conditions.
                   </div>
+                  {isAdmin && (
+                    <button 
+                      className="btn-accept-tc-inline"
+                      onClick={handleAcceptTcOnBehalf}
+                      disabled={isAcceptingTc}
+                      title="Accept Terms & Conditions on behalf of customer"
+                    >
+                      <CheckCircle2 size={14} className={isAcceptingTc ? 'spin' : ''} />
+                      <span>{isAcceptingTc ? 'ACCEPTING T&C...' : 'ACCEPT T&C ON BEHALF'}</span>
+                    </button>
+                  )}
                 </div>
               )}
            </div>
@@ -831,19 +953,33 @@ const RequestPage: React.FC = () => {
                        <Clock size={18} /> PROPOSE NEW TIME
                      </button>
                    )}
-                   <button 
-                     className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
-                     onClick={handleAccept}
-                     title={request.status === 'awaiting-activation' ? "Awaiting Customer T&C Activation" : ""}
-                   >
-                     <div className="accept-content">
-                       <CheckCircle2 size={18} /> 
-                       <span>{request.status === 'new-time-proposed' ? 'ACCEPT NEW TIME' : 'ACCEPT JOB'}</span>
-                     </div>
-                     {request.preferredTime && (
-                       <div className="btn-badge">Time Priority</div>
-                     )}
-                   </button>
+                   {request.status === 'awaiting-activation' ? (
+                     <button 
+                       className="btn-accept shadow-teal" 
+                       onClick={handleAcceptTcOnBehalf}
+                       disabled={isAcceptingTc}
+                       style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}
+                       title="Accept Terms & Conditions on behalf of customer"
+                     >
+                       <div className="accept-content">
+                         <CheckCircle2 size={18} className={isAcceptingTc ? 'spin' : ''} />
+                         <span>{isAcceptingTc ? 'ACCEPTING T&C...' : 'ACCEPT T&C ON BEHALF'}</span>
+                       </div>
+                     </button>
+                   ) : (
+                     <button 
+                       className="btn-accept shadow-teal" 
+                       onClick={handleAccept}
+                     >
+                       <div className="accept-content">
+                         <CheckCircle2 size={18} /> 
+                         <span>{request.status === 'new-time-proposed' ? 'ACCEPT NEW TIME' : 'ACCEPT JOB'}</span>
+                       </div>
+                       {request.preferredTime && (
+                         <div className="btn-badge">Time Priority</div>
+                       )}
+                     </button>
+                   )}
                  </>
                ) : isLpoUser ? (
                  <>
@@ -1254,13 +1390,25 @@ const RequestPage: React.FC = () => {
                     <Clock size={18} /> PROPOSE TIME
                   </button>
                 )}
-                <button 
-                  className={`btn-accept ${request.status === 'awaiting-activation' ? 'disabled' : 'shadow-teal'}`} 
-                  onClick={handleAccept}
-                >
-                  <CheckCircle2 size={18} /> 
-                  <span>{request.status === 'new-time-proposed' ? 'ACCEPT TIME' : 'ACCEPT'}</span>
-                </button>
+                {request.status === 'awaiting-activation' ? (
+                  <button 
+                    className="btn-accept shadow-teal" 
+                    onClick={handleAcceptTcOnBehalf}
+                    disabled={isAcceptingTc}
+                    style={{ background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)' }}
+                  >
+                    <CheckCircle2 size={18} className={isAcceptingTc ? 'spin' : ''} /> 
+                    <span>{isAcceptingTc ? 'ACCEPTING...' : 'ACCEPT T&C'}</span>
+                  </button>
+                ) : (
+                  <button 
+                    className="btn-accept shadow-teal" 
+                    onClick={handleAccept}
+                  >
+                    <CheckCircle2 size={18} /> 
+                    <span>{request.status === 'new-time-proposed' ? 'ACCEPT TIME' : 'ACCEPT'}</span>
+                  </button>
+                )}
               </>
             ) : isLpoUser ? (
               <>
@@ -1445,8 +1593,31 @@ const RequestPage: React.FC = () => {
         .copy-ref-btn:hover { background: rgba(0, 0, 0, 0.08); color: var(--ink); }
         .status-pill { display: inline-block; padding: 4px 12px; borderRadius: 20px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.16em; }
         .status-pill.pending { background: var(--cream-warm); color: var(--gold); }
-        .tc-banner { margin-top: 12px; display: inline-flex; align-items: center; gap: 10px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); padding: 10px 16px; border-radius: 12px; color: #b38600; font-family: var(--font-ui); font-size: 0.8rem; }
+        .tc-banner { margin-top: 12px; display: inline-flex; align-items: center; gap: 12px; background: rgba(255, 193, 7, 0.1); border: 1px solid rgba(255, 193, 7, 0.3); padding: 10px 16px; border-radius: 12px; color: #b38600; font-family: var(--font-ui); font-size: 0.8rem; flex-wrap: wrap; }
         .tc-icon { display: flex; align-items: center; }
+        .btn-accept-tc-inline {
+          background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+          color: white;
+          border: none;
+          padding: 6px 14px;
+          border-radius: 8px;
+          font-weight: 700;
+          font-size: 0.75rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+        }
+        .btn-accept-tc-inline:hover {
+          background: linear-gradient(135deg, #047857 0%, #059669 100%);
+          box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+        .btn-accept-tc-inline:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
 
         .operator-actions { display: flex; gap: 12px; }
         .btn-reject { background: white; color: #ff4757; border: 1px solid #ffdada; padding: 12px 24px; border-radius: 14px; font-weight: 800; display: flex; align-items: center; gap: 10px; cursor: pointer; }
