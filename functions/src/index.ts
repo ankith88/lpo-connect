@@ -415,12 +415,26 @@ export const onCustomerCancelled = onDocumentUpdated({
     const reason = newData.cancellationReason || "No reason provided";
     const notes = newData.cancellationNotes || "No notes provided";
 
-    const linkedZeeDetails = newData.linkedZeeDetails || "";
-    const [zeeName, zeeEmail] = linkedZeeDetails.split(',').map((s: string) => s.trim());
+    const rawZeeDetails = newData.linkedZeeDetails;
+    const zeeEntries: string[] = Array.isArray(rawZeeDetails)
+      ? rawZeeDetails.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : typeof rawZeeDetails === "string" && rawZeeDetails.trim().length > 0
+        ? [rawZeeDetails]
+        : [];
+
+    const zeeNames: string[] = [];
+    const zeeEmails: string[] = [];
+    for (const entry of zeeEntries) {
+      const [name, email] = entry.split(",").map((s: string) => s.trim());
+      if (name) zeeNames.push(name);
+      if (email) zeeEmails.push(email);
+    }
+    const zeeName = [...new Set(zeeNames)].join(", ");
+    const uniqueZeeEmails = [...new Set(zeeEmails)];
 
     const recipients = ["mailplusit@mailplus.com.au"];
-    if (zeeEmail) {
-      recipients.unshift(zeeEmail); // Primary recipient is the franchisee
+    if (uniqueZeeEmails.length > 0) {
+      recipients.unshift(...uniqueZeeEmails); // Primary recipient is the franchisee
     }
 
     const mailOptions = {
@@ -2787,26 +2801,47 @@ export const sendScheduleNotification = onCall({
   }
 
   const scheduleData = scheduleDoc.data();
-  const lpoId = scheduleData?.lpo_id;
+  const lpoId = scheduleData?.lpo_id ? String(scheduleData.lpo_id).trim() : "";
   // Fallback chain for customer ID
-  const customerId = scheduleData?.customerId || scheduleData?.customer?.id || scheduleData?.netsuiteCustomerId;
+  const rawCustomerId = scheduleData?.customerId || scheduleData?.customer?.id || scheduleData?.netsuiteCustomerId || scheduleData?.customer?.netsuiteId;
+  const customerId = rawCustomerId !== undefined && rawCustomerId !== null ? String(rawCustomerId).trim() : "";
+  const scheduleCompanyName = scheduleData?.customer?.company || scheduleData?.customer?.companyName || "";
 
-  if (!lpoId || !customerId) {
-    console.warn(`LPO ID or Customer ID missing for schedule ${scheduleId}`);
+  if (!lpoId || (!customerId && !scheduleCompanyName)) {
+    console.warn(`LPO ID or Customer identifier missing for schedule ${scheduleId}`);
     return { success: false, message: "Missing metadata (LPO/Customer ID)" };
   }
 
   // Fetch customer to get linkedZeeDetails
   let customerData: any = null;
   try {
-    const customerDoc = await db.collection("lpo").doc(lpoId).collection("customers").doc(customerId).get();
-    if (customerDoc.exists) {
-      customerData = customerDoc.data();
-    } else {
-      // Try searching by companyId/netsuiteCustomerId if doc ID mismatch
-      const custQuery = db.collection("lpo").doc(lpoId).collection("customers")
-        .where("companyId", "==", customerId).limit(1).get();
-      const custSnap = await custQuery;
+    const customersRef = db.collection("lpo").doc(lpoId).collection("customers");
+
+    if (customerId) {
+      const customerDoc = await customersRef.doc(customerId).get();
+      if (customerDoc.exists) {
+        customerData = customerDoc.data();
+      } else {
+        const cidNum = Number(customerId);
+        const idCandidates = !isNaN(cidNum) ? [customerId, cidNum] : [customerId];
+
+        // Try searching by companyId or customerInternalId if doc ID mismatch
+        let custSnap = await customersRef.where("companyId", "in", idCandidates).limit(1).get();
+        if (custSnap.empty) {
+          custSnap = await customersRef.where("customerInternalId", "in", idCandidates).limit(1).get();
+        }
+        if (!custSnap.empty) {
+          customerData = custSnap.docs[0].data();
+        }
+      }
+    }
+
+    // Fallback: match by companyName if still not found
+    if (!customerData && scheduleCompanyName) {
+      let custSnap = await customersRef.where("companyName", "==", scheduleCompanyName).limit(1).get();
+      if (custSnap.empty) {
+        custSnap = await customersRef.where("company_name", "==", scheduleCompanyName).limit(1).get();
+      }
       if (!custSnap.empty) {
         customerData = custSnap.docs[0].data();
       }
@@ -2826,11 +2861,25 @@ export const sendScheduleNotification = onCall({
     console.error("Error fetching LPO for notification:", err);
   }
 
-  const linkedZeeDetails = customerData?.linkedZeeDetails || "";
-  const [zeeName, zeeEmail] = linkedZeeDetails.split(',').map((s: string) => s.trim());
+  const rawZeeDetails = customerData?.linkedZeeDetails;
+  const zeeEntries: string[] = Array.isArray(rawZeeDetails)
+    ? rawZeeDetails.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : typeof rawZeeDetails === "string" && rawZeeDetails.trim().length > 0
+      ? [rawZeeDetails]
+      : [];
+
+  const zeeNames: string[] = [];
+  const zeeEmails: string[] = [];
+  for (const entry of zeeEntries) {
+    const [name, email] = entry.split(",").map((s: string) => s.trim());
+    if (name) zeeNames.push(name);
+    if (email) zeeEmails.push(email);
+  }
+  const zeeName = [...new Set(zeeNames)].join(", ");
+  const uniqueZeeEmails = [...new Set(zeeEmails)];
   
-  if (!zeeEmail) {
-    console.warn(`No franchisee email found for customer ${customerId}. Will fallback to dispatcher only.`);
+  if (uniqueZeeEmails.length === 0) {
+    console.warn(`No franchisee email found for customer ${customerId || scheduleCompanyName}. Will fallback to dispatcher only.`);
   }
 
   const transporter = nodemailer.createTransport({
@@ -2902,8 +2951,8 @@ export const sendScheduleNotification = onCall({
   const taggedHtml = injectMetadataTag(html, metadata);
 
   const recipients = ["dispatcher@mailplus.com.au"];
-  if (zeeEmail) {
-    recipients.unshift(zeeEmail); // Primary recipient is the franchisee
+  if (uniqueZeeEmails.length > 0) {
+    recipients.unshift(...uniqueZeeEmails); // Primary recipient is the franchisee
   }
 
   const mailOptions = {
