@@ -8,9 +8,11 @@ import {
   LogOut 
 } from 'lucide-react';
 import { auth } from '../firebase/config';
+import { useLpo } from '../context/LpoContext';
 
 const BottomNav: React.FC = () => {
   const navigate = useNavigate();
+  const { exitImpersonation } = useLpo();
   const navItems = [
     { name: 'Customers', icon: Users, path: '/customers' },
     { name: 'Schedules', icon: RotateCcw, path: '/schedules' },
@@ -20,6 +22,7 @@ const BottomNav: React.FC = () => {
 
   const handleLogout = async () => {
     try {
+      exitImpersonation();
       await auth.signOut();
       navigate('/signin');
     } catch (error) {

@@ -44,9 +44,9 @@ import CustomSelect from '../../components/CustomSelect';
 
 
 const Dashboard: React.FC = () => {
-  const { user, lpo, isAdmin, userData, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
+  const { user, lpo, isAdmin, isRealAdmin, isImpersonating, userData, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
   const SUPER_ADMIN_ID = 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
-  const isPrivilegedUser = isAdmin || userData?.role === 'admin' || userData?.role === 'superadmin' || user?.uid === SUPER_ADMIN_ID || userData?.uid === SUPER_ADMIN_ID;
+  const isPrivilegedUser = isAdmin || isRealAdmin || userData?.role === 'admin' || userData?.role === 'superadmin' || user?.uid === SUPER_ADMIN_ID || userData?.uid === SUPER_ADMIN_ID;
   const today = formatDateForInput(new Date());
 
   const isUnperformedJob = (job: any) => {
@@ -936,7 +936,7 @@ const Dashboard: React.FC = () => {
                 />
               </div>
                 <div className="filter-actions">
-                   {isPrivilegedUser && (
+                   {isAdmin && !isImpersonating && (
                      <CustomSelect 
                        value={selectedLpoIds}
                        onChange={(val) => setSelectedLpoIds(val)}
@@ -1579,7 +1579,10 @@ const Dashboard: React.FC = () => {
                                                     ) : null}
                                                     <button onClick={() => handleEditRequest(job)}><RotateCcw size={14} /> Edit Request</button>
                                                     {isPrivilegedUser ? (
-                                                      <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
+                                                      <>
+                                                        <button className="cancel" onClick={() => handleCancelRequest(job.id)}><XCircle size={14} /> Cancel Request</button>
+                                                        <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
+                                                      </>
                                                     ) : (
                                                       <button className="cancel" onClick={() => handleDeleteRequest(job.id)}><Trash2 size={14} /> Delete Request</button>
                                                     )}

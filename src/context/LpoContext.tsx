@@ -33,6 +33,16 @@ interface UserMetadata {
   hasCompletedTour?: boolean;
 }
 
+export interface ImpersonatedSession {
+  uid: string;
+  email: string;
+  lpo_id: string;
+  lpoName?: string;
+  first_name?: string;
+  last_name?: string;
+  mobile?: string;
+}
+
 interface LpoContextType {
   user: User | null;
   userData: UserMetadata | null;
@@ -44,6 +54,11 @@ interface LpoContextType {
   completeTour: () => Promise<void>;
   updateUserData: (data: Partial<UserMetadata>) => Promise<void>;
   isAdmin: boolean;
+  isRealAdmin: boolean;
+  isImpersonating: boolean;
+  impersonatedSession: ImpersonatedSession | null;
+  loginAsLpo: (target: ImpersonatedSession) => Promise<void>;
+  exitImpersonation: () => void;
   selectedLpoId: string; // Used by admins to filter, defaults to own lpo_id or 'all'
   setSelectedLpoId: (id: string | string[]) => void;
   selectedLpoIds: string[];
@@ -53,6 +68,8 @@ interface LpoContextType {
 }
 
 const SUPER_ADMIN_ID = 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
+const IMPERSONATION_SESSION_KEY = 'lpo_impersonation_session';
+const IMPERSONATION_LPO_KEY = 'lpo_impersonation_lpo';
 
 const LpoContext = createContext<LpoContextType>({
   user: null,
@@ -65,6 +82,11 @@ const LpoContext = createContext<LpoContextType>({
   completeTour: async () => {},
   updateUserData: async () => {},
   isAdmin: false,
+  isRealAdmin: false,
+  isImpersonating: false,
+  impersonatedSession: null,
+  loginAsLpo: async () => {},
+  exitImpersonation: () => {},
   selectedLpoId: 'all',
   setSelectedLpoId: () => {},
   selectedLpoIds: ['all'],
@@ -133,25 +155,143 @@ export const resolveLpoName = (docId: string, data: any): string => {
 
 export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [userData, setUserData] = useState<UserMetadata | null>(null);
-  const [lpo, setLpo] = useState<LpoMetadata | null>(null);
+  const [realUserData, setRealUserData] = useState<UserMetadata | null>(null);
+  const [realLpo, setRealLpo] = useState<LpoMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [isSidebarPinned, setIsSidebarPinned] = useState(false);
-  const [hasCompletedTour, setHasCompletedTour] = useState(true);
-  const [selectedLpoIds, setSelectedLpoIds] = useState<string[]>(['all']);
+  const [hasCompletedTourState, setHasCompletedTourState] = useState(true);
   const [allLpos, setAllLpos] = useState<LpoMetadata[]>([]);
   const [awaitingTcCount, setAwaitingTcCount] = useState(0);
 
-  const isAdmin = userData?.role === 'admin' || userData?.role === 'superadmin' || userData?.uid === SUPER_ADMIN_ID;
+  const [impersonatedSession, setImpersonatedSession] = useState<ImpersonatedSession | null>(() => {
+    try {
+      const saved = localStorage.getItem(IMPERSONATION_SESSION_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
-  const selectedLpoId = selectedLpoIds.includes('all') || selectedLpoIds.length === 0 ? 'all' : selectedLpoIds[0];
+  const [impersonatedLpo, setImpersonatedLpo] = useState<LpoMetadata | null>(() => {
+    try {
+      const saved = localStorage.getItem(IMPERSONATION_LPO_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [selectedLpoIds, setSelectedLpoIdsState] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(IMPERSONATION_SESSION_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.lpo_id) return [parsed.lpo_id];
+      }
+    } catch {}
+    return ['all'];
+  });
+
+  const isRealAdmin =
+    realUserData?.role === 'admin' ||
+    realUserData?.role === 'superadmin' ||
+    realUserData?.uid === SUPER_ADMIN_ID ||
+    user?.uid === SUPER_ADMIN_ID;
+
+  const isImpersonating = Boolean(isRealAdmin && impersonatedSession?.lpo_id);
+
+  // When impersonating an LPO, act as that LPO operator across LPO views
+  const isAdmin = isRealAdmin && !isImpersonating;
+
+  const userData: UserMetadata | null = isImpersonating && impersonatedSession
+    ? {
+        uid: impersonatedSession.uid,
+        email: impersonatedSession.email,
+        first_name: impersonatedSession.first_name,
+        last_name: impersonatedSession.last_name,
+        mobile: impersonatedSession.mobile,
+        role: 'operator',
+        lpo_id: impersonatedSession.lpo_id,
+        hasCompletedTour: true,
+      }
+    : realUserData;
+
+  const lpo: LpoMetadata | null = isImpersonating
+    ? (impersonatedLpo || allLpos.find(l => l.id === impersonatedSession?.lpo_id) || null)
+    : realLpo;
+
+  const hasCompletedTour = isImpersonating ? true : hasCompletedTourState;
+
+  const effectiveSelectedLpoIds = isImpersonating && impersonatedSession?.lpo_id
+    ? [impersonatedSession.lpo_id]
+    : selectedLpoIds;
+
+  const selectedLpoId =
+    effectiveSelectedLpoIds.includes('all') || effectiveSelectedLpoIds.length === 0
+      ? 'all'
+      : effectiveSelectedLpoIds[0];
+
+  const setSelectedLpoIds = (ids: string[]) => {
+    if (isImpersonating && impersonatedSession?.lpo_id) {
+      setSelectedLpoIdsState([impersonatedSession.lpo_id]);
+      return;
+    }
+    setSelectedLpoIdsState(ids);
+  };
 
   const setSelectedLpoId = (idOrIds: string | string[]) => {
-    if (Array.isArray(idOrIds)) {
-      setSelectedLpoIds(idOrIds.length > 0 ? idOrIds : ['all']);
-    } else {
-      setSelectedLpoIds(idOrIds ? [idOrIds] : ['all']);
+    if (isImpersonating && impersonatedSession?.lpo_id) {
+      setSelectedLpoIdsState([impersonatedSession.lpo_id]);
+      return;
     }
+    if (Array.isArray(idOrIds)) {
+      setSelectedLpoIdsState(idOrIds.length > 0 ? idOrIds : ['all']);
+    } else {
+      setSelectedLpoIdsState(idOrIds ? [idOrIds] : ['all']);
+    }
+  };
+
+  const loginAsLpo = async (target: ImpersonatedSession) => {
+    if (!target.lpo_id) return;
+
+    let resolvedLpo: LpoMetadata | null = allLpos.find(l => l.id === target.lpo_id) || null;
+    try {
+      const lpoDoc = await getDoc(doc(db, 'lpo', target.lpo_id));
+      if (lpoDoc.exists()) {
+        const docData = lpoDoc.data();
+        const resolvedName = resolveLpoName(target.lpo_id, docData);
+        resolvedLpo = { id: target.lpo_id, ...docData, name: resolvedName } as LpoMetadata;
+      }
+    } catch (err) {
+      console.error("Error fetching LPO doc during impersonation:", err);
+    }
+
+    if (!resolvedLpo) {
+      resolvedLpo = {
+        id: target.lpo_id,
+        name: target.lpoName || target.lpo_id,
+      };
+    }
+
+    const sessionPayload: ImpersonatedSession = {
+      ...target,
+      lpoName: resolvedLpo.name || target.lpoName || target.lpo_id,
+    };
+
+    localStorage.setItem(IMPERSONATION_SESSION_KEY, JSON.stringify(sessionPayload));
+    localStorage.setItem(IMPERSONATION_LPO_KEY, JSON.stringify(resolvedLpo));
+
+    setImpersonatedSession(sessionPayload);
+    setImpersonatedLpo(resolvedLpo);
+    setSelectedLpoIdsState([target.lpo_id]);
+  };
+
+  const exitImpersonation = () => {
+    localStorage.removeItem(IMPERSONATION_SESSION_KEY);
+    localStorage.removeItem(IMPERSONATION_LPO_KEY);
+    setImpersonatedSession(null);
+    setImpersonatedLpo(null);
+    setSelectedLpoIdsState(['all']);
   };
 
   useEffect(() => {
@@ -172,15 +312,15 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           if (userDoc.exists()) {
             const data = userDoc.data() as UserMetadata;
-            setUserData({ ...data, uid: user.uid });
+            setRealUserData({ ...data, uid: user.uid });
             const lpoId = data.lpo_id;
-            setHasCompletedTour(data.hasCompletedTour || false);
+            setHasCompletedTourState(data.hasCompletedTour || false);
             
             isUserAdmin = isUserAdmin || data.role === 'admin' || data.role === 'superadmin';
 
             // Set initial filter to user's LPO if they are not an admin
             if (!isUserAdmin && lpoId) {
-              setSelectedLpoIds([lpoId]);
+              setSelectedLpoIdsState([lpoId]);
             }
 
             if (lpoId) {
@@ -189,7 +329,7 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const docData = lpoDoc.data();
                 const resolvedName = resolveLpoName(lpoId, docData);
                 const userLpo = { id: lpoId, ...docData, name: resolvedName } as LpoMetadata;
-                setLpo(userLpo);
+                setRealLpo(userLpo);
                 
                 if (!isUserAdmin) {
                   setAllLpos([userLpo]);
@@ -212,11 +352,19 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               lpo_id: '',
               hasCompletedTour: true
             };
-            setUserData(adminData);
+            setRealUserData(adminData);
             isUserAdmin = true;
             
             // Create the document asynchronously
             setDoc(doc(db, 'users', user.uid), adminData).catch(e => console.error("Auto-seed error:", e));
+          }
+
+          if (!isUserAdmin) {
+            // Clear any stale impersonation state if a non-admin signs in
+            localStorage.removeItem(IMPERSONATION_SESSION_KEY);
+            localStorage.removeItem(IMPERSONATION_LPO_KEY);
+            setImpersonatedSession(null);
+            setImpersonatedLpo(null);
           }
 
           // If admin, fetch all active LPOs for the filter list
@@ -245,16 +393,47 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               .filter(l => Boolean(l.id && l.name && !/^\d+$/.test(l.name)))
               .sort((a, b) => a.name.localeCompare(b.name));
             setAllLpos(sanitizedLpos);
+
+            // Refresh impersonated LPO metadata if active
+            const savedSessionStr = localStorage.getItem(IMPERSONATION_SESSION_KEY);
+            if (savedSessionStr) {
+              try {
+                const savedSession = JSON.parse(savedSessionStr) as ImpersonatedSession;
+                if (savedSession?.lpo_id) {
+                  const matched = sanitizedLpos.find(l => l.id === savedSession.lpo_id);
+                  if (matched) {
+                    setImpersonatedLpo(matched);
+                    localStorage.setItem(IMPERSONATION_LPO_KEY, JSON.stringify(matched));
+                  } else {
+                    const impDoc = await getDoc(doc(db, 'lpo', savedSession.lpo_id));
+                    if (impDoc.exists()) {
+                      const docData = impDoc.data();
+                      const resolvedName = resolveLpoName(savedSession.lpo_id, docData);
+                      const fullImpLpo = { id: savedSession.lpo_id, ...docData, name: resolvedName } as LpoMetadata;
+                      setImpersonatedLpo(fullImpLpo);
+                      localStorage.setItem(IMPERSONATION_LPO_KEY, JSON.stringify(fullImpLpo));
+                    }
+                  }
+                  setSelectedLpoIdsState([savedSession.lpo_id]);
+                }
+              } catch (e) {
+                console.error("Failed to restore impersonated LPO:", e);
+              }
+            }
           }
 
         } catch (error) {
           console.error("Error fetching LPO metadata:", error);
         }
       } else {
-        setUserData(null);
-        setLpo(null);
-        setHasCompletedTour(true);
+        setRealUserData(null);
+        setRealLpo(null);
+        setHasCompletedTourState(true);
         setAllLpos([]);
+        localStorage.removeItem(IMPERSONATION_SESSION_KEY);
+        localStorage.removeItem(IMPERSONATION_LPO_KEY);
+        setImpersonatedSession(null);
+        setImpersonatedLpo(null);
       }
       setLoading(false);
     });
@@ -273,12 +452,12 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     let q;
     
     if (isAdmin) {
-      if (selectedLpoIds.includes('all') || selectedLpoIds.length === 0) {
+      if (effectiveSelectedLpoIds.includes('all') || effectiveSelectedLpoIds.length === 0) {
         q = query(reqRef, where('status', '==', 'awaiting-activation'));
-      } else if (selectedLpoIds.length === 1) {
-        q = query(reqRef, where('status', '==', 'awaiting-activation'), where('lpo_id', '==', selectedLpoIds[0]));
+      } else if (effectiveSelectedLpoIds.length === 1) {
+        q = query(reqRef, where('status', '==', 'awaiting-activation'), where('lpo_id', '==', effectiveSelectedLpoIds[0]));
       } else {
-        q = query(reqRef, where('status', '==', 'awaiting-activation'), where('lpo_id', 'in', selectedLpoIds.slice(0, 30)));
+        q = query(reqRef, where('status', '==', 'awaiting-activation'), where('lpo_id', 'in', effectiveSelectedLpoIds.slice(0, 30)));
       }
     } else if (userData?.lpo_id) {
       q = query(reqRef, where('status', '==', 'awaiting-activation'), where('lpo_id', '==', userData.lpo_id));
@@ -292,28 +471,37 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     return () => unsubscribe();
-  }, [user, isAdmin, selectedLpoIds, userData?.lpo_id]);
+  }, [user, isAdmin, effectiveSelectedLpoIds, userData?.lpo_id]);
 
   const completeTour = async () => {
-    if (!user) return;
+    if (!user || isImpersonating) return;
     try {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, { hasCompletedTour: true });
-      setHasCompletedTour(true);
-      setUserData(prev => prev ? { ...prev, hasCompletedTour: true } : null);
+      setHasCompletedTourState(true);
+      setRealUserData(prev => prev ? { ...prev, hasCompletedTour: true } : null);
     } catch (error) {
       console.error("Error completing tour:", error);
       // Even if firestore fails, we set it locally to hide it for the current session
-      setHasCompletedTour(true);
+      setHasCompletedTourState(true);
     }
   };
 
   const updateUserData = async (data: Partial<UserMetadata>) => {
     if (!user) return;
     try {
-      const userRef = doc(db, 'users', user.uid);
+      const targetUid = isImpersonating && impersonatedSession?.uid && !impersonatedSession.uid.startsWith('lpo_')
+        ? impersonatedSession.uid
+        : user.uid;
+      const userRef = doc(db, 'users', targetUid);
       await updateDoc(userRef, data);
-      setUserData(prev => prev ? { ...prev, ...data } : null);
+      if (isImpersonating && impersonatedSession) {
+        const updatedSession = { ...impersonatedSession, ...data };
+        setImpersonatedSession(updatedSession);
+        localStorage.setItem(IMPERSONATION_SESSION_KEY, JSON.stringify(updatedSession));
+      } else {
+        setRealUserData(prev => prev ? { ...prev, ...data } : null);
+      }
     } catch (error) {
       console.error("Error updating user data:", error);
       throw error;
@@ -332,9 +520,14 @@ export const LpoProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       completeTour,
       updateUserData,
       isAdmin,
+      isRealAdmin,
+      isImpersonating,
+      impersonatedSession,
+      loginAsLpo,
+      exitImpersonation,
       selectedLpoId,
       setSelectedLpoId,
-      selectedLpoIds,
+      selectedLpoIds: effectiveSelectedLpoIds,
       setSelectedLpoIds,
       allLpos,
       awaitingTcCount

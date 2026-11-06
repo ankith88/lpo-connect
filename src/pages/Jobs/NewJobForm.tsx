@@ -131,6 +131,20 @@ const NewJobForm: React.FC = () => {
 
   // Sync default selected LPO ID when context or allLpos loads
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paramLpoId = params.get('lpoId');
+    if (paramLpoId) {
+      if (selectedLpoId !== paramLpoId) {
+        setSelectedLpoId(paramLpoId);
+      }
+      return;
+    }
+    if (!isAdmin && contextLpo?.id) {
+      if (selectedLpoId !== contextLpo.id) {
+        setSelectedLpoId(contextLpo.id);
+      }
+      return;
+    }
     if (!selectedLpoId) {
       if (contextLpo?.id) {
         setSelectedLpoId(contextLpo.id);
@@ -138,7 +152,7 @@ const NewJobForm: React.FC = () => {
         setSelectedLpoId(allLpos[0].id);
       }
     }
-  }, [contextLpo, allLpos, selectedLpoId]);
+  }, [contextLpo, allLpos, selectedLpoId, isAdmin]);
 
   // Compute active target LPO based on selectedLpoId
   const lpo = allLpos.find(l => l.id === selectedLpoId) || 
@@ -267,17 +281,17 @@ const NewJobForm: React.FC = () => {
     setSearchResults([]);
   };
 
-  // Handle available services for new customers (Allow all, but no internal IDs)
+  // Handle available services for new customers (Allow all, inheriting parent LPO rates/IDs if available)
   useEffect(() => {
     if (!isExistingCustomer) {
       const services: {id: ServiceType, internalId: string, rate: string}[] = [
-        { id: 'site-to-lpo', internalId: '', rate: '10.00' },
-        { id: 'lpo-to-site', internalId: '', rate: '10.00' },
-        { id: 'round-trip', internalId: '', rate: '20.00' }
+        { id: 'site-to-lpo', internalId: lpo?.lpoServicePMPOInternalID || '', rate: lpo?.lpoServicePMPORate || '10.00' },
+        { id: 'lpo-to-site', internalId: lpo?.lpoServiceAMPOInternalID || '', rate: lpo?.lpoServiceAMPORate || '10.00' },
+        { id: 'round-trip', internalId: lpo?.lpoServiceAMPOPMPOInternalID || '', rate: lpo?.lpoServiceAMPOPMPORate || '20.00' }
       ];
       setAvailableServices(services);
     }
-  }, [isExistingCustomer]);
+  }, [isExistingCustomer, lpo]);
 
   // Fetch customers (Across all LPOs for Admins, or active LPO for operators)
   useEffect(() => {
@@ -655,43 +669,46 @@ const NewJobForm: React.FC = () => {
     try {
       const isEditing = window.location.search.includes('edit=true');
       const requestId = new URLSearchParams(window.location.search).get('id');
-      const stops = generateStops(formData, lpo);
 
       let nsResult: any = { success: true };
+      let effectiveFormData: JobData = formData;
 
-      // 1. NetSuite API Integration (Stage 1) - Only for NEW customers
+      // 1. Sub-Customer Creation via ProspectPlus CRM + NetSuite 2194 + LPO.Plus (Stage 1) - Only for NEW customers
       if (!isExistingCustomer) {
         setProcessingProgress(25);
-        setProcessingMessage('Registering new customer...');
-        const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2527&deploy=1&compid=1048144&ns-at=AAEJ7tMQJX8dMLsjS5TGMacB9-M8pUB6q50I_ptxbLYqKZ_HR3c";
-        
-        const params = new URLSearchParams({
-          lpo_id: lpo.id,
-          company: formData.customer.company,
-          firstName: formData.customer.firstName,
-          lastName: formData.customer.lastName,
-          email: formData.customer.email,
-          phone: formData.customer.phone,
-          address: formData.customer.address,
-          suburb: formData.customer.suburb,
-          state: formData.customer.state,
-          postcode: formData.customer.postcode,
-          lat: (formData.customer.coordinates?.lat || "").toString(),
-          lng: (formData.customer.coordinates?.lng || "").toString(),
-          service_name: formData.service || "null",
-          service_internal_id: formData.serviceInternalId || "null",
+        setProcessingMessage('Registering new customer in CRM & NetSuite...');
+
+        const createCustomerViaCrm = httpsCallable(functions, 'createCustomerViaCrm');
+        const crmResponse = await createCustomerViaCrm({
+          lpoId: lpo.id,
+          lpoName: lpo.companyName || lpo.name || '',
+          lpoEmail: lpo.customerEmail || lpo.email || '',
+          lpoDetails: {
+            lpoServiceAMPORate: lpo.lpoServiceAMPORate,
+            lpoServiceAMPOInternalID: lpo.lpoServiceAMPOInternalID,
+            lpoServicePMPORate: lpo.lpoServicePMPORate,
+            lpoServicePMPOInternalID: lpo.lpoServicePMPOInternalID,
+            lpoServiceAMPOPMPORate: lpo.lpoServiceAMPOPMPORate,
+            lpoServiceAMPOPMPOInternalID: lpo.lpoServiceAMPOPMPOInternalID,
+            lpoServiceAdditionalLPOBagRate: lpo.lpoServiceAdditionalLPOBagRate,
+            lpoServiceAdditionalLPOBagInternalID: lpo.lpoServiceAdditionalLPOBagInternalID,
+          },
+          customer: formData.customer,
           billing: formData.billing,
           jobType: formData.jobType,
-          startDate: formData.date,
-          frequency: getShorthandFrequency(formData.frequency),
-          preferredTime: formData.preferredTime || "",
-          timeConstraintType: formData.timeConstraintType || "AFTER"
+          service: formData.service,
+          serviceInternalId: formData.serviceInternalId || '',
+          serviceRate: formData.serviceRate || '',
+          date: formData.date,
+          frequency: formData.frequency,
+          frequencyShorthand: getShorthandFrequency(formData.frequency),
+          preferredTime: formData.preferredTime || '',
+          timeConstraintType: formData.timeConstraintType || 'AFTER',
+          additionalBagRate: lpo.lpoServiceAdditionalLPOBagRate || '',
         });
 
-        const nsResponse = await fetch(`${NETSUITE_API}&${params.toString()}`);
-        nsResult = await nsResponse.json();
-        
-        console.log("NetSuite Script 2527 Response:", nsResult);
+        nsResult = (crmResponse.data || {}) as any;
+        console.log("createCustomerViaCrm Response:", nsResult);
 
         if (!nsResult.success) {
           setValidationError(nsResult.message || "Failed to create customer record.");
@@ -699,10 +716,24 @@ const NewJobForm: React.FC = () => {
           return;
         }
 
+        effectiveFormData = {
+          ...formData,
+          customer: {
+            ...formData.customer,
+            company: nsResult.companyName || formData.customer.company,
+            netsuiteId: nsResult.customerInternalId || formData.customer.netsuiteId,
+            franchisee: nsResult.franchisee || formData.customer.franchisee || '',
+            franchiseeText: nsResult.franchiseeText || formData.customer.franchiseeText || '',
+          },
+        };
+        setFormData(effectiveFormData);
+
         // Check if we need to pause for T&C
         const initialStatus = formData.billing === 'lpo' ? 'Active' : "Awaiting T&C's to be Accepted";
         setCustomerStatus(initialStatus);
       }
+
+      const stops = generateStops(effectiveFormData, lpo);
 
       setProcessingProgress(50);
       setProcessingMessage('Securing job request in database...');
@@ -718,7 +749,7 @@ const NewJobForm: React.FC = () => {
         try {
           const custQ = query(
             collection(db, `lpo/${lpo.id}/customers`), 
-            where('companyName', '==', formData.customer.company)
+            where('companyName', '==', effectiveFormData.customer.company)
           );
           const custSnap = await getDocs(custQ);
           if (!custSnap.empty) {
@@ -732,16 +763,16 @@ const NewJobForm: React.FC = () => {
 
       let finalRequestId = requestId;
       const isActuallyActive = (isExistingCustomer && currentCustomerStatus === 'Active') || 
-                               (!isExistingCustomer && formData.billing === 'lpo');
+                               (!isExistingCustomer && effectiveFormData.billing === 'lpo');
       
       const initialRequestStatus = isActuallyActive ? 'pending' : 'awaiting-activation';
 
       if (isEditing && requestId) {
         const cleanUpdate = JSON.parse(JSON.stringify({
-          ...formData,
+          ...effectiveFormData,
           stops,
           isExistingCustomer,
-          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
+          netsuiteCustomerId: nsResult.customerInternalId || effectiveFormData.customer.netsuiteId || null,
           appJobGroupId: null,
           syncedWithNetSuite: null,
           status: initialRequestStatus,
@@ -751,7 +782,7 @@ const NewJobForm: React.FC = () => {
         const sysMessage = {
           id: Date.now().toString(),
           sender: 'system',
-          text: `Job request updated. New date: ${formData.date}`,
+          text: `Job request updated. New date: ${effectiveFormData.date}`,
           timestamp: new Date().toISOString()
         };
 
@@ -763,12 +794,12 @@ const NewJobForm: React.FC = () => {
         localStorage.removeItem('edit_request_draft');
       } else {
         const cleanData = JSON.parse(JSON.stringify({
-          ...formData,
+          ...effectiveFormData,
           stops,
           lpo_id: lpo.id,
           isExistingCustomer,
           additionalBagRate: lpo.lpoServiceAdditionalLPOBagRate || null,
-          netsuiteCustomerId: nsResult.customerInternalId || formData.customer.netsuiteId || null,
+          netsuiteCustomerId: nsResult.customerInternalId || effectiveFormData.customer.netsuiteId || null,
           status: initialRequestStatus,
           jobAcceptedCustInternalId: null,
           skippedDates: [],
@@ -1015,8 +1046,8 @@ const NewJobForm: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Prominent Linked LPO Display for Selected Subcustomer */}
-                  {isExistingCustomer && lpo && (
+                  {/* Prominent Linked LPO Display for Selected Subcustomer or Active LPO */}
+                  {(isExistingCustomer || !isAdmin) && lpo && (
                     <div className="linked-lpo-card glass fade-in">
                       <div className="linked-lpo-icon-box">
                         <Building2 size={22} className="text-gold" />
@@ -1024,7 +1055,7 @@ const NewJobForm: React.FC = () => {
                       <div className="linked-lpo-content">
                         <div className="linked-lpo-tag">
                           <span className="live-dot"></span>
-                          <span>LINKED LPO FACILITY</span>
+                          <span>{isExistingCustomer ? 'LINKED LPO FACILITY' : 'ACTIVE LPO FACILITY'}</span>
                         </div>
                         <h4 className="linked-lpo-title">{lpo.name || lpo.location || lpo.id}</h4>
                         <p className="linked-lpo-subtitle">

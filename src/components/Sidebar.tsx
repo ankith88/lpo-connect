@@ -19,7 +19,17 @@ import { auth } from '../firebase/config';
 import { useLpo } from '../context/LpoContext';
 
 const Sidebar: React.FC = () => {
-  const { isSidebarPinned, setIsSidebarPinned, lpo, isAdmin, userData, awaitingTcCount } = useLpo();
+  const {
+    isSidebarPinned,
+    setIsSidebarPinned,
+    lpo,
+    isAdmin,
+    isRealAdmin,
+    isImpersonating,
+    exitImpersonation,
+    userData,
+    awaitingTcCount
+  } = useLpo();
   const [isHovered, setIsHovered] = useState(false);
 
   // The sidebar is visually expanded if it's either pinned OR being hovered over
@@ -43,6 +53,7 @@ const Sidebar: React.FC = () => {
 
   const handleLogout = async () => {
     try {
+      exitImpersonation();
       await auth.signOut();
       window.location.href = '/signin';
     } catch (error) {
@@ -100,7 +111,7 @@ const Sidebar: React.FC = () => {
         </div>
         
         <nav className="sidebar-nav" id="tour-sidebar">
-          {isAdmin && (
+          {(isAdmin || isRealAdmin) && (
             <div className="nav-group">
               {isExpanded && <p className="group-title">Head Office Admin</p>}
               {adminNavItems.map((item) => (
@@ -114,6 +125,21 @@ const Sidebar: React.FC = () => {
                   {isExpanded && <span>{item.name}</span>}
                 </NavLink>
               ))}
+              {isImpersonating && (
+                <button
+                  type="button"
+                  className="nav-item-glass logout-btn"
+                  style={{ marginTop: '4px', color: '#fbbf24' }}
+                  onClick={() => {
+                    exitImpersonation();
+                    window.location.href = '/admin/users';
+                  }}
+                  title={!isExpanded ? 'Exit LPO View' : ''}
+                >
+                  <LogOut size={20} className="nav-icon" />
+                  {isExpanded && <span>Exit LPO View</span>}
+                </button>
+              )}
             </div>
           )}
 

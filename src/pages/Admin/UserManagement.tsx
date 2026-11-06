@@ -1,5 +1,6 @@
 // Head Office User Management Page
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
   UserPlus, 
@@ -11,7 +12,10 @@ import {
   X,
   Lock,
   Key,
-  Edit2
+  Edit2,
+  LogIn,
+  PlusCircle,
+  CheckCircle2
 } from 'lucide-react';
 import { collection, query, getDocs, doc, deleteDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -25,19 +29,42 @@ interface UserRecord {
   role: string;
   lpo_id: string;
   lpoName?: string;
+  first_name?: string;
+  last_name?: string;
+  mobile?: string;
 }
 
 const UserManagement: React.FC = () => {
-  const { allLpos, isAdmin, userData } = useLpo();
+  const navigate = useNavigate();
+  const {
+    allLpos,
+    isAdmin,
+    isRealAdmin,
+    isImpersonating,
+    impersonatedSession,
+    loginAsLpo,
+    exitImpersonation,
+    userData,
+    user
+  } = useLpo();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isLoginAsModalOpen, setIsLoginAsModalOpen] = useState(false);
+  const [selectedQuickLpoId, setSelectedQuickLpoId] = useState('');
+  const [lpoSearchTerm, setLpoSearchTerm] = useState('');
+  const [loggingInUid, setLoggingInUid] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  const isSuperAdmin = userData?.role === 'superadmin' || userData?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
+  const isSuperAdmin =
+    userData?.role === 'superadmin' ||
+    userData?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3' ||
+    user?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
+
+  const canAccessAdmin = isAdmin || isRealAdmin;
 
   // New User Form State
   const [newUser, setNewUser] = useState({
@@ -65,10 +92,13 @@ const UserManagement: React.FC = () => {
         const lpo = allLpos.find(l => l.id === data.lpo_id);
         return {
           uid: doc.id,
-          email: data.email,
-          role: data.role,
-          lpo_id: data.lpo_id,
-          lpoName: lpo?.name || 'N/A'
+          email: data.email || '',
+          role: data.role || 'operator',
+          lpo_id: data.lpo_id || '',
+          lpoName: lpo?.name || (data.lpo_id ? `LPO #${data.lpo_id}` : 'N/A'),
+          first_name: data.first_name,
+          last_name: data.last_name,
+          mobile: data.mobile
         } as UserRecord;
       });
       setUsers(userList);
@@ -80,10 +110,64 @@ const UserManagement: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isAdmin) {
+    if (canAccessAdmin) {
       fetchUsers();
     }
-  }, [isAdmin, allLpos]);
+  }, [canAccessAdmin, allLpos]);
+
+  const handleLoginAsUserLpo = async (targetUser: UserRecord, destination: '/dashboard' | '/new-job' = '/dashboard') => {
+    if (!targetUser.lpo_id) {
+      alert("This user does not have an assigned LPO.");
+      return;
+    }
+    setLoggingInUid(targetUser.uid);
+    try {
+      await loginAsLpo({
+        uid: targetUser.uid,
+        email: targetUser.email,
+        lpo_id: targetUser.lpo_id,
+        lpoName: targetUser.lpoName,
+        first_name: targetUser.first_name,
+        last_name: targetUser.last_name,
+        mobile: targetUser.mobile,
+      });
+      navigate(destination);
+    } catch (err) {
+      console.error("Error logging in as LPO:", err);
+      alert("Failed to switch into LPO account.");
+    } finally {
+      setLoggingInUid(null);
+    }
+  };
+
+  const handleQuickLoginByLpoId = async (lpoId: string, destination: '/dashboard' | '/new-job' = '/dashboard') => {
+    if (!lpoId) {
+      alert("Please select an LPO first.");
+      return;
+    }
+    const targetLpo = allLpos.find(l => l.id === lpoId);
+    const matchingUser = users.find(u => u.lpo_id === lpoId);
+
+    setIsSubmitting(true);
+    try {
+      await loginAsLpo({
+        uid: matchingUser?.uid || `lpo_${lpoId}`,
+        email: matchingUser?.email || `${(targetLpo?.name || lpoId).toLowerCase().replace(/[^a-z0-9]/g, '.')}@lpo.plus`,
+        lpo_id: lpoId,
+        lpoName: targetLpo?.name || lpoId,
+        first_name: matchingUser?.first_name || targetLpo?.name || 'LPO',
+        last_name: matchingUser?.last_name || 'Operator',
+        mobile: matchingUser?.mobile,
+      });
+      setIsLoginAsModalOpen(false);
+      navigate(destination);
+    } catch (err) {
+      console.error("Error logging in as LPO:", err);
+      alert("Failed to login as selected LPO.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,13 +294,59 @@ const UserManagement: React.FC = () => {
               </div>
             </div>
           </div>
-          <div className="header-right">
+          <div className="header-right header-actions-group">
+            <button
+              onClick={() => setIsLoginAsModalOpen(true)}
+              className="btn-secondary-action"
+              title="Login as any LPO to create and manage jobs on their behalf"
+            >
+              <LogIn size={18} />
+              <span>LOGIN AS LPO</span>
+            </button>
             <button onClick={() => setIsModalOpen(true)} className="btn-premium-action">
               <UserPlus size={20} />
               <span>CREATE NEW USER</span>
             </button>
           </div>
         </header>
+
+        {isImpersonating && impersonatedSession && (
+          <div className="active-impersonation-card glass-card fade-in">
+            <div className="imp-info">
+              <div className="imp-badge">
+                <CheckCircle2 size={14} />
+                <span>ACTIVE LPO SESSION</span>
+              </div>
+              <div className="imp-details">
+                <strong>{impersonatedSession.lpoName || `LPO #${impersonatedSession.lpo_id}`}</strong>
+                <span>({impersonatedSession.email})</span>
+              </div>
+            </div>
+            <div className="imp-actions">
+              <button
+                className="btn-imp-primary"
+                onClick={() => navigate('/new-job')}
+              >
+                <PlusCircle size={15} />
+                <span>Create Job for LPO</span>
+              </button>
+              <button
+                className="btn-imp-secondary"
+                onClick={() => navigate('/dashboard')}
+              >
+                <Building2 size={15} />
+                <span>Manage Jobs</span>
+              </button>
+              <button
+                className="btn-imp-exit"
+                onClick={() => exitImpersonation()}
+              >
+                <X size={15} />
+                <span>Exit LPO Session</span>
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="glass-card filter-bar">
           <div className="search-pill">
@@ -244,75 +374,110 @@ const UserManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.map((u) => (
-                  <tr key={u.uid}>
-                    <td>
-                      <div className="user-cell">
-                        <div className={`user-avatar ${u.role}`}>
-                          {u.email[0].toUpperCase()}
+                {filteredUsers.map((u) => {
+                  const isCurrentlyImpersonated =
+                    isImpersonating &&
+                    impersonatedSession?.lpo_id === u.lpo_id &&
+                    Boolean(u.lpo_id);
+
+                  return (
+                    <tr key={u.uid} className={isCurrentlyImpersonated ? 'impersonated-row' : ''}>
+                      <td>
+                        <div className="user-cell">
+                          <div className={`user-avatar ${u.role}`}>
+                            {(u.email?.[0] || 'U').toUpperCase()}
+                          </div>
+                          <div className="user-info">
+                            <span className="user-email">{u.email}</span>
+                            <span className="user-id">UID: {u.uid.substring(0, 8)}...</span>
+                          </div>
                         </div>
-                        <div className="user-info">
-                          <span className="user-email">{u.email}</span>
-                          <span className="user-id">UID: {u.uid.substring(0, 8)}...</span>
+                      </td>
+                      <td>
+                        <div className={`role-tag ${u.role}`}>
+                          {(u.role === 'admin' || u.role === 'superadmin') ? <Shield size={12} /> : <Users size={12} />}
+                          <span>{u.role === 'superadmin' ? 'SUPER ADMIN' : u.role.toUpperCase()}</span>
                         </div>
-                      </div>
-                    </td>
-                    <td>
-                      <div className={`role-tag ${u.role}`}>
-                        {(u.role === 'admin' || u.role === 'superadmin') ? <Shield size={12} /> : <Users size={12} />}
-                        <span>{u.role === 'superadmin' ? 'SUPER ADMIN' : u.role.toUpperCase()}</span>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="lpo-cell">
-                        {(u.role === 'admin' || u.role === 'superadmin') ? (
-                          <span className="global-access">Global Access</span>
-                        ) : (
-                          <>
-                            <Building2 size={14} />
-                            <span>{u.lpoName}</span>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                    <td className="text-right">
-                      <div className="table-actions">
-                        {isSuperAdmin && (
-                          <>
-                            <button 
-                              className="btn-icon-warning" 
-                              onClick={() => {
-                                setEditTarget(u);
-                                setEditEmail(u.email);
-                                setIsEditModalOpen(true);
-                              }}
-                              title="Edit User Email"
-                            >
-                              <Edit2 size={18} />
-                            </button>
-                            <button 
-                              className="btn-icon-warning" 
-                              onClick={() => {
-                                setResetTarget(u);
-                                setIsResetModalOpen(true);
-                              }}
-                              title="Reset Password"
-                            >
-                              <Key size={18} />
-                            </button>
-                          </>
-                        )}
-                        <button 
-                          className="btn-icon-danger" 
-                          onClick={() => handleDeleteUser(u.uid, u.email)}
-                          title="Remove Access"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>
+                        <div className="lpo-cell">
+                          {(u.role === 'admin' || u.role === 'superadmin') && !u.lpo_id ? (
+                            <span className="global-access">Global Access</span>
+                          ) : (
+                            <>
+                              <Building2 size={14} />
+                              <span>{u.lpoName}</span>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                      <td className="text-right">
+                        <div className="table-actions">
+                          {Boolean(u.lpo_id) && (
+                            <>
+                              <button
+                                className={`btn-login-lpo ${isCurrentlyImpersonated ? 'active' : ''}`}
+                                onClick={() => handleLoginAsUserLpo(u, '/dashboard')}
+                                disabled={loggingInUid === u.uid}
+                                title={`Login as ${u.lpoName || u.email} to manage and create jobs`}
+                              >
+                                <LogIn size={14} />
+                                <span>
+                                  {loggingInUid === u.uid
+                                    ? 'Switching...'
+                                    : isCurrentlyImpersonated
+                                      ? 'Manage LPO Jobs'
+                                      : 'Login as LPO'}
+                                </span>
+                              </button>
+                              <button
+                                className="btn-create-job-lpo"
+                                onClick={() => handleLoginAsUserLpo(u, '/new-job')}
+                                disabled={loggingInUid === u.uid}
+                                title={`Login as ${u.lpoName || u.email} and create a job`}
+                              >
+                                <PlusCircle size={14} />
+                                <span>Create Job</span>
+                              </button>
+                            </>
+                          )}
+                          {isSuperAdmin && (
+                            <>
+                              <button 
+                                className="btn-icon-warning" 
+                                onClick={() => {
+                                  setEditTarget(u);
+                                  setEditEmail(u.email);
+                                  setIsEditModalOpen(true);
+                                }}
+                                title="Edit User Email"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                              <button 
+                                className="btn-icon-warning" 
+                                onClick={() => {
+                                  setResetTarget(u);
+                                  setIsResetModalOpen(true);
+                                }}
+                                title="Reset Password"
+                              >
+                                <Key size={18} />
+                              </button>
+                            </>
+                          )}
+                          <button 
+                            className="btn-icon-danger" 
+                            onClick={() => handleDeleteUser(u.uid, u.email)}
+                            title="Remove Access"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filteredUsers.length === 0 && (
                   <tr>
                     <td colSpan={4} className="empty-row">
@@ -552,6 +717,101 @@ const UserManagement: React.FC = () => {
         </div>
       </div>
 
+      {/* Login as Any LPO Modal */}
+      <div className={`modal-overlay ${isLoginAsModalOpen ? 'active' : ''}`}>
+        <div className="modal-content glass fade-in">
+          <div className="modal-header">
+            <div className="header-title">
+              <LogIn size={20} />
+              <h2>Login as LPO</h2>
+            </div>
+            <button className="close-btn" onClick={() => setIsLoginAsModalOpen(false)}>
+              <X size={20} />
+            </button>
+          </div>
+
+          <p className="modal-info-text">
+            Select any LPO account to view their portal, create jobs on their behalf, and manage their jobs and requests.
+          </p>
+
+          <div className="create-user-form">
+            <div className="form-section">
+              <label className="m-label">Filter LPOs</label>
+              <div className="input-wrapper-glass">
+                <Search size={18} />
+                <input
+                  type="text"
+                  placeholder="Search LPO by name or suburb..."
+                  value={lpoSearchTerm}
+                  onChange={(e) => setLpoSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="form-section">
+              <label className="m-label">Select LPO Facility</label>
+              <div className="lpo-picker-list">
+                {allLpos
+                  .filter(l =>
+                    l.name.toLowerCase().includes(lpoSearchTerm.toLowerCase()) ||
+                    l.id.toLowerCase().includes(lpoSearchTerm.toLowerCase())
+                  )
+                  .map(l => {
+                    const linkedUser = users.find(u => u.lpo_id === l.id);
+                    const isSelected = selectedQuickLpoId === l.id;
+                    return (
+                      <div
+                        key={l.id}
+                        className={`lpo-picker-item ${isSelected ? 'selected' : ''}`}
+                        onClick={() => setSelectedQuickLpoId(l.id)}
+                      >
+                        <div className="lpo-picker-main">
+                          <Building2 size={16} />
+                          <div>
+                            <div className="lpo-picker-name">{l.name || l.id}</div>
+                            <div className="lpo-picker-sub">
+                              {linkedUser ? linkedUser.email : `LPO ID: ${l.id}`}
+                            </div>
+                          </div>
+                        </div>
+                        {isSelected && <CheckCircle2 size={16} className="lpo-picker-check" />}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-secondary-glass"
+                onClick={() => setIsLoginAsModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-secondary-glass btn-create-direct"
+                onClick={() => handleQuickLoginByLpoId(selectedQuickLpoId, '/new-job')}
+                disabled={isSubmitting || !selectedQuickLpoId}
+              >
+                <PlusCircle size={15} />
+                <span>Create Job</span>
+              </button>
+              <button
+                type="button"
+                className="btn-primary-glass"
+                onClick={() => handleQuickLoginByLpoId(selectedQuickLpoId, '/dashboard')}
+                disabled={isSubmitting || !selectedQuickLpoId}
+              >
+                {isSubmitting ? 'Switching...' : 'Login & Manage Jobs'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <style>{`
         .user-mgmt-premium { min-height: 100vh; background: var(--offwhite); position: relative; overflow-x: hidden; }
         .mesh-bg { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 0; filter: blur(100px); opacity: 0.5; }
@@ -567,12 +827,47 @@ const UserManagement: React.FC = () => {
         .page-header h1 { font-family: var(--font-headings); font-size: 2.2rem; font-weight: 400; color: var(--ink); margin: 0; letter-spacing: -0.025em; }
         .page-header p { margin: 4px 0 0; color: var(--ink-soft); font-size: 1rem; font-weight: 400; }
 
+        .header-actions-group { display: flex; align-items: center; gap: 12px; }
+
+        .btn-secondary-action {
+          background: white; color: var(--ink); border: 1.5px solid rgba(26, 61, 51, 0.2); padding: 13px 22px; border-radius: 18px;
+          font-weight: 800; display: flex; align-items: center; gap: 10px; cursor: pointer;
+          transition: all 0.25s;
+        }
+        .btn-secondary-action:hover { border-color: var(--ink); background: var(--cream-warm); transform: translateY(-2px); }
+
         .btn-premium-action {
           background: var(--ink); color: white; border: none; padding: 14px 28px; border-radius: 18px;
           font-weight: 800; display: flex; align-items: center; gap: 12px; cursor: pointer;
           box-shadow: 0 10px 25px rgba(26, 61, 51, 0.2); transition: all 0.3s;
         }
         .btn-premium-action:hover { transform: translateY(-4px); box-shadow: 0 15px 35px rgba(26, 61, 51, 0.25); }
+
+        .active-impersonation-card {
+          display: flex; align-items: center; justify-content: space-between; gap: 16px;
+          padding: 16px 22px; margin-bottom: 24px;
+          border: 1.5px solid rgba(168, 118, 58, 0.35);
+          background: linear-gradient(135deg, rgba(255, 250, 240, 0.95), rgba(255, 255, 255, 0.9));
+        }
+        .imp-info { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        .imp-badge {
+          display: inline-flex; align-items: center; gap: 6px;
+          background: var(--gold); color: white; padding: 5px 10px; border-radius: 8px;
+          font-size: 0.68rem; font-weight: 800; letter-spacing: 0.05em;
+        }
+        .imp-details { display: flex; align-items: center; gap: 8px; font-size: 0.95rem; color: var(--ink); }
+        .imp-details span { color: var(--ink-soft); font-size: 0.85rem; }
+        .imp-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .btn-imp-primary, .btn-imp-secondary, .btn-imp-exit {
+          display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 10px;
+          font-size: 0.78rem; font-weight: 800; cursor: pointer; transition: all 0.2s; border: none;
+        }
+        .btn-imp-primary { background: var(--ink); color: white; }
+        .btn-imp-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-imp-secondary { background: white; color: var(--ink); border: 1px solid rgba(26, 61, 51, 0.2); }
+        .btn-imp-secondary:hover { background: var(--offwhite); }
+        .btn-imp-exit { background: #fee2e2; color: #b91c1c; }
+        .btn-imp-exit:hover { background: #fecaca; }
 
         .filter-bar { margin-bottom: 24px; padding: 12px; }
         .search-pill { display: flex; align-items: center; gap: 12px; background: white; padding: 0 20px; border-radius: 14px; max-width: 400px; }
@@ -582,6 +877,7 @@ const UserManagement: React.FC = () => {
         .users-table { width: 100%; border-collapse: collapse; }
         .users-table th { text-align: left; padding: 20px 24px; font-family: var(--font-ui); font-size: 0.65rem; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0,0,0,0.05); }
         .users-table td { padding: 20px 24px; border-bottom: 1px solid rgba(0,0,0,0.03); }
+        .users-table tr.impersonated-row { background: rgba(168, 118, 58, 0.06); }
         .text-right { text-align: right !important; }
 
         .user-cell { display: flex; align-items: center; gap: 16px; }
@@ -602,6 +898,28 @@ const UserManagement: React.FC = () => {
         .lpo-cell { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); font-weight: 600; font-size: 0.9rem; }
         .global-access { font-style: italic; color: var(--ink-soft); opacity: 0.5; }
 
+        .table-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+        .btn-login-lpo {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 8px 13px; border-radius: 10px;
+          background: var(--ink); color: white; border: none;
+          font-size: 0.75rem; font-weight: 800; cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-login-lpo:hover { background: #265446; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(26, 61, 51, 0.2); }
+        .btn-login-lpo.active { background: var(--gold); color: white; }
+
+        .btn-create-job-lpo {
+          display: inline-flex; align-items: center; gap: 5px;
+          padding: 8px 12px; border-radius: 10px;
+          background: rgba(26, 61, 51, 0.08); color: var(--ink);
+          border: 1px solid rgba(26, 61, 51, 0.15);
+          font-size: 0.75rem; font-weight: 800; cursor: pointer;
+          transition: all 0.2s;
+        }
+        .btn-create-job-lpo:hover { background: rgba(26, 61, 51, 0.15); transform: translateY(-1px); }
+
         .btn-icon-danger { background: transparent; border: none; color: var(--danger); opacity: 0.5; cursor: pointer; transition: all 0.2s; padding: 8px; border-radius: 8px; }
         .btn-icon-danger:hover { opacity: 1; background: #fff5f5; }
 
@@ -615,13 +933,13 @@ const UserManagement: React.FC = () => {
         /* Modal Redesign */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(26, 61, 51, 0.4); backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; z-index: 2000; padding: 24px; }
         .modal-overlay.active { display: flex; }
-        .modal-content { width: 100%; max-width: 500px; padding: 32px; border-radius: 24px; background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(15px); }
+        .modal-content { width: 100%; max-width: 520px; padding: 32px; border-radius: 24px; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(15px); }
         .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
         .header-title { display: flex; align-items: center; gap: 12px; }
         .header-title h2 { font-size: 1.25rem; font-weight: 800; margin: 0; }
         .close-btn { background: transparent; border: none; color: var(--ink-soft); cursor: pointer; }
 
-        .create-user-form { display: flex; flex-direction: column; gap: 24px; }
+        .create-user-form { display: flex; flex-direction: column; gap: 20px; }
         .form-section { display: flex; flex-direction: column; gap: 8px; }
         .m-label { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; color: var(--ink-soft); letter-spacing: 0.5px; }
         
@@ -629,15 +947,35 @@ const UserManagement: React.FC = () => {
         .input-wrapper-glass svg { position: absolute; left: 16px; color: var(--ink-soft); opacity: 0.5; }
         .input-wrapper-glass input, .input-wrapper-glass select { width: 100%; padding: 14px 14px 14px 48px; border-radius: 14px; border: 1px solid rgba(0,0,0,0.05); background: white; font-weight: 600; outline: none; }
         
+        .lpo-picker-list {
+          max-height: 260px; overflow-y: auto; background: white;
+          border-radius: 14px; border: 1px solid rgba(0,0,0,0.06); padding: 6px;
+          display: flex; flex-direction: column; gap: 4px;
+        }
+        .lpo-picker-item {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 10px 12px; border-radius: 10px; cursor: pointer; transition: all 0.15s;
+          border: 1px solid transparent;
+        }
+        .lpo-picker-item:hover { background: var(--offwhite); }
+        .lpo-picker-item.selected { background: rgba(26, 61, 51, 0.08); border-color: var(--ink); }
+        .lpo-picker-main { display: flex; align-items: center; gap: 10px; color: var(--ink); }
+        .lpo-picker-name { font-weight: 700; font-size: 0.9rem; color: var(--ink); }
+        .lpo-picker-sub { font-size: 0.75rem; color: var(--ink-soft); opacity: 0.75; }
+        .lpo-picker-check { color: var(--ink); }
+
         .role-selector { display: flex; gap: 12px; }
         .role-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px; border-radius: 16px; border: 1px solid rgba(0,0,0,0.05); background: white; cursor: pointer; transition: all 0.2s; }
         .role-btn span { font-size: 0.8rem; font-weight: 800; }
         .role-btn.active { border-color: var(--ink); background: var(--offwhite); color: var(--ink); }
         .role-btn.active svg { color: var(--ink); }
 
-        .modal-actions { display: flex; gap: 12px; margin-top: 12px; }
-        .btn-secondary-glass { flex: 1; padding: 14px; border-radius: 14px; border: 1px solid rgba(0,0,0,0.05); background: white; font-weight: 700; cursor: pointer; }
-        .btn-primary-glass { flex: 1; padding: 14px; border-radius: 14px; border: none; background: var(--ink); color: white; font-weight: 700; cursor: pointer; }
+        .modal-actions { display: flex; gap: 10px; margin-top: 8px; }
+        .btn-secondary-glass { flex: 1; padding: 13px; border-radius: 14px; border: 1px solid rgba(0,0,0,0.08); background: white; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .btn-secondary-glass:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-create-direct { color: var(--ink); border-color: rgba(26, 61, 51, 0.25); }
+        .btn-primary-glass { flex: 1.2; padding: 13px; border-radius: 14px; border: none; background: var(--ink); color: white; font-weight: 700; cursor: pointer; }
+        .btn-primary-glass:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -645,8 +983,9 @@ const UserManagement: React.FC = () => {
         @media (max-width: 768px) {
           .users-table th:nth-child(3), .users-table td:nth-child(3) { display: none; }
           .page-header { flex-direction: column; gap: 20px; }
-          .header-right { width: 100%; }
-          .btn-premium-action { width: 100%; justify-content: center; }
+          .header-right { width: 100%; flex-direction: column; }
+          .btn-premium-action, .btn-secondary-action { width: 100%; justify-content: center; }
+          .active-impersonation-card { flex-direction: column; align-items: flex-start; }
         }
       `}</style>
     </div>

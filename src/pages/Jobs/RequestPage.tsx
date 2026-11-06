@@ -44,7 +44,8 @@ import { requestNotificationPermission, saveTokenToFirestore, onForegroundMessag
 
 const RequestPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { lpo, userData, user, loading: lpoLoading, isAdmin } = useLpo();
+  const { lpo, userData, user, loading: lpoLoading, isAdmin: isContextAdmin, isRealAdmin, isImpersonating } = useLpo();
+  const isAdmin = isContextAdmin || isRealAdmin;
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isAcceptingTc, setIsAcceptingTc] = useState(false);
@@ -94,7 +95,7 @@ const RequestPage: React.FC = () => {
   };
 
   // Identity: If lpo exists and not admin, person is the LPO User.
-  // If admin, they have administrative control (can act as operator/admin).
+  // If admin (or admin impersonating an LPO), they have administrative control (can act as operator/admin).
   // Otherwise, they are an External User.
   const isLpoUser = !!lpo && !isAdmin;
   const isExternalUser = !lpo && !isAdmin;
@@ -166,9 +167,9 @@ const RequestPage: React.FC = () => {
     const setupNotifications = async () => {
       const token = await requestNotificationPermission();
       if (token) {
-        if ((isLpoUser || isAdmin) && userData?.uid) {
+        if ((isLpoUser || isAdmin) && userData?.uid && !isImpersonating) {
           saveTokenToFirestore(token, 'operator', userData.uid); 
-        } else if (id) {
+        } else if (!isLpoUser && !isAdmin && id) {
           saveTokenToFirestore(token, 'customer', id);
         }
       }

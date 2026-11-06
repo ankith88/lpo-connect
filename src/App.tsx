@@ -1,5 +1,6 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Building2, PlusCircle, ClipboardList, Users, LogOut } from 'lucide-react';
 import { LpoProvider, useLpo } from './context/LpoContext';
 import Sidebar from './components/Sidebar';
 import BottomNav from './components/BottomNav';
@@ -35,13 +36,161 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 };
 
 const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isAdmin, loading } = useLpo();
+  const { user, isAdmin, isRealAdmin, loading } = useLpo();
   
   if (loading) return <LoadingScreen />;
   if (!user) return <Navigate to="/signin" />;
-  if (!isAdmin) return <Navigate to="/dashboard" />;
+  if (!isAdmin && !isRealAdmin) return <Navigate to="/dashboard" />;
   
   return <>{children}</>;
+};
+
+const ImpersonationBanner: React.FC = () => {
+  const { isImpersonating, impersonatedSession, lpo, exitImpersonation } = useLpo();
+  const navigate = useNavigate();
+
+  if (!isImpersonating || !impersonatedSession) return null;
+
+  const displayLpoName = lpo?.name || impersonatedSession.lpoName || `LPO #${impersonatedSession.lpo_id}`;
+
+  return (
+    <div className="impersonation-global-banner">
+      <div className="imp-banner-left">
+        <span className="imp-banner-pill">
+          <Building2 size={13} />
+          LOGGED IN AS LPO
+        </span>
+        <span className="imp-banner-text">
+          <strong>{displayLpoName}</strong>
+          <span className="imp-banner-email">({impersonatedSession.email})</span>
+        </span>
+      </div>
+      <div className="imp-banner-actions">
+        <button
+          type="button"
+          className="imp-btn imp-btn-action"
+          onClick={() => navigate('/new-job')}
+        >
+          <PlusCircle size={14} />
+          <span>Create Job</span>
+        </button>
+        <button
+          type="button"
+          className="imp-btn imp-btn-action"
+          onClick={() => navigate('/dashboard')}
+        >
+          <ClipboardList size={14} />
+          <span>Manage Jobs</span>
+        </button>
+        <button
+          type="button"
+          className="imp-btn imp-btn-switch"
+          onClick={() => navigate('/admin/users')}
+        >
+          <Users size={14} />
+          <span>Switch LPO</span>
+        </button>
+        <button
+          type="button"
+          className="imp-btn imp-btn-exit"
+          onClick={() => {
+            exitImpersonation();
+            navigate('/admin/users');
+          }}
+        >
+          <LogOut size={14} />
+          <span>Exit LPO View</span>
+        </button>
+      </div>
+      <style>{`
+        .impersonation-global-banner {
+          position: sticky;
+          top: 0;
+          z-index: 950;
+          background: linear-gradient(90deg, #1a3d33 0%, #245245 100%);
+          color: #ffffff;
+          padding: 10px 24px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          border-bottom: 2px solid var(--gold, #a8763a);
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+          flex-wrap: wrap;
+        }
+        .imp-banner-left {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .imp-banner-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          background: var(--gold, #a8763a);
+          color: #ffffff;
+          font-size: 0.68rem;
+          font-weight: 800;
+          padding: 4px 10px;
+          border-radius: 999px;
+          letter-spacing: 0.06em;
+        }
+        .imp-banner-text {
+          font-size: 0.88rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .imp-banner-email {
+          opacity: 0.75;
+          font-size: 0.8rem;
+        }
+        .imp-banner-actions {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .imp-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          font-size: 0.75rem;
+          font-weight: 800;
+          cursor: pointer;
+          border: 1px solid transparent;
+          transition: all 0.2s;
+        }
+        .imp-btn-action {
+          background: rgba(255, 255, 255, 0.14);
+          color: #ffffff;
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .imp-btn-action:hover {
+          background: rgba(255, 255, 255, 0.24);
+        }
+        .imp-btn-switch {
+          background: transparent;
+          color: rgba(255, 255, 255, 0.85);
+          border-color: rgba(255, 255, 255, 0.2);
+        }
+        .imp-btn-switch:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #ffffff;
+        }
+        .imp-btn-exit {
+          background: #ef4444;
+          color: #ffffff;
+        }
+        .imp-btn-exit:hover {
+          background: #dc2626;
+        }
+      `}</style>
+    </div>
+  );
 };
 
 const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -52,6 +201,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <OnboardingTour />
       <Sidebar />
       <main className="main-content">
+        <ImpersonationBanner />
         {children}
       </main>
       <BottomNav />

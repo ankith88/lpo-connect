@@ -6,11 +6,13 @@ import {
   Printer,
   Navigation,
   Layers,
+  Building2,
   Search as SearchIcon
 } from 'lucide-react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import { useLpo } from '../../context/LpoContext';
 import { googleMapsApiKey } from '../../firebase/config';
+import CustomSelect from '../../components/CustomSelect';
 
 // Mapping for state-specific GeoJSON data
 const STATE_CONFIG: Record<string, { file: string, key: string }> = {
@@ -53,10 +55,19 @@ const mapStyles = [
 ];
 
 const ServiceArea: React.FC = () => {
-  const { lpo } = useLpo();
+  const { lpo: contextLpo, isAdmin, allLpos, selectedLpoId, setSelectedLpoId } = useLpo();
   const [searchTerm, setSearchTerm] = useState('');
   const [hoveredSuburb, setHoveredSuburb] = useState<string | null>(null);
   const [mapRef, setMapRef] = useState<google.maps.Map | null>(null);
+
+  const activeLpoId = isAdmin ? (selectedLpoId !== 'all' ? selectedLpoId : '') : (contextLpo?.id || '');
+  const activeLpo = useMemo(() => {
+    if (isAdmin) {
+      if (!activeLpoId) return null;
+      return allLpos.find(l => l.id === activeLpoId) || (contextLpo?.id === activeLpoId ? contextLpo : null);
+    }
+    return contextLpo;
+  }, [isAdmin, activeLpoId, allLpos, contextLpo]);
   
   const { isLoaded } = useJsApiLoader({
     id: 'google-map-script',
@@ -64,14 +75,14 @@ const ServiceArea: React.FC = () => {
   });
 
   const territories = useMemo(() => {
-    if (!lpo?.franchiseeTerritoryJSON) return [];
+    if (!activeLpo?.franchiseeTerritoryJSON) return [];
     
     let rawData: any[] = [];
-    if (Array.isArray(lpo.franchiseeTerritoryJSON)) {
-      rawData = lpo.franchiseeTerritoryJSON;
+    if (Array.isArray(activeLpo.franchiseeTerritoryJSON)) {
+      rawData = activeLpo.franchiseeTerritoryJSON;
     } else {
       try {
-        rawData = JSON.parse(lpo.franchiseeTerritoryJSON);
+        rawData = JSON.parse(activeLpo.franchiseeTerritoryJSON);
       } catch (e) {
         console.error("Failed to parse territory JSON", e);
         return [];
@@ -101,7 +112,7 @@ const ServiceArea: React.FC = () => {
         lng: item.lng,
       };
     });
-  }, [lpo]);
+  }, [activeLpo]);
 
   const filteredTerritories = territories.filter(t => 
     t.suburb.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -112,21 +123,30 @@ const ServiceArea: React.FC = () => {
     if (filteredTerritories.length > 0 && filteredTerritories[0].lat) {
       return { lat: filteredTerritories[0].lat, lng: filteredTerritories[0].lng };
     }
+    if (activeLpo?.latitude && activeLpo?.longitude) {
+      const lat = Number(activeLpo.latitude);
+      const lng = Number(activeLpo.longitude);
+      if (!isNaN(lat) && !isNaN(lng)) {
+        return { lat, lng };
+      }
+    }
     // Default to Sydney area if no territories
     return { lat: -33.71, lng: 150.97 };
-  }, [filteredTerritories]);
+  }, [filteredTerritories, activeLpo]);
 
   // Load GeoJSON data into the map's Data layer
   useEffect(() => {
-    if (!mapRef || territories.length === 0) return;
+    if (!mapRef) return;
 
     const map = mapRef;
-    const activeStates = Array.from(new Set(territories.map(t => t.state.toUpperCase())));
-    
     // Clear existing data features
     map.data.forEach((feature) => {
       map.data.remove(feature);
     });
+
+    if (territories.length === 0) return;
+
+    const activeStates = Array.from(new Set(territories.map(t => t.state.toUpperCase())));
 
     // Load GeoJSON for each active state
     activeStates.forEach(stateCode => {
@@ -195,17 +215,48 @@ const ServiceArea: React.FC = () => {
               <Navigation size={14} /> COVERAGE MAP
             </div>
             <h1>Service Areas</h1>
-            <p>Managing service availability across <strong>{territories.length}</strong> active regions within your LPO territory.</p>
+            {isAdmin && !activeLpo ? (
+              <p>Select an LPO below to view its active service areas and coverage map.</p>
+            ) : (
+              <p>
+                Managing service availability across <strong>{territories.length}</strong> active regions within{' '}
+                {isAdmin && activeLpo ? <strong>{activeLpo.name || activeLpo.id}</strong> : 'your LPO'} territory.
+              </p>
+            )}
 
-            <div className="search-pill">
-              <SearchIcon size={18} />
-              <input 
-                type="text" 
-                placeholder="Search suburbs or postcodes..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+            {isAdmin && (
+              <div className="lpo-filter-wrapper">
+                <label className="lpo-filter-label">Filter by LPO</label>
+                <CustomSelect
+                  value={activeLpoId}
+                  onChange={(val) => {
+                    setSelectedLpoId(val);
+                    setSearchTerm('');
+                  }}
+                  options={allLpos.map(l => ({
+                    value: l.id,
+                    label: l.name || l.location || l.id,
+                    icon: <Building2 size={14} />
+                  }))}
+                  placeholder="Select an LPO..."
+                  searchPlaceholder="Search LPOs..."
+                  searchable={true}
+                  className="lpo-service-select"
+                />
+              </div>
+            )}
+
+            {(!isAdmin || activeLpo) && (
+              <div className="search-pill">
+                <SearchIcon size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Search suburbs or postcodes..." 
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            )}
           </header>
 
           <div className="card-list scrollbar-hide">
@@ -227,11 +278,18 @@ const ServiceArea: React.FC = () => {
               </div>
             ))}
 
-            {filteredTerritories.length === 0 && (
+            {isAdmin && !activeLpo ? (
               <div className="empty-state glass">
-                <Search size={32} />
-                <p>No regions found matching your filter.</p>
+                <Building2 size={32} />
+                <p>Select an LPO above to view its service areas.</p>
               </div>
+            ) : (
+              filteredTerritories.length === 0 && (
+                <div className="empty-state glass">
+                  <Search size={32} />
+                  <p>No regions found matching your filter.</p>
+                </div>
+              )
             )}
           </div>
 
@@ -369,7 +427,34 @@ const ServiceArea: React.FC = () => {
           color: var(--ink-soft);
           font-size: 1rem;
           line-height: 1.5;
-          margin-bottom: 32px;
+          margin-bottom: 24px;
+        }
+
+        .lpo-filter-wrapper {
+          margin-bottom: 16px;
+        }
+
+        .lpo-filter-label {
+          display: block;
+          font-family: var(--font-ui);
+          font-size: 0.65rem;
+          font-weight: 600;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: var(--ink-soft);
+          margin-bottom: 8px;
+        }
+
+        .lpo-service-select {
+          width: 100%;
+        }
+
+        .lpo-service-select .select-trigger {
+          padding: 12px 18px;
+          background: white;
+          border: 1px solid var(--cream-warm);
+          border-radius: 16px;
+          box-shadow: 0 4px 12px rgba(26, 61, 51, 0.03);
         }
 
         .search-pill {

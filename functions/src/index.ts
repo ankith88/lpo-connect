@@ -20,6 +20,20 @@ setGlobalOptions({ region: "us-central1" });
 // Database helper - Specify the named database if needed
 const getDB = () => getFirestore("lpoconnect");
 
+// ProspectPlus CRM Database helper (project: mailplus-outbound-leads-crm)
+const getCrmDB = () => {
+  const existingApp = admin.apps.find((a) => a?.name === "crmApp");
+  const crmApp =
+    existingApp ||
+    admin.initializeApp(
+      {
+        projectId: "mailplus-outbound-leads-crm",
+      },
+      "crmApp"
+    );
+  return getFirestore(crmApp);
+};
+
 // Secrets
 const gmailAppPassword = defineSecret("GMAIL_APP_PASSWORD");
 const netsuiteApiKey = defineSecret("NETSUITE_API_KEY");
@@ -3045,3 +3059,941 @@ export const checkLpoStatus = onRequest({ cors: true }, async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+type CrmServiceDay = "Mon" | "Tue" | "Wed" | "Thu" | "Fri";
+
+interface CrmServiceSelection {
+  id?: string;
+  name: string;
+  frequency: CrmServiceDay[] | "Adhoc";
+  rate: number;
+  startDate?: string;
+}
+
+const VALID_CRM_DAYS: CrmServiceDay[] = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+const CRM_DAY_MAP: Record<string, CrmServiceDay> = {
+  mon: "Mon",
+  monday: "Mon",
+  m: "Mon",
+  tue: "Tue",
+  tues: "Tue",
+  tuesday: "Tue",
+  t: "Tue",
+  wed: "Wed",
+  wednesday: "Wed",
+  w: "Wed",
+  thu: "Thu",
+  thur: "Thu",
+  thurs: "Thu",
+  thursday: "Thu",
+  th: "Thu",
+  fri: "Fri",
+  friday: "Fri",
+  f: "Fri",
+};
+
+function normalizeCrmFrequency(
+  jobType: string,
+  frequency?: string[]
+): CrmServiceDay[] | "Adhoc" {
+  if (jobType !== "scheduled" || !Array.isArray(frequency) || frequency.length === 0) {
+    return "Adhoc";
+  }
+  const normalized: CrmServiceDay[] = [];
+  for (const raw of frequency) {
+    const key = String(raw || "").trim().toLowerCase();
+    const mapped = CRM_DAY_MAP[key];
+    if (mapped && VALID_CRM_DAYS.includes(mapped) && !normalized.includes(mapped)) {
+      normalized.push(mapped);
+    }
+  }
+  return normalized.length > 0 ? normalized : "Adhoc";
+}
+
+function toShorthandFrequency(frequency?: string[]): string {
+  if (!Array.isArray(frequency) || frequency.length === 0) return "";
+  const map: Record<string, string> = {
+    Mon: "M",
+    Tue: "T",
+    Wed: "W",
+    Thu: "Th",
+    Fri: "F",
+    Monday: "M",
+    Tuesday: "T",
+    Wednesday: "W",
+    Thursday: "Th",
+    Friday: "F",
+  };
+  return frequency.map((d) => map[d] || d).join(",");
+}
+
+function buildCrmSelectedServices(
+  payload: Record<string, any>,
+  lpoData: Record<string, any>
+): {
+  services: CrmServiceSelection[];
+  selectedServiceCode: string;
+  selectedRate: number;
+  selectedServiceInternalId: string;
+  monthlyValue: number;
+  ampoRate: number;
+  pmpoRate: number;
+  packageRate: number;
+  additionalBagRate: number | null;
+} {
+  const { service, serviceInternalId, serviceRate, jobType, frequency, date } = payload;
+
+  const defaultAmpoRate = parseFloat(String(lpoData.lpoServiceAMPORate || "10")) || 10;
+  const defaultPmpoRate = parseFloat(String(lpoData.lpoServicePMPORate || "10")) || 10;
+  const defaultPackageRate = parseFloat(String(lpoData.lpoServiceAMPOPMPORate || "20")) || 20;
+  const rawAddBag =
+    payload.additionalBagRate ??
+    lpoData.lpoServiceAdditionalLPOBagRate ??
+    lpoData.lpoServiceAdditionalBagRate ??
+    null;
+  const additionalBagRate =
+    rawAddBag !== null && rawAddBag !== undefined && rawAddBag !== ""
+      ? parseFloat(String(rawAddBag)) || null
+      : null;
+
+  let selectedServiceCode = "PMPO";
+  let fallbackCatalogId = "502";
+  let resolvedInternalId = String(serviceInternalId || "").trim();
+  let selectedRate = parseFloat(String(serviceRate || "")) || 0;
+
+  if (service === "lpo-to-site" || service === "AMPO") {
+    selectedServiceCode = "AMPO";
+    fallbackCatalogId = "501";
+    if (!resolvedInternalId || resolvedInternalId === "null") {
+      resolvedInternalId = String(lpoData.lpoServiceAMPOInternalID || "501");
+    }
+    if (!selectedRate) selectedRate = defaultAmpoRate;
+  } else if (service === "round-trip" || service === "Package: AMPO & PMPO") {
+    selectedServiceCode = "Package: AMPO & PMPO";
+    fallbackCatalogId = "76";
+    if (!resolvedInternalId || resolvedInternalId === "null") {
+      resolvedInternalId = String(lpoData.lpoServiceAMPOPMPOInternalID || "76");
+    }
+    if (!selectedRate) selectedRate = defaultPackageRate;
+  } else {
+    selectedServiceCode = "PMPO";
+    fallbackCatalogId = "502";
+    if (!resolvedInternalId || resolvedInternalId === "null") {
+      resolvedInternalId = String(lpoData.lpoServicePMPOInternalID || "502");
+    }
+    if (!selectedRate) selectedRate = defaultPmpoRate;
+  }
+
+  const normalizedFrequency = normalizeCrmFrequency(jobType || "one-off", frequency);
+  const startDate = date || new Date().toISOString().split("T")[0];
+
+  const primaryServiceSelection: CrmServiceSelection = {
+    id: resolvedInternalId || fallbackCatalogId,
+    name: selectedServiceCode,
+    frequency: normalizedFrequency,
+    rate: selectedRate,
+    startDate,
+  };
+
+  const services: CrmServiceSelection[] = [primaryServiceSelection];
+
+  const weeklyVal = Array.isArray(normalizedFrequency)
+    ? selectedRate * normalizedFrequency.length
+    : selectedRate;
+  const monthlyValue = Array.isArray(normalizedFrequency)
+    ? Number((weeklyVal * 4.33).toFixed(2))
+    : Number(selectedRate.toFixed(2));
+
+  return {
+    services,
+    selectedServiceCode,
+    selectedRate,
+    selectedServiceInternalId: resolvedInternalId || fallbackCatalogId,
+    monthlyValue,
+    ampoRate: selectedServiceCode === "AMPO" ? selectedRate : defaultAmpoRate,
+    pmpoRate: selectedServiceCode === "PMPO" ? selectedRate : defaultPmpoRate,
+    packageRate: selectedServiceCode === "Package: AMPO & PMPO" ? selectedRate : defaultPackageRate,
+    additionalBagRate,
+  };
+}
+
+/**
+ * Resolves the franchisee from mailplus-outbound-leads-crm `franchisees` collection
+ * by matching the new customer's suburb + state + postcode with `ausPostSuburbsJson`
+ * where `parent_lpo_id` matches the parent `lpoId`.
+ */
+async function resolveFranchiseeFromCrmCollection(
+  crmDb: FirebaseFirestore.Firestore,
+  lpoId: string,
+  suburb: string,
+  state: string,
+  postcode: string
+): Promise<{
+  franchiseeId: string;
+  franchiseeName: string;
+  franchiseeEmail: string;
+  franchiseePhone: string;
+  matchedByParentLpo: boolean;
+}> {
+  const targetLpoId = String(lpoId || "").trim();
+  const targetSuburb = String(suburb || "").trim().toUpperCase();
+  const targetState = String(state || "").trim().toUpperCase();
+  const targetPostcode = String(postcode || "").trim();
+
+  const franchiseesSnap = await crmDb.collection("franchisees").get();
+
+  let fallbackSuburbMatch: {
+    franchiseeId: string;
+    franchiseeName: string;
+    franchiseeEmail: string;
+    franchiseePhone: string;
+  } | null = null;
+
+  for (const docSnap of franchiseesSnap.docs) {
+    const data = docSnap.data() || {};
+    const franchiseeId = String(data.internalId || docSnap.id || "").trim();
+    const franchiseeName = String(data.name || "").trim();
+    const franchiseeEmail = String(data.email || "").trim();
+    const franchiseePhone = String(data.mobile || data.phone || "").trim();
+
+    let suburbsList: any[] = [];
+    if (Array.isArray(data.ausPostSuburbsJson)) {
+      suburbsList = data.ausPostSuburbsJson;
+    } else if (typeof data.ausPostSuburbsJson === "string" && data.ausPostSuburbsJson.trim()) {
+      try {
+        const parsed = JSON.parse(data.ausPostSuburbsJson);
+        if (Array.isArray(parsed)) suburbsList = parsed;
+      } catch {
+        // ignore invalid JSON
+      }
+    }
+
+    for (const entry of suburbsList) {
+      if (!entry || typeof entry !== "object") continue;
+      const entrySuburb = String(entry.suburbs ?? entry.suburb ?? "").trim().toUpperCase();
+      const entryState = String(entry.state ?? "").trim().toUpperCase();
+      const entryPostcode = String(entry.post_code ?? entry.postcode ?? "").trim();
+      const entryParentLpoId = String(entry.parent_lpo_id ?? entry.parentLpoId ?? "").trim();
+
+      const isAddressMatch =
+        entrySuburb === targetSuburb &&
+        entryState === targetState &&
+        entryPostcode === targetPostcode;
+
+      if (isAddressMatch) {
+        if (entryParentLpoId === targetLpoId) {
+          return {
+            franchiseeId,
+            franchiseeName,
+            franchiseeEmail,
+            franchiseePhone,
+            matchedByParentLpo: true,
+          };
+        }
+        if (!fallbackSuburbMatch) {
+          fallbackSuburbMatch = {
+            franchiseeId,
+            franchiseeName,
+            franchiseeEmail,
+            franchiseePhone,
+          };
+        }
+      }
+    }
+  }
+
+  if (fallbackSuburbMatch) {
+    console.warn(
+      `[createCustomerViaCrm] No ausPostSuburbsJson entry had parent_lpo_id=${targetLpoId} for ${targetSuburb} ${targetState} ${targetPostcode}. Using 3-way suburb/state/postcode match: ${fallbackSuburbMatch.franchiseeName} (${fallbackSuburbMatch.franchiseeId}).`
+    );
+    return {
+      ...fallbackSuburbMatch,
+      matchedByParentLpo: false,
+    };
+  }
+
+  return {
+    franchiseeId: "",
+    franchiseeName: "",
+    franchiseeEmail: "",
+    franchiseePhone: "",
+    matchedByParentLpo: false,
+  };
+}
+
+/**
+ * Calls NetSuite API 2194 (sendNewLeadToNetSuite) with `is_lpo_subcustomer=true`,
+ * parent LPO ID, matched franchisee, contact, address, and service metadata.
+ */
+async function callNetSuite2194ForSubCustomer(paramsInput: {
+  companyName: string;
+  lpoId: string;
+  franchiseeId: string;
+  franchiseeName: string;
+  customer: Record<string, any>;
+  billing: string;
+  jobType: string;
+  service: string;
+  serviceInternalId: string;
+  serviceRate: number;
+  startDate: string;
+  frequencyShorthand: string;
+  preferredTime?: string;
+  timeConstraintType?: string;
+}): Promise<{
+  success: boolean;
+  leadId?: string;
+  salesRecordInternalId?: string;
+  message: string;
+}> {
+  const baseUrl = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl";
+  const contactFirstName = String(paramsInput.customer.firstName || "").trim();
+  const contactLastName = String(paramsInput.customer.lastName || "").trim();
+  const contactEmail = String(paramsInput.customer.email || "").trim() || "abc@abc.com";
+  const contactPhone = String(paramsInput.customer.phone || "").trim() || "1300656595";
+
+  const params = new URLSearchParams({
+    script: "2194",
+    deploy: "1",
+    compid: "1048144",
+    "ns-at": "AAEJ7tMQ6MIVXCrzpiLKSEmYLRVtAlRSAOWEC4Dyr1D-_83sS4g",
+    companyname: paramsInput.companyName,
+    is_lpo_subcustomer: "true",
+    parent: paramsInput.lpoId,
+    parent_id: paramsInput.lpoId,
+    custentity_parent_id: paramsInput.lpoId,
+    parentCustomer: paramsInput.lpoId,
+    phone: contactPhone,
+    email: contactEmail,
+    category: "Other Services",
+    custentity_leadsource: "LPO Network Onboarding",
+    leadsource: "281559",
+    leadsource_text: "LPO Network",
+    source: "LPO Network",
+    customer_source: "LPO Network",
+    campaign: "LPO Network Onboarding",
+    customer_campaign: "LPO Network Onboarding",
+    bucket: "lpo_network",
+    salesrep: "kerry.oneill@mailplus.com.au",
+    billaddr1: String(paramsInput.customer.address || ""),
+    billcity: String(paramsInput.customer.suburb || ""),
+    billstate: String(paramsInput.customer.state || ""),
+    billzip: String(paramsInput.customer.postcode || ""),
+    billcountry: "Australia",
+    custentity_primary_contact_name: `${contactFirstName} ${contactLastName}`.trim(),
+    custentity_primary_contact_firstname: contactFirstName,
+    custentity_primary_contact_lastname: contactLastName,
+    firstname: contactFirstName,
+    lastname: contactLastName,
+    firstName: contactFirstName,
+    lastName: contactLastName,
+    custentity_primary_contact_title: "Primary Contact",
+    custentity_primary_contact_email: contactEmail,
+    custentity_primary_contact_phone: contactPhone,
+    billing: paramsInput.billing,
+    jobType: paramsInput.jobType,
+    service: paramsInput.service,
+    service_name: paramsInput.service,
+    service_internal_id: paramsInput.serviceInternalId,
+    service_rate: String(paramsInput.serviceRate),
+    startDate: paramsInput.startDate,
+  });
+
+  if (paramsInput.franchiseeId) {
+    params.append("franchisee_id", paramsInput.franchiseeId);
+  }
+  if (paramsInput.franchiseeName) {
+    params.append("franchisee_name", paramsInput.franchiseeName);
+  }
+  if (paramsInput.customer.coordinates?.lat !== undefined) {
+    params.append("custentity_addr_lat", String(paramsInput.customer.coordinates.lat));
+  }
+  if (paramsInput.customer.coordinates?.lng !== undefined) {
+    params.append("custentity_addr_long", String(paramsInput.customer.coordinates.lng));
+  }
+  if (paramsInput.customer.instructions) {
+    params.append("custentity_initial_notes", String(paramsInput.customer.instructions));
+  }
+  if (paramsInput.frequencyShorthand) {
+    params.append("frequency", paramsInput.frequencyShorthand);
+  }
+  if (paramsInput.preferredTime) {
+    params.append("preferredTime", paramsInput.preferredTime);
+  }
+  if (paramsInput.timeConstraintType) {
+    params.append("timeConstraintType", paramsInput.timeConstraintType);
+  }
+
+  const url = `${baseUrl}?${params.toString()}`;
+  console.log(`[createCustomerViaCrm] Calling NetSuite Script 2194 for "${paramsInput.companyName}" (LPO: ${paramsInput.lpoId}, Zee: ${paramsInput.franchiseeId})...`);
+
+  const response = await fetch(url, { method: "GET" });
+  const responseBody = await response.text();
+
+  if (!response.ok) {
+    console.error(`[createCustomerViaCrm] NetSuite 2194 failed (${response.status}): ${responseBody}`);
+    return {
+      success: false,
+      message: `NetSuite API 2194 failed with status ${response.status}: ${responseBody}`,
+    };
+  }
+
+  try {
+    const json = JSON.parse(responseBody);
+    const returnedId =
+      json.leadID || json.leadId || json.customerInternalId || json.internalid || json.id;
+    const salesRecordId =
+      json.salesRecordInternalId ||
+      json.salesrecordid ||
+      json.salesRecordId ||
+      json.salesRecordInternalID ||
+      json.sales_record_id;
+
+    if (json.success && returnedId) {
+      return {
+        success: true,
+        leadId: String(returnedId).trim(),
+        salesRecordInternalId: salesRecordId ? String(salesRecordId).trim() : undefined,
+        message: json.message || "Sub-customer created in NetSuite.",
+      };
+    }
+    return {
+      success: false,
+      message: json.message || `NetSuite 2194 error: ${responseBody}`,
+    };
+  } catch {
+    return {
+      success: false,
+      message: `Invalid JSON response from NetSuite 2194: ${responseBody}`,
+    };
+  }
+}
+
+/**
+ * Callable Cloud Function: createCustomerViaCrm
+ * Creates a new LPO sub-customer across:
+ * 1. NetSuite (via API 2194 with is_lpo_subcustomer=true and parent LPO linking)
+ * 2. ProspectPlus (`mailplus-outbound-leads-crm` -> `leads/{newNumericId}` with selected job service(s))
+ * 3. LPO.Plus (`lpoconnect` -> `lpo/{lpoId}/customers/{newNumericId}`)
+ * All 3 systems share the exact same numeric customer ID (`newNumericId`).
+ */
+export const createCustomerViaCrm = onCall(
+  {
+    cors: true,
+    timeoutSeconds: 120,
+  },
+  async (request) => {
+    const data = request.data || {};
+    const lpoId = String(data.lpoId || data.lpo_id || "").trim();
+    const customer = data.customer || {};
+    const billing = (data.billing || "lpo") as "lpo" | "customer";
+    const jobType = (data.jobType || "one-off") as "one-off" | "scheduled";
+
+    if (!lpoId || !customer.company) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Missing required fields: lpoId and customer.company are required."
+      );
+    }
+
+    const db = getDB();
+    const crmDb = getCrmDB();
+
+    // Fetch parent LPO document from lpoconnect for service rates & metadata
+    let lpoData: Record<string, any> = { ...(data.lpoDetails || {}) };
+    try {
+      const lpoSnap = await db.collection("lpo").doc(lpoId).get();
+      if (lpoSnap.exists) {
+        lpoData = { ...(lpoSnap.data() || {}), ...lpoData };
+      }
+    } catch (e) {
+      console.warn(`[createCustomerViaCrm] Failed to read lpo/${lpoId} from lpoconnect:`, e);
+    }
+
+    // 1. Resolve Franchisee from mailplus-outbound-leads-crm `franchisees` collection (`ausPostSuburbsJson`)
+    let matchedFranchiseeId = "";
+    let matchedFranchiseeName = "";
+    let matchedFranchiseeEmail = "";
+    let matchedFranchiseePhone = "";
+    let directCrmAccessible = true;
+
+    try {
+      const franchiseeMatch = await resolveFranchiseeFromCrmCollection(
+        crmDb,
+        lpoId,
+        customer.suburb,
+        customer.state,
+        customer.postcode
+      );
+      matchedFranchiseeId = franchiseeMatch.franchiseeId;
+      matchedFranchiseeName = franchiseeMatch.franchiseeName;
+      matchedFranchiseeEmail = franchiseeMatch.franchiseeEmail;
+      matchedFranchiseePhone = franchiseeMatch.franchiseePhone;
+    } catch (crmErr: any) {
+      directCrmAccessible = false;
+      console.warn(
+        "[createCustomerViaCrm] Direct read of mailplus-outbound-leads-crm.franchisees failed; will sync via ProspectPlus API:",
+        crmErr?.message || crmErr
+      );
+    }
+
+    const prospectPlusApiUrl =
+      process.env.PROSPECTPLUS_API_URL ||
+      "https://prospectplus.com.au/api/lpo-plus/create-subcustomer";
+
+    // If direct CRM read was blocked by cross-project IAM, delegate the CRM + NetSuite 2194 step to ProspectPlus API
+    if (!directCrmAccessible) {
+      try {
+        const apiResp = await fetch(prospectPlusApiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...data,
+            lpoId,
+            lpoDetails: lpoData,
+          }),
+        });
+        const apiJson: any = await apiResp.json();
+        if (apiResp.ok && apiJson?.success && apiJson?.customerInternalId) {
+          const newNumericId = String(apiJson.customerInternalId).trim();
+          const serviceInfo = buildCrmSelectedServices(data, lpoData);
+          const initialStatus =
+            billing === "lpo" ? "Active" : "Awaiting T&C's to be Accepted";
+          const linkedZeeDetails = apiJson.franchiseeText
+            ? [
+                apiJson.franchiseeEmail
+                  ? `${apiJson.franchiseeText}, ${apiJson.franchiseeEmail}`
+                  : apiJson.franchiseeText,
+              ]
+            : [];
+
+          // Guarantee sub-customer document exists in lpoconnect with the exact same ID
+          await db
+            .collection("lpo")
+            .doc(lpoId)
+            .collection("customers")
+            .doc(newNumericId)
+            .set(
+              {
+                id: newNumericId,
+                companyId: newNumericId,
+                customerInternalId: newNumericId,
+                netsuiteId: newNumericId,
+                salesRecordInternalId: apiJson.salesRecordInternalId || null,
+                lpoParentInternalID: lpoId,
+                lpo_id: lpoId,
+                companyName: apiJson.companyName,
+                company_name: apiJson.companyName,
+                firstName: customer.firstName || "",
+                first_name: customer.firstName || "",
+                lastName: customer.lastName || "",
+                last_name: customer.lastName || "",
+                customerEmail: customer.email || "",
+                email: customer.email || "",
+                customerPhone: customer.phone || "",
+                phone: customer.phone || "",
+                address1: customer.address || "",
+                city: customer.suburb || "",
+                state: customer.state || "",
+                postcode: customer.postcode || "",
+                zip: customer.postcode || "",
+                coordinates: customer.coordinates || null,
+                instructions: customer.instructions || "",
+                franchisee: apiJson.franchisee || "",
+                franchiseeText: apiJson.franchiseeText || "",
+                linkedZeeDetails,
+                billing,
+                jobType,
+                jobtype: jobType,
+                status: initialStatus,
+                services: apiJson.services || serviceInfo.services,
+                lpoServiceAMPORate: String(
+                  lpoData.lpoServiceAMPORate || serviceInfo.ampoRate.toFixed(2)
+                ),
+                lpoServiceAMPOInternalID: String(
+                  lpoData.lpoServiceAMPOInternalID || "501"
+                ),
+                lpoServicePMPORate: String(
+                  lpoData.lpoServicePMPORate || serviceInfo.pmpoRate.toFixed(2)
+                ),
+                lpoServicePMPOInternalID: String(
+                  lpoData.lpoServicePMPOInternalID || "502"
+                ),
+                lpoServiceAMPOPMPORate: String(
+                  lpoData.lpoServiceAMPOPMPORate || serviceInfo.packageRate.toFixed(2)
+                ),
+                lpoServiceAMPOPMPOInternalID: String(
+                  lpoData.lpoServiceAMPOPMPOInternalID || "76"
+                ),
+                lpoServiceAdditionalBagRate: String(
+                  lpoData.lpoServiceAdditionalLPOBagRate ||
+                    lpoData.lpoServiceAdditionalBagRate ||
+                    serviceInfo.additionalBagRate ||
+                    "0"
+                ),
+                lpoServiceAdditionalLPOBagRate: String(
+                  lpoData.lpoServiceAdditionalLPOBagRate ||
+                    lpoData.lpoServiceAdditionalBagRate ||
+                    serviceInfo.additionalBagRate ||
+                    "0"
+                ),
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+
+          return {
+            success: true,
+            customerInternalId: newNumericId,
+            leadId: newNumericId,
+            salesRecordInternalId: apiJson.salesRecordInternalId || null,
+            companyName: apiJson.companyName,
+            franchisee: apiJson.franchisee || "",
+            franchiseeText: apiJson.franchiseeText || "",
+            status: initialStatus,
+            services: apiJson.services || serviceInfo.services,
+          };
+        }
+      } catch (apiFallbackErr) {
+        console.warn("[createCustomerViaCrm] ProspectPlus API call warning:", apiFallbackErr);
+      }
+    }
+
+    // 2. Prefix Company Name with "LPO - " if billing === 'lpo'
+    const rawCompany = String(customer.company || "").trim();
+    const effectiveCompanyName =
+      billing === "lpo"
+        ? /^lpo\s*-\s*/i.test(rawCompany)
+          ? rawCompany.replace(/^lpo\s*-\s*/i, "LPO - ")
+          : `LPO - ${rawCompany}`
+        : rawCompany;
+
+    // 3. Build Selected Services array for ProspectPlus (`ServiceSelection[]`)
+    const serviceInfo = buildCrmSelectedServices(data, lpoData);
+    const startDate = data.date || new Date().toISOString().split("T")[0];
+
+    // 4. Call NetSuite API 2194 (`is_lpo_subcustomer=true`) to obtain canonical numeric ID
+    const nsResult = await callNetSuite2194ForSubCustomer({
+      companyName: effectiveCompanyName,
+      lpoId,
+      franchiseeId: matchedFranchiseeId,
+      franchiseeName: matchedFranchiseeName,
+      customer,
+      billing,
+      jobType,
+      service: data.service || serviceInfo.selectedServiceCode,
+      serviceInternalId: serviceInfo.selectedServiceInternalId,
+      serviceRate: serviceInfo.selectedRate,
+      startDate,
+      frequencyShorthand: toShorthandFrequency(data.frequency),
+      preferredTime: data.preferredTime,
+      timeConstraintType: data.timeConstraintType || "AFTER",
+    });
+
+    if (!nsResult.success || !nsResult.leadId) {
+      return {
+        success: false,
+        message: nsResult.message || "Failed to create customer record in NetSuite (API 2194).",
+      };
+    }
+
+    const newNumericId = String(nsResult.leadId).trim();
+    const salesRecordInternalId = nsResult.salesRecordInternalId || null;
+    const nowIso = new Date().toISOString();
+    const parentCompanyName =
+      data.lpoName || lpoData.companyName || lpoData.name || "";
+    const parentEmail =
+      data.lpoEmail || lpoData.customerEmail || lpoData.email || "";
+
+    // 5. Create Sub-Customer in ProspectPlus (`mailplus-outbound-leads-crm` -> `leads/{newNumericId}`)
+    const crmLeadDoc: Record<string, any> = {
+      id: newNumericId,
+      entityId: newNumericId,
+      internalId: newNumericId,
+      netsuiteId: newNumericId,
+      customerInternalId: newNumericId,
+      salesRecordInternalId,
+      companyName: effectiveCompanyName,
+      status: billing === "lpo" ? "Signed" : "Qualified",
+      bucket: "lpo_network",
+      campaign: "LPO Network Onboarding",
+      source: "LPO.Plus Portal",
+      leadSource: "LPO.Plus Portal",
+      industryCategory: "Other Services",
+      isParentLead: false,
+      isChildLead: true,
+      isLpoSubCustomer: true,
+      is_lpo_subcustomer: true,
+      parentLeadId: lpoId,
+      parentCompanyId: lpoId,
+      parentId: lpoId,
+      parentCustomer: lpoId,
+      parentCustomerName: parentCompanyName,
+      lpoParentInternalID: lpoId,
+      // Franchisee details
+      franchisee: matchedFranchiseeName || "Unassigned",
+      franchiseeId: matchedFranchiseeId || null,
+      franchiseeInternalId: matchedFranchiseeId || null,
+      franchisee_id: matchedFranchiseeId || null,
+      franchisee_name: matchedFranchiseeName || null,
+      franchiseeEmail: matchedFranchiseeEmail || null,
+      franchiseePhone: matchedFranchiseePhone || null,
+      // Primary Contact details
+      contactName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+      firstName: customer.firstName || "",
+      lastName: customer.lastName || "",
+      customerEmail: customer.email || "",
+      email: customer.email || "",
+      customerServiceEmail: customer.email || "",
+      invoiceEmail: billing === "lpo" ? parentEmail || customer.email : customer.email,
+      customerPhone: customer.phone || "",
+      phone: customer.phone || "",
+      // Address fields
+      address1: customer.address || "",
+      street: customer.address || "",
+      city: customer.suburb || "",
+      suburb: customer.suburb || "",
+      state: customer.state || "",
+      zip: customer.postcode || "",
+      postcode: customer.postcode || "",
+      country: "Australia",
+      latitude: customer.coordinates?.lat ?? null,
+      longitude: customer.coordinates?.lng ?? null,
+      address: {
+        addr1: customer.address || "",
+        street: customer.address || "",
+        city: customer.suburb || "",
+        state: customer.state || "",
+        zip: customer.postcode || "",
+        country: "Australia",
+        lat: customer.coordinates?.lat,
+        lng: customer.coordinates?.lng,
+      },
+      shippingAddress: {
+        addr1: customer.address || "",
+        street: customer.address || "",
+        city: customer.suburb || "",
+        state: customer.state || "",
+        zip: customer.postcode || "",
+        country: "Australia",
+        lat: customer.coordinates?.lat,
+        lng: customer.coordinates?.lng,
+      },
+      billingAddress: {
+        addr1: customer.address || "",
+        street: customer.address || "",
+        city: customer.suburb || "",
+        state: customer.state || "",
+        zip: customer.postcode || "",
+        country: "Australia",
+      },
+      // Selected Service(s) from the Job Creation Form
+      services: serviceInfo.services,
+      selectedServiceOption: serviceInfo.selectedServiceCode,
+      ampoRate: serviceInfo.ampoRate,
+      pmpoRate: serviceInfo.pmpoRate,
+      packageRate: serviceInfo.packageRate,
+      additionalBagRate: serviceInfo.additionalBagRate,
+      monthlyValue: serviceInfo.monthlyValue,
+      mrr: serviceInfo.monthlyValue,
+      estimatedMrr: serviceInfo.monthlyValue,
+      // Job & Billing Metadata
+      billing,
+      jobType,
+      preferredTime: data.preferredTime || "",
+      timeConstraintType: data.timeConstraintType || "AFTER",
+      deliveryInstructions: customer.instructions || "",
+      notes: customer.instructions || "",
+      salesRepAssigned: "Kerry O'Neill",
+      salesRepAssignedEmail: "kerry.oneill@mailplus.com.au",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    };
+
+    try {
+      const crmLeadRef = crmDb.collection("leads").doc(newNumericId);
+      await crmLeadRef.set(crmLeadDoc, { merge: true });
+
+      await crmLeadRef.collection("contacts").doc("primary").set(
+        {
+          id: "primary",
+          name:
+            `${customer.firstName || ""} ${customer.lastName || ""}`.trim() ||
+            "Primary Contact",
+          firstName: customer.firstName || "",
+          lastName: customer.lastName || "",
+          email: customer.email || "",
+          phone: customer.phone || "",
+          title: "Primary Contact",
+          role: "Primary",
+          decisionMaker: true,
+          receiveInvoices: billing === "customer",
+          createdAt: nowIso,
+        },
+        { merge: true }
+      );
+
+      const freqDisplay = Array.isArray(serviceInfo.services[0]?.frequency)
+        ? (serviceInfo.services[0].frequency as string[]).join(", ")
+        : "Adhoc";
+
+      await crmLeadRef.collection("activity").add({
+        id: `act_${Date.now()}`,
+        type: "Note",
+        notes: `Sub-customer created via LPO.Plus Portal under parent LPO ${parentCompanyName || lpoId} (${lpoId}). Franchisee: ${matchedFranchiseeName || "Unassigned"} (${matchedFranchiseeId || "N/A"}). Billing: ${billing.toUpperCase()}. Selected service: ${serviceInfo.selectedServiceCode} ($${serviceInfo.selectedRate.toFixed(2)}, ${freqDisplay}, Start: ${startDate}).`,
+        date: nowIso,
+        author: parentEmail || "LPO.Plus Portal",
+        syncedWithNetSuite: true,
+      });
+    } catch (crmWriteErr: any) {
+      console.warn(
+        `[createCustomerViaCrm] Direct write to mailplus-outbound-leads-crm leads/${newNumericId} failed; syncing via ProspectPlus API with existingNumericId=${newNumericId}:`,
+        crmWriteErr?.message || crmWriteErr
+      );
+      try {
+        const syncResp = await fetch(prospectPlusApiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...data,
+            lpoId,
+            lpoDetails: lpoData,
+            existingNumericId: newNumericId,
+            existingSalesRecordInternalId: salesRecordInternalId,
+          }),
+        });
+        const syncJson: any = await syncResp.json();
+        if (syncJson?.franchisee && !matchedFranchiseeId) {
+          matchedFranchiseeId = syncJson.franchisee;
+          matchedFranchiseeName = syncJson.franchiseeText || "";
+          matchedFranchiseeEmail = syncJson.franchiseeEmail || "";
+        }
+      } catch (syncApiErr) {
+        console.error("[createCustomerViaCrm] ProspectPlus API sync error:", syncApiErr);
+      }
+    }
+
+    // 6. Create Sub-Customer in LPO.Plus (`lpoconnect` -> `lpo/{lpoId}/customers/{newNumericId}`)
+    const initialStatus =
+      billing === "lpo" ? "Active" : "Awaiting T&C's to be Accepted";
+    const linkedZeeDetails = matchedFranchiseeName
+      ? [
+          matchedFranchiseeEmail
+            ? `${matchedFranchiseeName}, ${matchedFranchiseeEmail}`
+            : matchedFranchiseeName,
+        ]
+      : [];
+
+    const lpoCustomerDoc: Record<string, any> = {
+      id: newNumericId,
+      companyId: newNumericId,
+      customerInternalId: newNumericId,
+      netsuiteId: newNumericId,
+      salesRecordInternalId,
+      lpoParentInternalID: lpoId,
+      lpo_id: lpoId,
+      companyName: effectiveCompanyName,
+      company_name: effectiveCompanyName,
+      firstName: customer.firstName || "",
+      first_name: customer.firstName || "",
+      lastName: customer.lastName || "",
+      last_name: customer.lastName || "",
+      customerEmail: customer.email || "",
+      email: customer.email || "",
+      customerPhone: customer.phone || "",
+      phone: customer.phone || "",
+      address1: customer.address || "",
+      city: customer.suburb || "",
+      state: customer.state || "",
+      postcode: customer.postcode || "",
+      zip: customer.postcode || "",
+      coordinates: customer.coordinates || null,
+      instructions: customer.instructions || "",
+      franchisee: matchedFranchiseeId || "",
+      franchiseeText: matchedFranchiseeName || "",
+      linkedZeeDetails,
+      billing,
+      jobType,
+      jobtype: jobType,
+      status: initialStatus,
+      services: serviceInfo.services,
+      lpoServiceAMPORate: String(
+        lpoData.lpoServiceAMPORate || serviceInfo.ampoRate.toFixed(2)
+      ),
+      lpoServiceAMPOInternalID: String(
+        lpoData.lpoServiceAMPOInternalID ||
+          (serviceInfo.selectedServiceCode === "AMPO"
+            ? serviceInfo.selectedServiceInternalId
+            : "501")
+      ),
+      lpoServicePMPORate: String(
+        lpoData.lpoServicePMPORate || serviceInfo.pmpoRate.toFixed(2)
+      ),
+      lpoServicePMPOInternalID: String(
+        lpoData.lpoServicePMPOInternalID ||
+          (serviceInfo.selectedServiceCode === "PMPO"
+            ? serviceInfo.selectedServiceInternalId
+            : "502")
+      ),
+      lpoServiceAMPOPMPORate: String(
+        lpoData.lpoServiceAMPOPMPORate || serviceInfo.packageRate.toFixed(2)
+      ),
+      lpoServiceAMPOPMPOInternalID: String(
+        lpoData.lpoServiceAMPOPMPOInternalID ||
+          (serviceInfo.selectedServiceCode === "Package: AMPO & PMPO"
+            ? serviceInfo.selectedServiceInternalId
+            : "76")
+      ),
+      lpoServiceAdditionalBagRate: String(
+        lpoData.lpoServiceAdditionalLPOBagRate ||
+          lpoData.lpoServiceAdditionalBagRate ||
+          serviceInfo.additionalBagRate ||
+          "0"
+      ),
+      lpoServiceAdditionalLPOBagRate: String(
+        lpoData.lpoServiceAdditionalLPOBagRate ||
+          lpoData.lpoServiceAdditionalBagRate ||
+          serviceInfo.additionalBagRate ||
+          "0"
+      ),
+      lpoServiceAdditionalBagInternalID: String(
+        lpoData.lpoServiceAdditionalLPOBagInternalID ||
+          lpoData.lpoServiceAdditionalBagInternalID ||
+          ""
+      ),
+      lpoServiceAdditionalLPOBagInternalID: String(
+        lpoData.lpoServiceAdditionalLPOBagInternalID ||
+          lpoData.lpoServiceAdditionalBagInternalID ||
+          ""
+      ),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    await db
+      .collection("lpo")
+      .doc(lpoId)
+      .collection("customers")
+      .doc(newNumericId)
+      .set(lpoCustomerDoc, { merge: true });
+
+    console.log(
+      `[createCustomerViaCrm] Successfully created sub-customer ${newNumericId} ("${effectiveCompanyName}") across NetSuite, ProspectPlus, and LPO.Plus.`
+    );
+
+    return {
+      success: true,
+      customerInternalId: newNumericId,
+      leadId: newNumericId,
+      salesRecordInternalId,
+      companyName: effectiveCompanyName,
+      franchisee: matchedFranchiseeId,
+      franchiseeText: matchedFranchiseeName,
+      status: initialStatus,
+      services: serviceInfo.services,
+      message: "Sub-customer created in NetSuite, ProspectPlus, and LPO.Plus.",
+    };
+  }
+);
+

@@ -28,7 +28,7 @@ import { useLpo } from '../../context/LpoContext';
 import CustomSelect from '../../components/CustomSelect';
 
 const AwaitingTCPage: React.FC = () => {
-  const { lpo, isAdmin, userData, user, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
+  const { lpo, isAdmin, isRealAdmin, isImpersonating, userData, user, selectedLpoIds, setSelectedLpoIds, allLpos } = useLpo();
   const [requests, setRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,7 +40,7 @@ const AwaitingTCPage: React.FC = () => {
   const [acceptingTcId, setAcceptingTcId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const isPrivilegedUser = isAdmin || userData?.role === 'admin' || userData?.role === 'superadmin' || userData?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
+  const isPrivilegedUser = isAdmin || isRealAdmin || userData?.role === 'admin' || userData?.role === 'superadmin' || userData?.uid === 'lwOQ8j5MSIdOiyR0VZ1zEvfpx7A3';
 
   const toggleExpand = (jobId: string) => {
     const newExpanded = new Set(expandedJobIds);
@@ -372,7 +372,7 @@ const AwaitingTCPage: React.FC = () => {
         <div className="dashboard-grid">
             {/* Filter Bar */}
             <div className="glass-card filter-bar">
-              {isAdmin && (
+              {isAdmin && !isImpersonating && (
                 <CustomSelect 
                   value={selectedLpoIds}
                   onChange={(val) => setSelectedLpoIds(val)}
