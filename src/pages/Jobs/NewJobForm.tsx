@@ -284,10 +284,13 @@ const NewJobForm: React.FC = () => {
   // Handle available services for new customers (Allow all, inheriting parent LPO rates/IDs if available)
   useEffect(() => {
     if (!isExistingCustomer) {
+      const pmpoRate = parseFloat(lpo?.lpoServicePMPORate || '0') > 0 ? lpo!.lpoServicePMPORate! : '10.00';
+      const ampoRate = parseFloat(lpo?.lpoServiceAMPORate || '0') > 0 ? lpo!.lpoServiceAMPORate! : '10.00';
+      const pkgRate = parseFloat(lpo?.lpoServiceAMPOPMPORate || '0') > 0 ? lpo!.lpoServiceAMPOPMPORate! : '20.00';
       const services: {id: ServiceType, internalId: string, rate: string}[] = [
-        { id: 'site-to-lpo', internalId: lpo?.lpoServicePMPOInternalID || '', rate: lpo?.lpoServicePMPORate || '10.00' },
-        { id: 'lpo-to-site', internalId: lpo?.lpoServiceAMPOInternalID || '', rate: lpo?.lpoServiceAMPORate || '10.00' },
-        { id: 'round-trip', internalId: lpo?.lpoServiceAMPOPMPOInternalID || '', rate: lpo?.lpoServiceAMPOPMPORate || '20.00' }
+        { id: 'site-to-lpo', internalId: lpo?.lpoServicePMPOInternalID || '', rate: pmpoRate },
+        { id: 'lpo-to-site', internalId: lpo?.lpoServiceAMPOInternalID || '', rate: ampoRate },
+        { id: 'round-trip', internalId: lpo?.lpoServiceAMPOPMPOInternalID || '', rate: pkgRate }
       ];
       setAvailableServices(services);
     }
@@ -673,42 +676,104 @@ const NewJobForm: React.FC = () => {
       let nsResult: any = { success: true };
       let effectiveFormData: JobData = formData;
 
-      // 1. Sub-Customer Creation via ProspectPlus CRM + NetSuite 2194 + LPO.Plus (Stage 1) - Only for NEW customers
+      // 1. Sub-Customer Creation via NetSuite 2527 + ProspectPlus CRM + LPO.Plus (Stage 1) - Only for NEW customers
       if (!isExistingCustomer) {
         setProcessingProgress(25);
-        setProcessingMessage('Registering new customer in CRM & NetSuite...');
+        setProcessingMessage('Registering new customer in NetSuite & CRM...');
 
-        const createCustomerViaCrm = httpsCallable(functions, 'createCustomerViaCrm');
-        const crmResponse = await createCustomerViaCrm({
-          lpoId: lpo.id,
-          lpoName: lpo.companyName || lpo.name || '',
-          lpoEmail: lpo.customerEmail || lpo.email || '',
-          lpoDetails: {
-            lpoServiceAMPORate: lpo.lpoServiceAMPORate,
-            lpoServiceAMPOInternalID: lpo.lpoServiceAMPOInternalID,
-            lpoServicePMPORate: lpo.lpoServicePMPORate,
-            lpoServicePMPOInternalID: lpo.lpoServicePMPOInternalID,
-            lpoServiceAMPOPMPORate: lpo.lpoServiceAMPOPMPORate,
-            lpoServiceAMPOPMPOInternalID: lpo.lpoServiceAMPOPMPOInternalID,
-            lpoServiceAdditionalLPOBagRate: lpo.lpoServiceAdditionalLPOBagRate,
-            lpoServiceAdditionalLPOBagInternalID: lpo.lpoServiceAdditionalLPOBagInternalID,
-          },
-          customer: formData.customer,
-          billing: formData.billing,
-          jobType: formData.jobType,
-          service: formData.service,
-          serviceInternalId: formData.serviceInternalId || '',
-          serviceRate: formData.serviceRate || '',
-          date: formData.date,
-          frequency: formData.frequency,
-          frequencyShorthand: getShorthandFrequency(formData.frequency),
-          preferredTime: formData.preferredTime || '',
-          timeConstraintType: formData.timeConstraintType || 'AFTER',
-          additionalBagRate: lpo.lpoServiceAdditionalLPOBagRate || '',
-        });
+        try {
+          const createCustomerViaCrm = httpsCallable(functions, 'createCustomerViaCrm');
+          const crmResponse = await createCustomerViaCrm({
+            lpoId: lpo.id,
+            lpoName: lpo.companyName || lpo.name || '',
+            lpoEmail: lpo.customerEmail || lpo.email || '',
+            lpoDetails: {
+              lpoServiceAMPORate: lpo.lpoServiceAMPORate,
+              lpoServiceAMPOInternalID: lpo.lpoServiceAMPOInternalID,
+              lpoServicePMPORate: lpo.lpoServicePMPORate,
+              lpoServicePMPOInternalID: lpo.lpoServicePMPOInternalID,
+              lpoServiceAMPOPMPORate: lpo.lpoServiceAMPOPMPORate,
+              lpoServiceAMPOPMPOInternalID: lpo.lpoServiceAMPOPMPOInternalID,
+              lpoServiceAdditionalLPOBagRate: lpo.lpoServiceAdditionalLPOBagRate,
+              lpoServiceAdditionalLPOBagInternalID: lpo.lpoServiceAdditionalLPOBagInternalID,
+            },
+            customer: formData.customer,
+            billing: formData.billing,
+            jobType: formData.jobType,
+            service: formData.service,
+            serviceInternalId: formData.serviceInternalId || '',
+            serviceRate: formData.serviceRate || '',
+            date: formData.date,
+            frequency: formData.frequency,
+            frequencyShorthand: getShorthandFrequency(formData.frequency),
+            preferredTime: formData.preferredTime || '',
+            timeConstraintType: formData.timeConstraintType || 'AFTER',
+            additionalBagRate: lpo.lpoServiceAdditionalLPOBagRate || '',
+          });
 
-        nsResult = (crmResponse.data || {}) as any;
-        console.log("createCustomerViaCrm Response:", nsResult);
+          nsResult = (crmResponse.data || {}) as any;
+          console.log("createCustomerViaCrm (NetSuite 2527 + CRM) Response:", nsResult);
+        } catch (callableErr) {
+          console.warn("createCustomerViaCrm callable failed, falling back to direct NetSuite 2527 + ProspectPlus sync:", callableErr);
+          const NETSUITE_API = "https://1048144.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=2527&deploy=1&compid=1048144&ns-at=AAEJ7tMQJX8dMLsjS5TGMacB9-M8pUB6q50I_ptxbLYqKZ_HR3c";
+          const params = new URLSearchParams({
+            lpo_id: lpo.id,
+            company: formData.customer.company,
+            firstName: formData.customer.firstName,
+            lastName: formData.customer.lastName,
+            email: formData.customer.email,
+            phone: formData.customer.phone,
+            address: formData.customer.address,
+            street: formData.customer.address,
+            suburb: formData.customer.suburb,
+            state: formData.customer.state,
+            postcode: formData.customer.postcode,
+            lat: (formData.customer.coordinates?.lat || "").toString(),
+            lng: (formData.customer.coordinates?.lng || "").toString(),
+            service_name: formData.service || "null",
+            service_internal_id: formData.serviceInternalId || "null",
+            billing: formData.billing,
+            jobType: formData.jobType,
+            startDate: formData.date,
+            frequency: getShorthandFrequency(formData.frequency),
+            preferredTime: formData.preferredTime || "",
+            timeConstraintType: formData.timeConstraintType || "AFTER"
+          });
+          const nsResponse = await fetch(`${NETSUITE_API}&${params.toString()}`);
+          nsResult = await nsResponse.json();
+          console.log("NetSuite Script 2527 Fallback Response:", nsResult);
+
+          if (nsResult.success && nsResult.customerInternalId) {
+            try {
+              const syncResp = await fetch('https://prospectplus.com.au/api/lpo-plus/create-subcustomer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  lpoId: lpo.id,
+                  lpoName: lpo.companyName || lpo.name || '',
+                  lpoEmail: lpo.customerEmail || lpo.email || '',
+                  existingNumericId: String(nsResult.customerInternalId),
+                  customer: formData.customer,
+                  billing: formData.billing,
+                  jobType: formData.jobType,
+                  service: formData.service,
+                  serviceInternalId: formData.serviceInternalId || '',
+                  serviceRate: formData.serviceRate || '',
+                  date: formData.date,
+                  frequency: formData.frequency,
+                  preferredTime: formData.preferredTime || '',
+                  timeConstraintType: formData.timeConstraintType || 'AFTER',
+                })
+              });
+              const syncJson = await syncResp.json();
+              if (syncJson.success) {
+                nsResult = { ...nsResult, ...syncJson, customerInternalId: String(nsResult.customerInternalId) };
+              }
+            } catch (syncErr) {
+              console.warn("Direct ProspectPlus sync warning:", syncErr);
+            }
+          }
+        }
 
         if (!nsResult.success) {
           setValidationError(nsResult.message || "Failed to create customer record.");
@@ -716,12 +781,16 @@ const NewJobForm: React.FC = () => {
           return;
         }
 
+        const resolvedCustomerId = nsResult.customerInternalId ? String(nsResult.customerInternalId) : formData.customer.netsuiteId;
+        const unprefixed = formData.customer.company.replace(/^lpo\s*-\s*/i, '').trim();
+        const resolvedCompanyName = nsResult.companyName || (formData.billing === 'lpo' ? `LPO - ${unprefixed}` : formData.customer.company);
+
         effectiveFormData = {
           ...formData,
           customer: {
             ...formData.customer,
-            company: nsResult.companyName || formData.customer.company,
-            netsuiteId: nsResult.customerInternalId || formData.customer.netsuiteId,
+            company: resolvedCompanyName,
+            netsuiteId: resolvedCustomerId,
             franchisee: nsResult.franchisee || formData.customer.franchisee || '',
             franchiseeText: nsResult.franchiseeText || formData.customer.franchiseeText || '',
           },
@@ -767,12 +836,16 @@ const NewJobForm: React.FC = () => {
       
       const initialRequestStatus = isActuallyActive ? 'pending' : 'awaiting-activation';
 
+      const resolvedNetsuiteCustomerId = (nsResult.customerInternalId || effectiveFormData.customer.netsuiteId)
+        ? String(nsResult.customerInternalId || effectiveFormData.customer.netsuiteId)
+        : null;
+
       if (isEditing && requestId) {
         const cleanUpdate = JSON.parse(JSON.stringify({
           ...effectiveFormData,
           stops,
           isExistingCustomer,
-          netsuiteCustomerId: nsResult.customerInternalId || effectiveFormData.customer.netsuiteId || null,
+          netsuiteCustomerId: resolvedNetsuiteCustomerId,
           appJobGroupId: null,
           syncedWithNetSuite: null,
           status: initialRequestStatus,
@@ -799,7 +872,7 @@ const NewJobForm: React.FC = () => {
           lpo_id: lpo.id,
           isExistingCustomer,
           additionalBagRate: lpo.lpoServiceAdditionalLPOBagRate || null,
-          netsuiteCustomerId: nsResult.customerInternalId || effectiveFormData.customer.netsuiteId || null,
+          netsuiteCustomerId: resolvedNetsuiteCustomerId,
           status: initialRequestStatus,
           jobAcceptedCustInternalId: null,
           skippedDates: [],
